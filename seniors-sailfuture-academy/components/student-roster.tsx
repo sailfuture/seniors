@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -15,6 +16,8 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { ArrowRight01Icon, Link01Icon } from "@hugeicons/core-free-icons"
 
 interface Student {
   id: string
@@ -89,9 +92,11 @@ interface StudentRosterProps {
   title: string
   description: string
   basePath: string
+  publicBaseUrl?: string
+  publicIdParam?: string
 }
 
-export function StudentRoster({ title, description, basePath }: StudentRosterProps) {
+export function StudentRoster({ title, description, basePath, publicBaseUrl, publicIdParam = "id" }: StudentRosterProps) {
   const router = useRouter()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
@@ -164,7 +169,7 @@ export function StudentRoster({ title, description, basePath }: StudentRosterPro
                       <TableHead className="w-[280px]">Student</TableHead>
                       <TableHead>Crew</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead className="w-[100px] text-right">Action</TableHead>
+                      <TableHead className="w-[120px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -200,13 +205,37 @@ export function StudentRoster({ title, description, basePath }: StudentRosterPro
                           {student.studentEmail}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Link
-                            href={`${basePath}/${student.id}`}
-                            className="text-primary text-sm font-medium hover:underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            View
-                          </Link>
+                          <div className="flex items-center justify-end gap-1">
+                            {publicBaseUrl && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                asChild
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <a
+                                  href={`${publicBaseUrl}?${publicIdParam}=${student.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Open public page"
+                                >
+                                  <HugeiconsIcon icon={Link01Icon} strokeWidth={2} className="size-4" />
+                                </a>
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              asChild
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Link href={`${basePath}/${student.id}`} title="View details">
+                                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-4" />
+                              </Link>
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

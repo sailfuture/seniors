@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useForm, FormProvider } from "react-hook-form"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -35,10 +35,16 @@ export function FormPage({ title, config, commentsEndpoint }: FormPageProps) {
     defaultValues: config.defaultValues,
   })
 
+  const imageFieldNames = useMemo(
+    () => config.fields.filter((f) => f.type === "image").map((f) => f.name),
+    [config.fields]
+  )
+
   const { saveStatus, saveNow, lastSavedAt, isLoading } = useAutoSave({
     form,
     xanoEndpoint: config.xanoEndpoint,
     xanoLoadEndpoint: config.xanoLoadEndpoint,
+    imageFieldNames,
   })
 
   const values = form.watch()
@@ -208,16 +214,19 @@ export function FormPage({ title, config, commentsEndpoint }: FormPageProps) {
                 <Skeleton className="h-5 w-40" />
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-6">
                   {section.fields.map((fieldName) => {
                     const field = config.fields.find((f) => f.name === fieldName)
-                    const isFullWidth =
-                      field?.type === "textarea" || field?.type === "image"
+                    let colSpan = "md:col-span-3"
+                    if (field?.columns === 3) {
+                      colSpan = "md:col-span-2"
+                    } else if (field?.columns === 2) {
+                      colSpan = "md:col-span-3"
+                    } else if (field?.type === "textarea" || field?.type === "image") {
+                      colSpan = "md:col-span-6"
+                    }
                     return (
-                      <div
-                        key={fieldName}
-                        className={isFullWidth ? "md:col-span-2" : ""}
-                      >
+                      <div key={fieldName} className={colSpan}>
                         <Skeleton className="mb-2 h-4 w-24" />
                         <Skeleton
                           className={
@@ -261,16 +270,19 @@ export function FormPage({ title, config, commentsEndpoint }: FormPageProps) {
                   <CardTitle className="text-lg">{section.title}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-6">
                     {sectionFields.map((field) => {
-                      const isFullWidth =
-                        field.type === "textarea" || field.type === "image"
+                      let colSpan = "md:col-span-3"
+                      if (field.columns === 3) {
+                        colSpan = "md:col-span-2"
+                      } else if (field.columns === 2) {
+                        colSpan = "md:col-span-3"
+                      } else if (field.type === "textarea" || field.type === "image") {
+                        colSpan = "md:col-span-6"
+                      }
 
                       return (
-                        <div
-                          key={field.name}
-                          className={isFullWidth ? "md:col-span-2" : ""}
-                        >
+                        <div key={field.name} className={colSpan}>
                           <FormFieldRenderer
                             field={field}
                             comments={comments}

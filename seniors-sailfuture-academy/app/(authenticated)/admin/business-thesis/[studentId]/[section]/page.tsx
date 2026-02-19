@@ -25,10 +25,7 @@ export default function AdminBusinessThesisSectionPage({
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
       <h1 className="text-2xl font-bold">Business Thesis — {label}</h1>
       <p className="text-muted-foreground">
-        Reviewing student submissions for {label}.
-      </p>
-      <p className="text-muted-foreground text-sm">
-        Student ID: {studentId}
+        This section is not yet available for review.
       </p>
     </div>
   )

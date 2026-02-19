@@ -10,13 +10,17 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar"
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   BookOpen02Icon,
   MapsIcon,
+  Link01Icon,
+  Settings02Icon,
 } from "@hugeicons/core-free-icons"
 
 const STUDENTS_ENDPOINT =
@@ -133,6 +137,16 @@ const teacherBaseNav = [
     isActive: true,
     items: [],
   },
+  {
+    title: "Life Map Template",
+    url: "/admin/life-map-template",
+    icon: <HugeiconsIcon icon={Settings02Icon} strokeWidth={2} />,
+    isActive: true,
+    items: lifeMapSections.map((s) => ({
+      title: s.title,
+      url: `/admin/life-map-template/${s.slug}`,
+    })),
+  },
 ]
 
 function getTeacherStudentNav(pathname: string) {
@@ -198,6 +212,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const studentId = extractStudentId(pathname)
   const studentInfo = useStudentInfo(studentId)
 
+  const isLifeMap = pathname.startsWith("/admin/life-map/") && studentId
+  const isBusiness = pathname.startsWith("/admin/business-thesis/") && studentId
+  const publicUrl = isLifeMap
+    ? `https://lifemap.sailfutureacademy.org/dashboard?student=${studentId}`
+    : isBusiness
+      ? `https://thesis.sailfutureacademy.org/dashboard?id=${studentId}`
+      : null
+
   return (
     <Sidebar
       className="top-(--header-height) h-[calc(100svh-var(--header-height))]!"
@@ -220,6 +242,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent>
         <NavMain items={navItems} />
       </SidebarContent>
+      {publicUrl && (
+        <SidebarFooter className="px-3 pb-4">
+          <Button variant="outline" size="sm" className="w-full gap-2" asChild>
+            <a href={publicUrl} target="_blank" rel="noopener noreferrer">
+              <HugeiconsIcon icon={Link01Icon} strokeWidth={2} className="size-4" />
+              View Live Public Page
+            </a>
+          </Button>
+        </SidebarFooter>
+      )}
     </Sidebar>
   )
 }

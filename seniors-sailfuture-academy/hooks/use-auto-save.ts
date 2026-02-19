@@ -12,10 +12,11 @@ interface UseAutoSaveOptions {
   form: UseFormReturn<Record<string, unknown>>
   xanoEndpoint: string
   xanoLoadEndpoint?: string
+  imageFieldNames?: string[]
   enabled?: boolean
 }
 
-export function useAutoSave({ form, xanoEndpoint, xanoLoadEndpoint, enabled = true }: UseAutoSaveOptions) {
+export function useAutoSave({ form, xanoEndpoint, xanoLoadEndpoint, imageFieldNames = [], enabled = true }: UseAutoSaveOptions) {
   const { data: session } = useSession()
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
@@ -35,19 +36,14 @@ export function useAutoSave({ form, xanoEndpoint, xanoLoadEndpoint, enabled = tr
         "path" in v &&
         Boolean((v as Record<string, unknown>).path)
 
+      const imageSet = new Set(imageFieldNames)
       const cleaned: Record<string, unknown> = {}
       for (const [key, value] of Object.entries(data)) {
-        if (value instanceof File) {
-          continue
+        if (value instanceof File) continue
+        if (imageSet.has(key)) {
+          cleaned[key] = hasUploadedImage(value) ? value : null
         } else {
           cleaned[key] = value
-        }
-      }
-
-      // Ensure image fields are always present with correct format
-      for (const key of Object.keys(data)) {
-        if (key.includes("image")) {
-          cleaned[key] = hasUploadedImage(data[key]) ? data[key] : ""
         }
       }
 
@@ -94,7 +90,7 @@ export function useAutoSave({ form, xanoEndpoint, xanoLoadEndpoint, enabled = tr
         }
       }
     },
-    [xanoEndpoint, session, enabled, form]
+    [xanoEndpoint, session, enabled, form, imageFieldNames]
   )
 
   const saveNow = useCallback(() => {

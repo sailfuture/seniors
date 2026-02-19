@@ -24,6 +24,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { ImageUploadIcon } from "@hugeicons/core-free-icons"
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
+import { useSaveContext } from "@/lib/save-context"
 
 interface FormFieldRendererProps {
   field: FieldConfig
@@ -235,6 +236,7 @@ function ImageUploadField({
   setValue: (name: string, value: unknown) => void
 }) {
   const { watch } = useFormContext()
+  const saveState = useSaveContext()
   const inputRef = useRef<HTMLInputElement>(null)
   const [localPreview, setLocalPreview] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -260,6 +262,7 @@ function ImageUploadField({
       const result = await uploadImageToXano(file)
       setValue(field.name, { ...result, meta: result.meta ?? {} })
       toast("Image uploaded")
+      setTimeout(() => saveState?.saveNow(), 100)
     } catch (err) {
       setError("Upload failed. Please try again.")
       setLocalPreview(null)

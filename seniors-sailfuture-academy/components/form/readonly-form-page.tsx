@@ -234,12 +234,19 @@ export function ReadOnlyFormPage({ title, config, studentId }: ReadOnlyFormPageP
                 <Skeleton className="h-5 w-40" />
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-6">
                   {section.fields.map((fieldName) => {
                     const field = config.fields.find((f) => f.name === fieldName)
-                    const isFullWidth = field?.type === "textarea" || field?.type === "image"
+                    let colSpan = "md:col-span-3"
+                    if (field?.columns === 3) {
+                      colSpan = "md:col-span-2"
+                    } else if (field?.columns === 2) {
+                      colSpan = "md:col-span-3"
+                    } else if (field?.type === "textarea" || field?.type === "image") {
+                      colSpan = "md:col-span-6"
+                    }
                     return (
-                      <div key={fieldName} className={isFullWidth ? "md:col-span-2" : ""}>
+                      <div key={fieldName} className={colSpan}>
                         <Skeleton className="mb-2 h-4 w-24" />
                         <Skeleton className={field?.type === "textarea" ? "h-20 w-full" : "h-5 w-full"} />
                       </div>
@@ -279,17 +286,24 @@ export function ReadOnlyFormPage({ title, config, studentId }: ReadOnlyFormPageP
                 <CardTitle className="text-lg">{section.title}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-6">
                   {sectionFields.map((field) => {
                     if (field.type === "hidden") return null
-                    const isFullWidth = field.type === "textarea" || field.type === "image"
+                    let colSpan = "md:col-span-3"
+                    if (field.columns === 3) {
+                      colSpan = "md:col-span-2"
+                    } else if (field.columns === 2) {
+                      colSpan = "md:col-span-3"
+                    } else if (field.type === "textarea" || field.type === "image") {
+                      colSpan = "md:col-span-6"
+                    }
 
                     return (
                       <div
                         key={field.name}
                         className={cn(
                           "rounded-lg bg-gray-50 p-3 dark:bg-muted/30",
-                          isFullWidth && "md:col-span-2"
+                          colSpan
                         )}
                       >
                         <div className="mb-1.5 flex items-center justify-between">

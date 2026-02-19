@@ -8,6 +8,8 @@ export default function AdminLifeMapPage() {
       title="Life Map — Student Roster"
       description="View and manage student Life Map submissions."
       basePath="/admin/life-map"
+      publicBaseUrl="https://lifemap.sailfutureacademy.org/dashboard"
+      publicIdParam="student"
     />
   )
 }

@@ -30,7 +30,7 @@ import { Separator } from "@/components/ui/separator"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useSaveContext } from "@/lib/save-context"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { SidebarLeftIcon, LogoutIcon, UserIcon } from "@hugeicons/core-free-icons"
+import { SidebarLeftIcon, LogoutIcon, UserIcon, Link01Icon } from "@hugeicons/core-free-icons"
 
 function getRelativeTime(date: Date): string {
   const now = Date.now()
@@ -122,9 +122,15 @@ function HeaderBreadcrumb() {
     if (studentName) {
       crumbs.push({ label: studentName })
     }
+  } else if (pathname.startsWith("/admin/life-map-template")) {
+    crumbs.push({ label: "Life Map Template" })
   } else if (pathname.startsWith("/admin/life-map")) {
     crumbs.push({ label: "Life Map" })
   } else if (pathname.startsWith("/admin/business-thesis")) {
+    crumbs.push({ label: "Business Thesis" })
+  } else if (pathname.startsWith("/life-map")) {
+    crumbs.push({ label: "Life Map" })
+  } else if (pathname.startsWith("/business-thesis")) {
     crumbs.push({ label: "Business Thesis" })
   }
 
@@ -157,6 +163,9 @@ export function SiteHeader() {
   const { toggleSidebar } = useSidebar()
   const { data: session, status } = useSession()
   const saveCtx = useSaveContext()
+  const studentsId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
+  const role = (session?.user as Record<string, unknown>)?.role as string | undefined
+  const isStudent = role === "student" && studentsId
 
   const userRef = useRef({ name: "", email: "", image: "", initials: "" })
 
@@ -217,11 +226,31 @@ export function SiteHeader() {
                     </p>
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <HugeiconsIcon icon={UserIcon} strokeWidth={2} />
-                  Profile
-                </DropdownMenuItem>
+                {isStudent && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <a
+                        href={`https://lifemap.sailfutureacademy.org/dashboard?student=${studentsId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
+                        Life Map Public Page
+                      </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <a
+                        href={`https://thesis.sailfutureacademy.org/dashboard?id=${studentsId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
+                        Business Thesis Public Page
+                      </a>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/login" })}>
                   <HugeiconsIcon icon={LogoutIcon} strokeWidth={2} />

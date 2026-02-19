@@ -7,6 +7,7 @@ export interface FieldConfig {
   minWords?: number
   required?: boolean
   section: string
+  columns?: 2 | 3
 }
 
 export interface FormSection {
