@@ -1,12 +1,22 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
@@ -91,8 +101,9 @@ export function TeacherComment({
     }
   }
 
-  const displayAnswer = fieldValue && fieldValue !== "—" ? fieldValue : null
+  const displayAnswer = fieldValue && fieldValue !== "—" && fieldValue !== "" ? fieldValue : null
   const wordCount = displayAnswer && minWords ? getWordCount(displayAnswer) : null
+  const showAnswerBlock = displayAnswer || minWords
 
   return (
     <>
@@ -123,22 +134,25 @@ export function TeacherComment({
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto">
-            <div className="space-y-1 px-6 py-4">
-              <p className="text-muted-foreground text-sm">{fieldLabel}</p>
-              {displayAnswer && (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
-              )}
-              {!displayAnswer && (
-                <p className="text-muted-foreground/50 text-sm italic">No response</p>
-              )}
-              {wordCount !== null && minWords && (
-                <p className="text-muted-foreground/60 text-xs">
-                  {wordCount} / {minWords} words
-                </p>
-              )}
-            </div>
-
-            <Separator />
+            {showAnswerBlock && (
+              <>
+                <div className="space-y-1 px-6 py-4">
+                  <p className="text-muted-foreground text-sm">{fieldLabel}</p>
+                  {displayAnswer && (
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
+                  )}
+                  {!displayAnswer && (
+                    <p className="text-muted-foreground/50 text-sm italic">No response</p>
+                  )}
+                  {wordCount !== null && minWords && (
+                    <p className="text-muted-foreground/60 text-xs">
+                      {wordCount} / {minWords} words
+                    </p>
+                  )}
+                </div>
+                <Separator />
+              </>
+            )}
 
             <div className="space-y-2 px-6 py-4">
               {activeComments.length === 0 && completedComments.length === 0 && (
@@ -222,25 +236,35 @@ function CommentCard({
 }) {
   const [toggling, setToggling] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [exiting, setExiting] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
 
-  const handleToggle = async () => {
-    if (!comment.id) return
-    setToggling(true)
-    try {
-      await onMarkComplete(comment.id, !completed)
-    } finally {
-      setToggling(false)
-    }
+  const animateOut = (callback: () => Promise<void>) => {
+    setExiting(true)
+    setTimeout(async () => {
+      await callback()
+      setExiting(false)
+    }, 250)
   }
 
-  const handleDelete = async () => {
+  const handleToggle = () => {
+    if (!comment.id || toggling) return
+    setToggling(true)
+    animateOut(async () => {
+      await onMarkComplete(comment.id!, !completed)
+      setToggling(false)
+    })
+  }
+
+  const handleDelete = () => {
     if (!comment.id) return
     setDeleting(true)
-    try {
-      await onDelete(comment.id)
-    } finally {
+    setConfirmDelete(false)
+    animateOut(async () => {
+      await onDelete(comment.id!)
       setDeleting(false)
-    }
+    })
   }
 
   const createdDate = comment.created_at
@@ -249,17 +273,20 @@ function CommentCard({
 
   return (
     <div
+      ref={cardRef}
       className={cn(
-        "relative rounded-md border p-3 text-sm",
-        completed && "bg-muted/40 text-muted-foreground"
+        "relative overflow-hidden rounded-md border p-3 text-sm transition-all duration-200 ease-in-out",
+        completed && "bg-muted/40 text-muted-foreground",
+        exiting && "max-h-0 scale-95 border-transparent opacity-0 !mb-0 !p-0"
       )}
+      style={exiting ? { marginTop: 0, marginBottom: 0 } : undefined}
     >
       {comment.id && (
         <div className="absolute right-2 top-2 flex items-center gap-0.5">
           <button
             type="button"
             onClick={handleToggle}
-            disabled={toggling}
+            disabled={toggling || exiting}
             className={cn(
               "inline-flex size-5 items-center justify-center rounded transition-colors",
               completed
@@ -276,8 +303,8 @@ function CommentCard({
           </button>
           <button
             type="button"
-            onClick={handleDelete}
-            disabled={deleting}
+            onClick={() => setConfirmDelete(true)}
+            disabled={deleting || exiting}
             className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-500"
             title="Delete"
           >
@@ -299,6 +326,27 @@ function CommentCard({
           <span className="font-medium">{comment.teacher_name}</span>
         )}
       </div>
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete comment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this comment. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
