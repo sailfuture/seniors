@@ -355,7 +355,7 @@ function DynamicField({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5">
-        <Label>{question.field_label}</Label>
+        <Label className="text-muted-foreground text-xs font-medium">{question.field_label}</Label>
         {question.additional_information && (
           <Popover>
             <PopoverTrigger asChild>
@@ -398,6 +398,7 @@ function DynamicField({
       {typeId === QUESTION_TYPE.SHORT_RESPONSE && (
         <InputGroup>
           <InputGroupInput
+            className="font-semibold"
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -408,6 +409,7 @@ function DynamicField({
       {typeId === QUESTION_TYPE.LONG_RESPONSE && (
         <InputGroup>
           <InputGroupTextarea
+            className="font-semibold"
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -436,7 +438,7 @@ function DynamicField({
 
       {typeId === QUESTION_TYPE.DROPDOWN && (
         <Select value={value} onValueChange={onChange}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full font-semibold">
             <SelectValue placeholder={question.placeholder || "Select..."} />
           </SelectTrigger>
           <SelectContent>
@@ -452,6 +454,7 @@ function DynamicField({
       {typeId === QUESTION_TYPE.URL && (
         <InputGroup>
           <InputGroupInput
+            className="font-semibold"
             type="url"
             placeholder={question.placeholder || "https://..."}
             value={value}
@@ -463,6 +466,7 @@ function DynamicField({
       {typeId === QUESTION_TYPE.DATE && (
         <InputGroup>
           <InputGroupInput
+            className="font-semibold"
             type="date"
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -496,6 +500,7 @@ function CurrencyInput({ value, onChange }: { value: string; onChange: (v: strin
         <InputGroupText>$</InputGroupText>
       </InputGroupAddon>
       <InputGroupInput
+        className="font-semibold"
         type="text"
         inputMode="numeric"
         placeholder="0"

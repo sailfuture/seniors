@@ -53,7 +53,7 @@ export function FormFieldRenderer({
     <div className="relative space-y-2">
       {field.label && (
         <div className="flex items-center justify-between">
-          <Label htmlFor={field.name}>{field.label}</Label>
+          <Label htmlFor={field.name} className="text-muted-foreground text-xs font-medium">{field.label}</Label>
           {hasComments ? (
             <CommentBadge
               fieldName={field.name}
@@ -76,6 +76,7 @@ export function FormFieldRenderer({
       {field.type === "text" && (
         <InputGroup>
           <InputGroupInput
+            className="font-semibold"
             id={field.name}
             placeholder={field.placeholder}
             {...register(field.name)}
@@ -96,7 +97,7 @@ export function FormFieldRenderer({
               value={controllerField.value as string}
               onValueChange={controllerField.onChange}
             >
-              <SelectTrigger id={field.name} className="w-full">
+              <SelectTrigger id={field.name} className="w-full font-semibold">
                 <SelectValue placeholder={field.placeholder ?? "Select..."} />
               </SelectTrigger>
               <SelectContent>
@@ -115,6 +116,7 @@ export function FormFieldRenderer({
         <Input
           id={field.name}
           type="date"
+          className="font-semibold"
           {...register(field.name)}
         />
       )}
@@ -140,6 +142,7 @@ function TextareaField({
   return (
     <InputGroup>
       <InputGroupTextarea
+        className="font-semibold"
         id={field.name}
         placeholder={field.placeholder}
         rows={4}
@@ -205,6 +208,7 @@ function CurrencyField({ field }: { field: FieldConfig }) {
         <InputGroupText>$</InputGroupText>
       </InputGroupAddon>
       <InputGroupInput
+        className="font-semibold"
         id={field.name}
         type="text"
         inputMode="numeric"
