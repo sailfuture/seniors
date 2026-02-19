@@ -4,6 +4,7 @@ import { useRef, useState } from "react"
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
@@ -131,6 +132,9 @@ export function TeacherComment({
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="border-b px-6 py-4">
             <SheetTitle className="text-base">Teacher Comments</SheetTitle>
+            <SheetDescription className="sr-only">
+              View and add comments for {fieldLabel}
+            </SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto">

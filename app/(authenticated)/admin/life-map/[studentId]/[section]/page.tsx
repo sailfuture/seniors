@@ -2,6 +2,7 @@
 
 import { use } from "react"
 import { ReadOnlyFormPage } from "@/components/form/readonly-form-page"
+import { ReadOnlyDynamicFormPage } from "@/components/form/readonly-dynamic-form-page"
 import { sectionConfigMap } from "@/lib/form-configs"
 
 const sectionLabels: Record<string, string> = {
@@ -16,6 +17,10 @@ const sectionLabels: Record<string, string> = {
   contact: "Contact",
 }
 
+const dynamicSections: Record<string, number> = {
+  contact: 9,
+}
+
 export default function AdminLifeMapSectionPage({
   params,
 }: {
@@ -25,6 +30,17 @@ export default function AdminLifeMapSectionPage({
   const label = sectionLabels[section] ?? section
 
   const sectionConfig = sectionConfigMap[section]
+  const dynamicSectionId = dynamicSections[section]
+
+  if (dynamicSectionId) {
+    return (
+      <ReadOnlyDynamicFormPage
+        title={`Life Map — ${label}`}
+        sectionId={dynamicSectionId}
+        studentId={studentId}
+      />
+    )
+  }
 
   if (!sectionConfig) {
     return (

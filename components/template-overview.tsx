@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   Table,
   TableBody,
@@ -26,6 +26,7 @@ const PUBLISH_ENDPOINT = `${XANO_BASE}/publish_questions`
 interface LifeMapSection {
   id: number
   section_title: string
+  section_description?: string
   isLocked: boolean
 }
 
@@ -57,6 +58,7 @@ const sectionSlugMap: Record<string, string> = {
 }
 
 export function TemplateOverview() {
+  const router = useRouter()
   const [summaries, setSummaries] = useState<SectionSummary[]>([])
   const [allQuestions, setAllQuestions] = useState<TemplateQuestion[]>([])
   const [loading, setLoading] = useState(true)
@@ -173,56 +175,51 @@ export function TemplateOverview() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Section</TableHead>
-              <TableHead className="w-[120px] text-center">Questions</TableHead>
-              <TableHead className="w-[120px] text-center">Published</TableHead>
-              <TableHead className="w-[120px] text-center">Drafts</TableHead>
-              <TableHead className="w-[100px] text-right">Action</TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wide">Section</TableHead>
+              <TableHead className="text-xs font-medium uppercase tracking-wide">Description</TableHead>
+              <TableHead className="w-[100px] text-center text-xs font-medium uppercase tracking-wide">Questions</TableHead>
+              <TableHead className="w-[100px] text-center text-xs font-medium uppercase tracking-wide">Published</TableHead>
+              <TableHead className="w-[100px] text-center text-xs font-medium uppercase tracking-wide">Drafts</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {summaries.map((s) => {
-              const isOverview = s.slug === "overview"
-              return (
-                <TableRow key={s.section.id}>
-                  <TableCell>
-                    <span className="text-sm font-medium">{s.section.section_title}</span>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span className="text-sm">{s.total}</span>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {s.published > 0 ? (
-                      <Badge variant="default" className="bg-green-600 text-xs">
-                        {s.published}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">0</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {s.draft > 0 ? (
-                      <Badge variant="outline" className="border-amber-300 text-xs text-amber-600">
-                        {s.draft}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">0</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {isOverview ? (
-                      <span className="text-muted-foreground text-xs">—</span>
-                    ) : (
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/admin/life-map-template/${s.slug}`}>
-                          Manage
-                        </Link>
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              )
-            })}
+            {summaries.map((s) => (
+              <TableRow
+                key={s.section.id}
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => router.push(`/admin/life-map-template/${s.slug}`)}
+              >
+                <TableCell>
+                  <span className="text-sm font-medium">{s.section.section_title}</span>
+                </TableCell>
+                <TableCell>
+                  <span className="text-muted-foreground text-sm">
+                    {s.section.section_description || "—"}
+                  </span>
+                </TableCell>
+                <TableCell className="text-center">
+                  <span className="text-sm">{s.total}</span>
+                </TableCell>
+                <TableCell className="text-center">
+                  {s.published > 0 ? (
+                    <Badge variant="default" className="bg-green-600 text-xs">
+                      {s.published}
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground text-sm">0</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-center">
+                  {s.draft > 0 ? (
+                    <Badge variant="outline" className="text-muted-foreground text-xs">
+                      {s.draft}
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground text-sm">0</span>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </div>
