@@ -8,6 +8,7 @@ import { useAutoSave } from "@/hooks/use-auto-save"
 import type { FormPageConfig, Comment } from "@/lib/form-types"
 import { getSectionStatus } from "@/lib/form-types"
 import { useSaveRegister } from "@/lib/save-context"
+import { getSectionIdBySlug } from "@/lib/lifemap-sections"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -21,15 +22,26 @@ interface FormPageProps {
   title: string
   config: FormPageConfig
   commentsEndpoint?: string
+  sectionId?: number
+  sectionSlug?: string
 }
 
-export function FormPage({ title, config, commentsEndpoint }: FormPageProps) {
+export function FormPage({ title, config, commentsEndpoint, sectionId: sectionIdProp, sectionSlug }: FormPageProps) {
   const { data: session, status: sessionStatus } = useSession()
   const router = useRouter()
   const { register: registerSave, unregister: unregisterSave } = useSaveRegister()
   const [comments, setComments] = useState<Comment[]>([])
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
   const pendingAction = useRef<PendingAction>(null)
+  const [resolvedSectionId, setResolvedSectionId] = useState<number | undefined>(sectionIdProp)
+
+  useEffect(() => {
+    if (sectionIdProp) { setResolvedSectionId(sectionIdProp); return }
+    if (!sectionSlug) return
+    getSectionIdBySlug(sectionSlug).then((id) => { if (id) setResolvedSectionId(id) })
+  }, [sectionIdProp, sectionSlug])
+
+  const sectionId = resolvedSectionId
 
   const form = useForm<Record<string, unknown>>({
     defaultValues: config.defaultValues,
@@ -70,9 +82,10 @@ export function FormPage({ title, config, commentsEndpoint }: FormPageProps) {
 
     const loadComments = async () => {
       try {
-        const res = await fetch(
-          `${commentsEndpoint}?students_id=${studentId}`
-        )
+        const url = sectionId
+          ? `${commentsEndpoint}?students_id=${studentId}&lifemap_sections_id=${sectionId}`
+          : `${commentsEndpoint}?students_id=${studentId}`
+        const res = await fetch(url)
         if (res.ok) {
           const data = await res.json()
           if (Array.isArray(data)) setComments(data)
@@ -83,7 +96,7 @@ export function FormPage({ title, config, commentsEndpoint }: FormPageProps) {
     }
 
     loadComments()
-  }, [commentsEndpoint, session])
+  }, [commentsEndpoint, session, sectionId])
 
   const handleMarkRead = async (commentIds: number[]) => {
     setComments((prev) =>

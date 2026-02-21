@@ -11,6 +11,7 @@ export default function HousingPage() {
       title="Housing & Living"
       config={housingConfig}
       commentsEndpoint={`${XANO_BASE}/lifemap_comments`}
+      sectionSlug="housing"
     />
   )
 }

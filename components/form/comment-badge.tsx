@@ -7,9 +7,18 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Comment01Icon } from "@hugeicons/core-free-icons"
+import {
+  Comment01Icon,
+  CheckmarkCircle02Icon,
+  ArrowRight01Icon,
+} from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
@@ -61,16 +70,12 @@ export function CommentBadge({
 
   if (fieldComments.length === 0) return null
 
-  const hasUnread = fieldComments.some((c) => !c.isOld)
+  const unread = fieldComments.filter((c) => !c.isOld)
+  const read = fieldComments.filter((c) => c.isOld)
+  const hasUnread = unread.length > 0
 
-  const handleOpen = (isOpen: boolean) => {
-    setOpen(isOpen)
-    if (isOpen && hasUnread && onMarkRead) {
-      const unreadIds = fieldComments
-        .filter((c) => !c.isOld && c.id)
-        .map((c) => c.id!)
-      if (unreadIds.length > 0) onMarkRead(unreadIds)
-    }
+  const handleMarkSingleRead = (commentId: number) => {
+    if (onMarkRead) onMarkRead([commentId])
   }
 
   const displayAnswer = fieldValue && fieldValue !== "—" && fieldValue !== "" ? fieldValue : null
@@ -81,7 +86,7 @@ export function CommentBadge({
     <>
       <button
         type="button"
-        onClick={() => handleOpen(true)}
+        onClick={() => setOpen(true)}
         className="relative inline-flex size-6 items-center justify-center rounded-full transition-colors hover:bg-accent"
       >
         <HugeiconsIcon
@@ -97,7 +102,7 @@ export function CommentBadge({
         )}
       </button>
 
-      <Sheet open={open} onOpenChange={handleOpen}>
+      <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="border-b px-6 py-4">
             <SheetTitle className="text-base">Teacher Comments</SheetTitle>
@@ -125,7 +130,7 @@ export function CommentBadge({
             )}
 
             <div className="space-y-2 px-6 py-4">
-              {fieldComments.map((comment, i) => {
+              {unread.map((comment, i) => {
                 const createdDate = comment.created_at
                   ? new Date(parseTimestamp(comment.created_at))
                   : null
@@ -133,22 +138,84 @@ export function CommentBadge({
                 return (
                   <div
                     key={comment.id ?? i}
-                    className={cn(
-                      "rounded-md border p-3 text-sm",
-                      !comment.isOld && "border-blue-200 bg-blue-50"
-                    )}
+                    className="relative rounded-md border border-blue-200 bg-blue-50 p-3 text-sm"
                   >
-                    <p className="whitespace-pre-wrap">{comment.note}</p>
+                    {comment.id != null && onMarkRead && (
+                      <button
+                        type="button"
+                        onClick={() => handleMarkSingleRead(comment.id!)}
+                        className="absolute right-2 top-2 inline-flex size-6 items-center justify-center rounded transition-colors text-muted-foreground/40 hover:text-green-600 hover:bg-accent"
+                        title="Mark as read"
+                      >
+                        <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
+                      </button>
+                    )}
+                    <p className="whitespace-pre-wrap pr-7">{comment.note}</p>
                     <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
                       {createdDate && <span>{getRelativeTime(createdDate)}</span>}
                       {createdDate && comment.teacher_name && <span>&middot;</span>}
                       {comment.teacher_name && (
                         <span className="font-medium">{comment.teacher_name}</span>
                       )}
+                      {comment.isRevisionFeedback && (
+                        <>
+                          <span>&middot;</span>
+                          <span className="font-semibold text-red-500">Revision</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 )
               })}
+
+              {read.length > 0 && (
+                <Collapsible>
+                  <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1.5 py-2 text-xs font-medium transition-colors">
+                    <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5 transition-transform [[data-state=open]>&]:rotate-90" />
+                    Read ({read.length})
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="space-y-2 pt-1">
+                      {read.map((comment, i) => {
+                        const createdDate = comment.created_at
+                          ? new Date(parseTimestamp(comment.created_at))
+                          : null
+                        const readTime = comment.isRead
+                          ? getRelativeTime(new Date(typeof comment.isRead === "number" ? comment.isRead : new Date(comment.isRead as string).getTime()))
+                          : null
+
+                        return (
+                          <div
+                            key={comment.id ?? i}
+                            className="rounded-md border p-3 text-sm"
+                          >
+                            <p className="whitespace-pre-wrap">{comment.note}</p>
+                            <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
+                              {createdDate && <span>{getRelativeTime(createdDate)}</span>}
+                              {createdDate && comment.teacher_name && <span>&middot;</span>}
+                              {comment.teacher_name && (
+                                <span className="font-medium">{comment.teacher_name}</span>
+                              )}
+                              {comment.isRevisionFeedback && (
+                                <>
+                                  <span>&middot;</span>
+                                  <span className="font-semibold text-red-500">Revision</span>
+                                </>
+                              )}
+                              {readTime && (
+                                <>
+                                  <span>&middot;</span>
+                                  <span className="text-green-600">Read {readTime}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
             </div>
           </div>
         </SheetContent>

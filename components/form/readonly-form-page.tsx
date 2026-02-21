@@ -18,8 +18,11 @@ const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
 
 interface ReadOnlyFormPageProps {
   title: string
+  subtitle?: string
   config: FormPageConfig
   studentId: string
+  sectionId?: number
+  headerContent?: React.ReactNode
 }
 
 function getImageUrl(value: unknown): string | null {
@@ -99,7 +102,7 @@ function ReadOnlyField({
   )
 }
 
-export function ReadOnlyFormPage({ title, config, studentId }: ReadOnlyFormPageProps) {
+export function ReadOnlyFormPage({ title, subtitle, config, studentId, sectionId, headerContent }: ReadOnlyFormPageProps) {
   const { data: session } = useSession()
   const [data, setData] = useState<Record<string, unknown> | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
@@ -138,7 +141,10 @@ export function ReadOnlyFormPage({ title, config, studentId }: ReadOnlyFormPageP
   useEffect(() => {
     const loadComments = async () => {
       try {
-        const res = await fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`)
+        const url = sectionId
+          ? `${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`
+          : `${COMMENTS_ENDPOINT}?students_id=${studentId}`
+        const res = await fetch(url)
         if (res.ok) {
           const data = await res.json()
           if (Array.isArray(data)) {
@@ -159,14 +165,14 @@ export function ReadOnlyFormPage({ title, config, studentId }: ReadOnlyFormPageP
     }
 
     loadComments()
-  }, [studentId])
+  }, [studentId, sectionId])
 
   const handlePostComment = useCallback(
     async (fieldName: string, note: string) => {
       const teacherName = session?.user?.name ?? "Teacher"
       const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         students_id: studentId,
         teachers_id: teachersId,
         field_name: fieldName,
@@ -175,6 +181,7 @@ export function ReadOnlyFormPage({ title, config, studentId }: ReadOnlyFormPageP
         isComplete: false,
         teacher_name: teacherName,
       }
+      if (sectionId) payload.lifemap_sections_id = sectionId
 
       const res = await fetch(COMMENTS_ENDPOINT, {
         method: "POST",
@@ -190,7 +197,7 @@ export function ReadOnlyFormPage({ title, config, studentId }: ReadOnlyFormPageP
         ])
       }
     },
-    [studentId, session]
+    [studentId, session, sectionId]
   )
 
   const handleMarkComplete = useCallback(
@@ -264,7 +271,11 @@ export function ReadOnlyFormPage({ title, config, studentId }: ReadOnlyFormPageP
   if (!data) {
     return (
       <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
-        <h1 className="text-2xl font-bold">{title}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{title}</h1>
+          {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
+        </div>
+        {headerContent}
         <p className="text-muted-foreground">No data submitted yet for this section.</p>
       </div>
     )
@@ -272,7 +283,12 @@ export function ReadOnlyFormPage({ title, config, studentId }: ReadOnlyFormPageP
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      <h1 className="text-2xl font-bold">{title}</h1>
+      <div>
+        <h1 className="text-2xl font-bold">{title}</h1>
+        {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
+      </div>
+
+      {headerContent}
 
       <div className="space-y-6">
         {config.sections.map((section) => {

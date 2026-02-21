@@ -22,6 +22,7 @@ import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 
 export function NavMain({
   items,
+  hideLabel,
 }: {
   items: {
     title: string
@@ -31,12 +32,15 @@ export function NavMain({
     items?: {
       title: string
       url: string
+      badge?: number
+      badgeRed?: number
     }[]
   }[]
+  hideLabel?: boolean
 }) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+      {!hideLabel && <SidebarGroupLabel>Navigation</SidebarGroupLabel>}
       <SidebarMenu>
         {items.map((item) => (
           <Collapsible key={item.title} asChild defaultOpen={item.isActive}>
@@ -61,7 +65,19 @@ export function NavMain({
                         <SidebarMenuSubItem key={subItem.title}>
                           <SidebarMenuSubButton asChild>
                             <Link href={subItem.url}>
-                              <span>{subItem.title}</span>
+                              <span className="flex-1">{subItem.title}</span>
+                              <span className="ml-auto flex shrink-0 items-center gap-1">
+                                {subItem.badgeRed != null && subItem.badgeRed > 0 && (
+                                  <span className="flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
+                                    {subItem.badgeRed}
+                                  </span>
+                                )}
+                                {subItem.badge != null && subItem.badge > 0 && (
+                                  <span className="flex size-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
+                                    {subItem.badge}
+                                  </span>
+                                )}
+                              </span>
                             </Link>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>

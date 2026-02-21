@@ -11,6 +11,7 @@ export default function EducationPage() {
       title="Educational Program Information & Financial Planning"
       config={educationConfig}
       commentsEndpoint={`${XANO_BASE}/lifemap_comments`}
+      sectionSlug="education"
     />
   )
 }

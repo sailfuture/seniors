@@ -11,6 +11,7 @@ export default function TransportationPage() {
       title="Transportation & Mobility"
       config={transportationConfig}
       commentsEndpoint={`${XANO_BASE}/lifemap_comments`}
+      sectionSlug="transportation"
     />
   )
 }

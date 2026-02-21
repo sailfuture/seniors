@@ -1,44 +1,9 @@
 "use client"
 
 import { use, useEffect, useState } from "react"
-import { redirect } from "next/navigation"
 import { TemplateManager } from "@/components/template-manager"
 import { Skeleton } from "@/components/ui/skeleton"
-
-const XANO_BASE =
-  process.env.NEXT_PUBLIC_XANO_API_BASE ??
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
-
-const sectionLabels: Record<string, string> = {
-  overview: "Overview",
-  pathway: "Selected Pathway",
-  profile: "Personal Profile",
-  career: "Career",
-  education: "Education",
-  housing: "Housing",
-  transportation: "Transportation",
-  finance: "Finance",
-  contact: "Contact",
-}
-
-const slugToSectionTitle: Record<string, string> = {
-  overview: "Overview",
-  pathway: "Selected Pathway",
-  profile: "Personal Profile",
-  career: "Career",
-  education: "Education",
-  housing: "Housing",
-  transportation: "Transportation",
-  finance: "Finance",
-  contact: "Contact",
-}
-
-interface LifeMapSection {
-  id: number
-  section_title: string
-}
-
-let sectionsCache: LifeMapSection[] | null = null
+import { fetchSections, findSectionBySlug, slugToTitle } from "@/lib/lifemap-sections"
 
 export default function LifeMapTemplateSectionPage({
   params,
@@ -47,40 +12,36 @@ export default function LifeMapTemplateSectionPage({
 }) {
   const { section } = use(params)
 
-  if (section === "overview") {
-    redirect("/admin/life-map-template")
-  }
-
-  const label = sectionLabels[section] ?? section
   const [sectionId, setSectionId] = useState<number | null>(null)
+  const [sectionLabel, setSectionLabel] = useState(slugToTitle(section))
+  const [sectionDescription, setSectionDescription] = useState("")
+  const [sectionLocked, setSectionLocked] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let cancelled = false
     const loadSections = async () => {
       try {
-        if (!sectionsCache) {
-          const res = await fetch(`${XANO_BASE}/lifemap_sections`)
-          if (res.ok) {
-            sectionsCache = await res.json()
-          }
-        }
+        const sections = await fetchSections()
+        if (cancelled) return
 
-        if (sectionsCache) {
-          const expectedTitle = slugToSectionTitle[section]
-          const match = sectionsCache.find(
-            (s) => s.section_title === expectedTitle
-          )
-          if (match) setSectionId(match.id)
+        const match = findSectionBySlug(sections, section)
+        if (match) {
+          setSectionId(match.id)
+          setSectionLabel(match.section_title)
+          setSectionDescription(match.section_description ?? "")
+          setSectionLocked(match.isLocked ?? false)
         }
       } catch {
         // Silently fail
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     loadSections()
-  }, [section, label])
+    return () => { cancelled = true }
+  }, [section])
 
   if (loading) {
     return (
@@ -94,7 +55,7 @@ export default function LifeMapTemplateSectionPage({
   if (sectionId === null) {
     return (
       <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
-        <h1 className="text-2xl font-bold">{label}</h1>
+        <h1 className="text-2xl font-bold">{sectionLabel}</h1>
         <p className="text-muted-foreground">
           Section not found. Make sure it exists in the lifemap_sections database.
         </p>
@@ -102,5 +63,13 @@ export default function LifeMapTemplateSectionPage({
     )
   }
 
-  return <TemplateManager section={section} sectionId={sectionId} sectionLabel={label} />
+  return (
+    <TemplateManager
+      section={section}
+      sectionId={sectionId}
+      sectionLabel={sectionLabel}
+      sectionDescription={sectionDescription}
+      sectionLocked={sectionLocked}
+    />
+  )
 }

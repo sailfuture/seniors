@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useCallback, useEffect, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import {
   Table,
   TableBody,
@@ -22,9 +23,11 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -36,7 +39,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -45,8 +47,15 @@ import {
   PencilEdit02Icon,
   DragDropIcon,
   Alert02Icon,
+  CheckmarkCircle02Icon,
+  CircleIcon,
+  ArrowLeft02Icon,
+  SquareLock02Icon,
+  SquareUnlock02Icon,
+  Settings02Icon,
 } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
+import { invalidateSectionsCache } from "@/lib/lifemap-sections"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -56,6 +65,8 @@ const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
 const PUBLISH_ENDPOINT = `${XANO_BASE}/publish_questions`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
+const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
+const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
 
 interface TemplateQuestion {
   id?: number
@@ -63,8 +74,10 @@ interface TemplateQuestion {
   field_label: string
   min_words: number
   placeholder: string
-  additional_information: string
   detailed_instructions: string
+  resources: string[]
+  examples: string[]
+  sentence_starters: string[]
   lifemap_sections_id: number | null
   isArchived: boolean
   isPublished: boolean
@@ -84,6 +97,8 @@ interface CustomGroup {
   id?: number
   group_name: string
   group_description: string
+  instructions: string
+  resources: string[]
   lifemap_sections_id: number
 }
 
@@ -92,8 +107,10 @@ const emptyQuestion: Omit<TemplateQuestion, "id"> = {
   field_label: "",
   min_words: 0,
   placeholder: "",
-  additional_information: "",
   detailed_instructions: "",
+  resources: [],
+  examples: [],
+  sentence_starters: [],
   lifemap_sections_id: null,
   isArchived: false,
   isPublished: false,
@@ -106,6 +123,8 @@ const emptyQuestion: Omit<TemplateQuestion, "id"> = {
 const emptyGroup: Omit<CustomGroup, "id"> = {
   group_name: "",
   group_description: "",
+  instructions: "",
+  resources: [],
   lifemap_sections_id: 0,
 }
 
@@ -122,9 +141,11 @@ interface TemplateManagerProps {
   section: string
   sectionId: number
   sectionLabel: string
+  sectionDescription?: string
+  sectionLocked?: boolean
 }
 
-export function TemplateManager({ section, sectionId, sectionLabel }: TemplateManagerProps) {
+export function TemplateManager({ section, sectionId, sectionLabel, sectionDescription: initialDescription, sectionLocked: initialLocked }: TemplateManagerProps) {
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
@@ -138,6 +159,13 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
   const [editingGroup, setEditingGroup] = useState<CustomGroup | null>(null)
   const [savingGroup, setSavingGroup] = useState(false)
   const [unpublishTarget, setUnpublishTarget] = useState<TemplateQuestion | null>(null)
+
+  const [localDescription, setLocalDescription] = useState(initialDescription ?? "")
+  const [isLocked, setIsLocked] = useState(initialLocked ?? false)
+  const [savingSection, setSavingSection] = useState(false)
+  const [sectionSettingsOpen, setSectionSettingsOpen] = useState(false)
+  const savedDescription = useRef(initialDescription ?? "")
+  const savedLocked = useRef(initialLocked ?? false)
 
   const loadData = useCallback(async () => {
     try {
@@ -313,11 +341,13 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
       prev.map((q) => (q.id === questionId ? { ...q, isPublished } : q))
     )
     try {
-      await fetch(`${TEMPLATE_ENDPOINT}/${questionId}`, {
+      const res = await fetch(`${TEMPLATE_ENDPOINT}/${questionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isPublished }),
       })
+
+      if (!res.ok) throw new Error("PATCH failed")
 
       if (isPublished) {
         await fetch(PUBLISH_ENDPOINT, {
@@ -326,12 +356,12 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
         }).catch(() => {})
       }
 
-      toast(isPublished ? "Question published" : "Question unpublished", { duration: 2000 })
+      toast.success(isPublished ? "Question published" : "Question unpublished", { duration: 2000 })
     } catch {
       setQuestions((prev) =>
         prev.map((q) => (q.id === questionId ? { ...q, isPublished: !isPublished } : q))
       )
-      toast("Failed to update question", { duration: 3000 })
+      toast.error("Failed to update question", { duration: 3000 })
     }
   }
 
@@ -369,6 +399,43 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
     } catch {
       await loadData()
       toast("Failed to publish some questions", { duration: 3000 })
+    }
+  }
+
+  const handleSaveSectionSettings = async () => {
+    setSavingSection(true)
+    try {
+      const res = await fetch(`${SECTIONS_ENDPOINT}/${sectionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ section_description: localDescription, description: localDescription, isLocked }),
+      })
+      if (!res.ok) throw new Error()
+
+      const reviewRes = await fetch(REVIEW_ENDPOINT)
+      if (reviewRes.ok) {
+        const allReviews: { id: number; lifemap_sections_id: number }[] = await reviewRes.json()
+        const sectionReviews = allReviews.filter((r) => r.lifemap_sections_id === sectionId)
+        await Promise.all(
+          sectionReviews.map((r) =>
+            fetch(`${REVIEW_ENDPOINT}/${r.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ isLocked }),
+            })
+          )
+        )
+      }
+
+      savedDescription.current = localDescription
+      savedLocked.current = isLocked
+      invalidateSectionsCache()
+      toast.success("Section settings saved")
+      setSectionSettingsOpen(false)
+    } catch {
+      toast.error("Failed to save section settings")
+    } finally {
+      setSavingSection(false)
     }
   }
 
@@ -492,17 +559,35 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
   }
 
   const flatList = buildFlatList()
-  const COL_COUNT = 5
+  const COL_COUNT = 4
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div>
+        <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold">{sectionLabel}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Manage the questions students must complete for this section.
-          </p>
+          <div className="inline-flex size-7 items-center justify-center rounded-md border">
+            <HugeiconsIcon
+              icon={isLocked ? SquareLock02Icon : SquareUnlock02Icon}
+              strokeWidth={2}
+              className={`size-4 ${isLocked ? "text-muted-foreground" : "text-green-600"}`}
+            />
+          </div>
         </div>
+        {localDescription && (
+          <p className="text-muted-foreground mt-1 text-sm">{localDescription}</p>
+        )}
+      </div>
+
+      <hr className="border-border -mb-3" />
+
+      <div className="flex items-center justify-between">
+        <Button variant="outline" asChild className="gap-2">
+          <Link href="/admin/life-map-template">
+            <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
+            Back
+          </Link>
+        </Button>
         <div className="flex items-center gap-2">
           {draftCount > 0 && (
             <Button variant="outline" onClick={handlePublishAll} className="gap-2">
@@ -516,6 +601,9 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
           <Button onClick={handleAdd} className="gap-2">
             <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4" />
             Add Question
+          </Button>
+          <Button variant="outline" size="icon" onClick={() => setSectionSettingsOpen(true)} title="Section Settings">
+            <HugeiconsIcon icon={Settings02Icon} strokeWidth={2} className="size-4" />
           </Button>
         </div>
       </div>
@@ -533,11 +621,10 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Label</TableHead>
-                <TableHead className="w-[150px]">Type</TableHead>
-                <TableHead className="w-[100px]">Min Words</TableHead>
-                <TableHead className="w-[90px]">Status</TableHead>
-                <TableHead className="w-[100px] text-right">Actions</TableHead>
+                <TableHead className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Label</TableHead>
+                <TableHead className="text-muted-foreground w-[150px] text-xs font-medium uppercase tracking-wide">Type</TableHead>
+                <TableHead className="text-muted-foreground w-[90px] text-xs font-medium uppercase tracking-wide">Status</TableHead>
+                <TableHead className="text-muted-foreground w-[100px] text-right text-xs font-medium uppercase tracking-wide">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -559,10 +646,7 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
                     >
                       <TableCell colSpan={COL_COUNT}>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">{item.g.group_name}</span>
-                          {item.g.group_description && (
-                            <span className="text-muted-foreground text-xs">— {item.g.group_description}</span>
-                          )}
+                          <span className="text-xs font-semibold uppercase tracking-wide">{item.g.group_name}</span>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -586,7 +670,7 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
                     onDragLeave={() => setDropIndicator(null)}
                     onDrop={handleDrop}
                     onClick={() => handleEdit(q)}
-                    className={`cursor-pointer hover:bg-muted/50 ${
+                    className={`cursor-pointer hover:bg-muted/50 [&>td]:py-3 ${
                       dragId === q.id ? "opacity-40" : ""
                     } ${
                       dropIndicator?.flatIdx === flatIdx
@@ -609,32 +693,27 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
                         <span className="text-sm font-medium">{q.field_label || q.field_name}</span>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{getTypeName(q, questionTypes)}</Badge>
-                    </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
-                      {q.min_words > 0 ? q.min_words : "—"}
+                      {getTypeName(q, questionTypes)}
                     </TableCell>
                     <TableCell>
-                      <button
-                        type="button"
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className={`size-7 ${q.isPublished ? "border-green-500 text-green-600 hover:bg-green-50" : ""}`}
                         onClick={(e) => { e.stopPropagation(); handleTogglePublish(q, !q.isPublished) }}
-                        className="cursor-pointer"
+                        title={q.isPublished ? "Published — click to unpublish" : "Draft — click to publish"}
                       >
                         {q.isPublished ? (
-                          <Badge variant="default" className="bg-green-600 text-xs hover:bg-green-700">
-                            Published
-                          </Badge>
+                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
                         ) : (
-                          <Badge variant="outline" className="text-muted-foreground text-xs">
-                            Draft
-                          </Badge>
+                          <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
                         )}
-                      </button>
+                      </Button>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="icon"
                         className="size-7 text-muted-foreground hover:text-red-500"
                         onClick={(e) => { e.stopPropagation(); setDeleteTarget(q) }}
@@ -711,6 +790,59 @@ export function TemplateManager({ section, sectionId, sectionLabel }: TemplateMa
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Sheet open={sectionSettingsOpen} onOpenChange={(open) => {
+        if (!open) {
+          setLocalDescription(savedDescription.current)
+          setIsLocked(savedLocked.current)
+        }
+        setSectionSettingsOpen(open)
+      }}>
+        <SheetContent className="flex flex-col gap-0 p-0">
+          <SheetHeader className="border-b px-6 py-4">
+            <SheetTitle>{sectionLabel}</SheetTitle>
+            <SheetDescription className="sr-only">Edit section description and lock status</SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+            <div className="space-y-2">
+              <Label htmlFor="section-description">Description</Label>
+              <Textarea
+                id="section-description"
+                value={localDescription}
+                onChange={(e) => setLocalDescription(e.target.value)}
+                placeholder="Add a description for this section..."
+                rows={4}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="section-lock-toggle" className="text-sm font-medium">Lock Section</Label>
+                <p className="text-muted-foreground text-xs">
+                  Locked sections prevent students from editing responses.
+                </p>
+              </div>
+              <Switch
+                id="section-lock-toggle"
+                checked={isLocked}
+                onCheckedChange={setIsLocked}
+              />
+            </div>
+          </div>
+
+          <div className="border-t px-6 py-4">
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSectionSettingsOpen(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSaveSectionSettings} disabled={savingSection}>
+                {savingSection ? "Saving..." : "Save Settings"}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
@@ -737,11 +869,17 @@ function QuestionSheet({
     question ?? { ...emptyQuestion }
   )
   const [dropdownInput, setDropdownInput] = useState("")
+  const [resourceInput, setResourceInput] = useState("")
+  const [sentenceStarterInput, setSentenceStarterInput] = useState("")
+  const [exampleInput, setExampleInput] = useState("")
 
   useEffect(() => {
     if (open) {
       setForm(question ?? { ...emptyQuestion })
       setDropdownInput("")
+      setResourceInput("")
+      setSentenceStarterInput("")
+      setExampleInput("")
     }
   }, [open, question])
 
@@ -772,44 +910,29 @@ function QuestionSheet({
       toast("Question type is required", { duration: 2000 })
       return
     }
+    const typeName = questionTypes.find((t) => t.id === form.question_types_id)?.type ?? ""
+    if ((typeName === "Long Response" || typeName === "Short Response") && (!form.min_words || form.min_words < 1)) {
+      toast("Minimum word count is required for response questions", { duration: 2000 })
+      return
+    }
     const fieldName = form.field_name.trim() || form.field_label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
     onSave({ ...form, field_name: fieldName })
   }
 
-  const showMinWords = selectedTypeName === "Long Response"
+  const showMinWords = selectedTypeName === "Long Response" || selectedTypeName === "Short Response"
   const showDropdown = selectedTypeName === "Dropdown"
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-lg">
+      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-xl">
         <SheetHeader className="shrink-0 border-b px-6 py-4">
           <SheetTitle className="text-base">
             {isEdit ? "Edit Question" : "Add Question"}
           </SheetTitle>
+          <SheetDescription className="sr-only">Configure question details</SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-          <div className="space-y-2">
-            <Label>Question Label *</Label>
-            <Input
-              placeholder="e.g. Why did you choose this housing?"
-              value={form.field_label}
-              onChange={(e) => updateField("field_label", e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Field Name</Label>
-            <Input
-              placeholder="Auto-generated from label if empty"
-              value={form.field_name}
-              onChange={(e) => updateField("field_name", e.target.value)}
-            />
-            <p className="text-muted-foreground text-xs">
-              Database field name. Leave empty to auto-generate.
-            </p>
-          </div>
-
           <div className="space-y-2">
             <Label>Question Type *</Label>
             <Select
@@ -827,6 +950,24 @@ function QuestionSheet({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Question Label *</Label>
+            <Input
+              placeholder="e.g. Why did you choose this housing?"
+              value={form.field_label}
+              onChange={(e) => updateField("field_label", e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Placeholder Text</Label>
+            <Input
+              placeholder="e.g. Describe your housing situation..."
+              value={form.placeholder}
+              onChange={(e) => updateField("placeholder", e.target.value)}
+            />
           </div>
 
           {customGroups.length > 0 && (
@@ -850,30 +991,18 @@ function QuestionSheet({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-muted-foreground text-xs">
-                Assign this question to a group for visual organization.
-              </p>
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label>Placeholder Text</Label>
-            <Input
-              placeholder="e.g. Describe your housing situation..."
-              value={form.placeholder}
-              onChange={(e) => updateField("placeholder", e.target.value)}
-            />
-          </div>
-
           {showMinWords && (
             <div className="space-y-2">
-              <Label>Minimum Word Count</Label>
+              <Label>Minimum Word Count *</Label>
               <Input
                 type="number"
-                min={0}
+                min={1}
                 value={form.min_words || ""}
                 onChange={(e) => updateField("min_words", parseInt(e.target.value) || 0)}
-                placeholder="0"
+                placeholder="e.g. 50"
               />
             </div>
           )}
@@ -923,16 +1052,6 @@ function QuestionSheet({
           )}
 
           <div className="space-y-2">
-            <Label>Question Hint</Label>
-            <Textarea
-              placeholder="A short hint or tip shown via the help icon..."
-              value={form.additional_information}
-              onChange={(e) => updateField("additional_information", e.target.value)}
-              rows={3}
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label>Detailed Instructions</Label>
             <Textarea
               placeholder="In-depth instructions that open in a side panel for the student..."
@@ -940,6 +1059,160 @@ function QuestionSheet({
               onChange={(e) => updateField("detailed_instructions", e.target.value)}
               rows={6}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Sentence Starters</Label>
+            <Textarea
+              placeholder="Add a sentence starter..."
+              value={sentenceStarterInput}
+              onChange={(e) => setSentenceStarterInput(e.target.value)}
+              rows={2}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                const trimmed = sentenceStarterInput.trim()
+                if (trimmed && !(form.sentence_starters ?? []).includes(trimmed)) {
+                  updateField("sentence_starters", [...(form.sentence_starters ?? []), trimmed])
+                  setSentenceStarterInput("")
+                }
+              }}
+            >
+              Add
+            </Button>
+            {(form.sentence_starters ?? []).length > 0 && (
+              <div className="space-y-1 pt-2">
+                {(form.sentence_starters ?? []).map((s, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
+                  >
+                    <span className="text-sm">{s}</span>
+                    <button
+                      type="button"
+                      onClick={() => updateField("sentence_starters", (form.sentence_starters ?? []).filter((_, i) => i !== idx))}
+                      className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Examples</Label>
+            <Textarea
+              placeholder="Add an example response..."
+              value={exampleInput}
+              onChange={(e) => setExampleInput(e.target.value)}
+              rows={3}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                const trimmed = exampleInput.trim()
+                if (trimmed && !(form.examples ?? []).includes(trimmed)) {
+                  updateField("examples", [...(form.examples ?? []), trimmed])
+                  setExampleInput("")
+                }
+              }}
+            >
+              Add
+            </Button>
+            {(form.examples ?? []).length > 0 && (
+              <div className="space-y-1 pt-2">
+                {(form.examples ?? []).map((ex, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
+                  >
+                    <span className="text-sm">{ex}</span>
+                    <button
+                      type="button"
+                      onClick={() => updateField("examples", (form.examples ?? []).filter((_, i) => i !== idx))}
+                      className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Resources</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add a URL..."
+                value={resourceInput}
+                onChange={(e) => setResourceInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    const trimmed = resourceInput.trim()
+                    if (trimmed && !form.resources.includes(trimmed)) {
+                      updateField("resources", [...form.resources, trimmed])
+                      setResourceInput("")
+                    }
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const trimmed = resourceInput.trim()
+                  if (trimmed && !form.resources.includes(trimmed)) {
+                    updateField("resources", [...form.resources, trimmed])
+                    setResourceInput("")
+                  }
+                }}
+              >
+                Add
+              </Button>
+            </div>
+            {form.resources.length > 0 && (
+              <div className="space-y-1 pt-2">
+                {form.resources.map((url, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
+                  >
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="truncate text-sm text-blue-600 underline hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">{url}</a>
+                    <button
+                      type="button"
+                      onClick={() => updateField("resources", form.resources.filter((_, i) => i !== idx))}
+                      className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Field Name</Label>
+            <Input
+              placeholder="Auto-generated from label if empty"
+              value={form.field_name}
+              onChange={(e) => updateField("field_name", e.target.value)}
+            />
+            <p className="text-muted-foreground text-xs">
+              Database field name. Leave empty to auto-generate.
+            </p>
           </div>
         </div>
 
@@ -978,11 +1251,13 @@ function GroupSheet({
     group ?? { ...emptyGroup }
   )
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [groupResourceInput, setGroupResourceInput] = useState("")
 
   useEffect(() => {
     if (open) {
       setForm(group ?? { ...emptyGroup })
       setConfirmingDelete(false)
+      setGroupResourceInput("")
     }
   }, [open, group])
 
@@ -1006,6 +1281,7 @@ function GroupSheet({
           <SheetTitle className="text-base">
             {isEdit ? "Edit Group" : "Add Group"}
           </SheetTitle>
+          <SheetDescription className="sr-only">Configure group details</SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 space-y-5 px-6 py-5">
@@ -1026,6 +1302,78 @@ function GroupSheet({
               onChange={(e) => setForm((prev) => ({ ...prev, group_description: e.target.value }))}
               rows={3}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Instructions</Label>
+            <Textarea
+              placeholder="Detailed instructions shown in a side panel..."
+              value={form.instructions}
+              onChange={(e) => setForm((prev) => ({ ...prev, instructions: e.target.value }))}
+              rows={5}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Resources</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add a URL..."
+                value={groupResourceInput}
+                onChange={(e) => setGroupResourceInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    const trimmed = groupResourceInput.trim()
+                    if (trimmed && !form.resources.includes(trimmed)) {
+                      setForm((prev) => ({ ...prev, resources: [...prev.resources, trimmed] }))
+                      setGroupResourceInput("")
+                    }
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const trimmed = groupResourceInput.trim()
+                  if (trimmed && !form.resources.includes(trimmed)) {
+                    setForm((prev) => ({ ...prev, resources: [...prev.resources, trimmed] }))
+                    setGroupResourceInput("")
+                  }
+                }}
+              >
+                Add
+              </Button>
+            </div>
+            {form.resources.length > 0 && (
+              <div className="space-y-1 pt-2">
+                {form.resources.map((url, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
+                  >
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="truncate text-sm text-blue-600 underline hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">{url}</a>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          resources: prev.resources.filter((_, i) => i !== idx),
+                        }))
+                      }
+                      className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-muted-foreground text-xs">
+              Links shown as clickable cards in the group instruction sheet.
+            </p>
           </div>
 
           {isEdit && (

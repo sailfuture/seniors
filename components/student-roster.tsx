@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -17,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowRight01Icon, Link01Icon } from "@hugeicons/core-free-icons"
+import { Link01Icon } from "@hugeicons/core-free-icons"
 
 interface Student {
   id: string
@@ -37,6 +36,11 @@ interface GroupedStudents {
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
+
+const ALL_REVIEWS_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/all_reviews"
+const ALL_REVISIONS_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/all_revisions"
 
 function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
@@ -101,14 +105,49 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [reviewCounts, setReviewCounts] = useState<Map<string, number>>(new Map())
+  const [revisionCounts, setRevisionCounts] = useState<Map<string, number>>(new Map())
 
   useEffect(() => {
-    const fetchStudents = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch(STUDENTS_ENDPOINT)
-        if (res.ok) {
-          const data = await res.json()
+        const [studentsRes, reviewsRes, revisionsRes] = await Promise.all([
+          fetch(STUDENTS_ENDPOINT),
+          fetch(ALL_REVIEWS_ENDPOINT),
+          fetch(ALL_REVISIONS_ENDPOINT),
+        ])
+
+        if (studentsRes.ok) {
+          const data = await studentsRes.json()
           setStudents(Array.isArray(data) ? data : [])
+        }
+
+        if (reviewsRes.ok) {
+          const reviews = await reviewsRes.json()
+          if (Array.isArray(reviews)) {
+            const counts = new Map<string, number>()
+            for (const r of reviews) {
+              if (r.readyReview) {
+                const sid = r.students_id as string
+                counts.set(sid, (counts.get(sid) ?? 0) + 1)
+              }
+            }
+            setReviewCounts(counts)
+          }
+        }
+
+        if (revisionsRes.ok) {
+          const revisions = await revisionsRes.json()
+          if (Array.isArray(revisions)) {
+            const counts = new Map<string, number>()
+            for (const r of revisions) {
+              if (r.revisionNeeded) {
+                const sid = r.students_id as string
+                counts.set(sid, (counts.get(sid) ?? 0) + 1)
+              }
+            }
+            setRevisionCounts(counts)
+          }
         }
       } catch {
         // Silently fail
@@ -117,7 +156,7 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
       }
     }
 
-    fetchStudents()
+    fetchData()
   }, [])
 
   const filtered = students.filter((s) => {
@@ -169,7 +208,7 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
                       <TableHead className="w-[280px]">Student</TableHead>
                       <TableHead>Crew</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead className="w-[120px] text-right">Actions</TableHead>
+                      <TableHead className="w-[60px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -190,6 +229,16 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
                             <span className="font-medium">
                               {student.firstName} {student.lastName}
                             </span>
+                            {(revisionCounts.get(student.id) ?? 0) > 0 && (
+                              <Badge className="bg-red-500 text-white hover:bg-red-600">
+                                {revisionCounts.get(student.id)} revision
+                              </Badge>
+                            )}
+                            {(reviewCounts.get(student.id) ?? 0) > 0 && (
+                              <Badge className="bg-blue-500 text-white hover:bg-blue-600">
+                                {reviewCounts.get(student.id)} ready
+                              </Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -208,9 +257,9 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
                           <div className="flex items-center justify-end gap-1">
                             {publicBaseUrl && (
                               <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="icon"
-                                className="size-8"
+                                className="text-muted-foreground size-8"
                                 asChild
                                 onClick={(e) => e.stopPropagation()}
                               >
@@ -224,17 +273,6 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
                                 </a>
                               </Button>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-8"
-                              asChild
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Link href={`${basePath}/${student.id}`} title="View details">
-                                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-4" />
-                              </Link>
-                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>

@@ -11,6 +11,7 @@ export default function PathwayPage() {
       title="Selected Pathway"
       config={pathwayConfig}
       commentsEndpoint={`${XANO_BASE}/lifemap_comments`}
+      sectionSlug="pathway"
     />
   )
 }

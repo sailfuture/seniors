@@ -60,6 +60,13 @@ function sortByRecent(list: Comment[]): Comment[] {
   )
 }
 
+interface PlagiarismData {
+  class_probability_ai?: number
+  class_probability_human?: number
+  mixed?: number
+  [key: string]: unknown
+}
+
 interface TeacherCommentProps {
   fieldName: string
   fieldLabel: string
@@ -69,6 +76,8 @@ interface TeacherCommentProps {
   onSubmit: (fieldName: string, note: string) => Promise<void>
   onMarkComplete: (commentId: number, isComplete: boolean) => Promise<void>
   onDelete: (commentId: number) => Promise<void>
+  square?: boolean
+  plagiarism?: PlagiarismData
 }
 
 export function TeacherComment({
@@ -80,6 +89,8 @@ export function TeacherComment({
   onSubmit,
   onMarkComplete,
   onDelete,
+  square,
+  plagiarism,
 }: TeacherCommentProps) {
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState("")
@@ -111,7 +122,12 @@ export function TeacherComment({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hover:bg-accent relative inline-flex size-6 items-center justify-center rounded-full transition-colors"
+        className={cn(
+          "relative inline-flex items-center justify-center transition-colors",
+          square
+            ? "size-8 rounded-md border hover:bg-accent"
+            : "size-6 rounded-full hover:bg-accent"
+        )}
       >
         <HugeiconsIcon
           icon={Comment01Icon}
@@ -122,7 +138,12 @@ export function TeacherComment({
           )}
         />
         {activeCount > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex size-3.5 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white ring-2 ring-white">
+          <span className={cn(
+            "absolute flex items-center justify-center rounded-full bg-blue-500 font-bold text-white",
+            square
+              ? "-right-1 -top-1 size-4 text-[10px] font-medium"
+              : "-right-0.5 -top-0.5 size-3.5 text-[9px] ring-2 ring-white"
+          )}>
             {activeCount}
           </span>
         )}
@@ -153,6 +174,7 @@ export function TeacherComment({
                       {wordCount} / {minWords} words
                     </p>
                   )}
+                  {plagiarism && <PlagiarismDisplay data={plagiarism} />}
                 </div>
                 <Separator />
               </>
@@ -351,6 +373,39 @@ function CommentCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  )
+}
+
+function toPercent(val: unknown): number {
+  const n = typeof val === "string" ? parseFloat(val) : typeof val === "number" ? val : 0
+  if (isNaN(n)) return 0
+  return n <= 1 ? Math.round(n * 100) : Math.round(n)
+}
+
+function PlagiarismDisplay({ data }: { data: PlagiarismData }) {
+  const ai = toPercent(data.class_probability_ai ?? 0)
+  const human = toPercent(data.class_probability_human ?? 0)
+  const mixed = toPercent(data.mixed ?? 0)
+
+  const max = Math.max(ai, human, mixed)
+  const aiIsMax = ai === max
+  const humanIsMax = human === max
+  const mixedIsMax = mixed === max && !aiIsMax && !humanIsMax
+
+  return (
+    <div className="mt-1 flex items-center gap-2 text-xs">
+      <span className={aiIsMax ? "font-bold text-red-600" : "text-muted-foreground"}>
+        AI: {ai}%
+      </span>
+      <span className="text-muted-foreground/40">&bull;</span>
+      <span className={humanIsMax ? "font-bold text-green-600" : "text-muted-foreground"}>
+        Human: {human}%
+      </span>
+      <span className="text-muted-foreground/40">&bull;</span>
+      <span className={mixedIsMax ? "font-bold text-amber-600" : "text-muted-foreground"}>
+        Mixed: {mixed}%
+      </span>
     </div>
   )
 }

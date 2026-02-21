@@ -11,6 +11,7 @@ export default function ProfilePage() {
       title="Personal Profile"
       config={personalProfileConfig}
       commentsEndpoint={`${XANO_BASE}/lifemap_comments`}
+      sectionSlug="profile"
     />
   )
 }

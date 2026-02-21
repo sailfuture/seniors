@@ -30,8 +30,12 @@ export interface Comment {
   teachers_id: number | null
   students_id: number | null
   field_name: string
+  lifemap_sections_id?: number | null
+  lifemap_custom_group_id?: number | null
   isOld: boolean
   isComplete?: boolean
+  isRevisionFeedback?: boolean
+  isRead?: string | number | null
   note: string
   teacher_name?: string
   created_at?: string

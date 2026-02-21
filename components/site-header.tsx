@@ -31,6 +31,7 @@ import { useSidebar } from "@/components/ui/sidebar"
 import { useSaveContext } from "@/lib/save-context"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { SidebarLeftIcon, LogoutIcon, UserIcon, Link01Icon } from "@hugeicons/core-free-icons"
+import { slugToTitle } from "@/lib/lifemap-sections"
 
 function getRelativeTime(date: Date): string {
   const now = Date.now()
@@ -113,9 +114,17 @@ function HeaderBreadcrumb() {
   ]
 
   if (adminLifeMap) {
+    const sectionMatch = pathname.match(/^\/admin\/life-map\/([^/]+)\/([^/]+)/)
     crumbs.push({ label: "Life Map", href: "/admin/life-map" })
     if (studentName) {
-      crumbs.push({ label: studentName })
+      crumbs.push(
+        sectionMatch
+          ? { label: studentName, href: `/admin/life-map/${adminLifeMap[1]}` }
+          : { label: studentName }
+      )
+    }
+    if (sectionMatch) {
+      crumbs.push({ label: slugToTitle(sectionMatch[2]) })
     }
   } else if (adminBusiness) {
     crumbs.push({ label: "Business Thesis", href: "/admin/business-thesis" })
@@ -123,7 +132,13 @@ function HeaderBreadcrumb() {
       crumbs.push({ label: studentName })
     }
   } else if (pathname.startsWith("/admin/life-map-template")) {
-    crumbs.push({ label: "Life Map Template" })
+    const sectionMatch = pathname.match(/^\/admin\/life-map-template\/([^/]+)/)
+    if (sectionMatch) {
+      crumbs.push({ label: "Life Map Template", href: "/admin/life-map-template" })
+      crumbs.push({ label: slugToTitle(sectionMatch[1]) })
+    } else {
+      crumbs.push({ label: "Life Map Template" })
+    }
   } else if (pathname.startsWith("/admin/life-map")) {
     crumbs.push({ label: "Life Map" })
   } else if (pathname.startsWith("/admin/business-thesis")) {
