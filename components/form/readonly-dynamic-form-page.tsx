@@ -560,7 +560,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan}`}
           >
             <div className="mb-1.5 flex items-center justify-between">
-              <Label className={cn("text-xs font-medium", aiIsHighest ? "text-red-600" : "text-muted-foreground")}>
+              <Label className="text-muted-foreground text-xs font-medium">
                 {q.field_label}
               </Label>
               <div className="flex items-center gap-2">
