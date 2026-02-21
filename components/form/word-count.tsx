@@ -14,7 +14,7 @@ export function WordCount({ value, minWords }: { value: string; minWords: number
         met ? "text-muted-foreground/60" : "text-muted-foreground/50"
       )}
     >
-      {count} / {minWords} words
+      {count} / {minWords} min words
     </span>
   )
 }

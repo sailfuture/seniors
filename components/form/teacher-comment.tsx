@@ -158,7 +158,7 @@ export function TeacherComment({
             {showAnswerBlock && (
               <>
                 <div className="space-y-1 px-6 py-4">
-                  <p className={cn("text-sm", aiIsHighest ? "font-medium text-red-600" : "text-muted-foreground")}>{fieldLabel}</p>
+                  <p className="text-muted-foreground text-sm">{fieldLabel}</p>
                   {displayAnswer && (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
                   )}

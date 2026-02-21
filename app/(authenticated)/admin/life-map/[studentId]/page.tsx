@@ -43,6 +43,7 @@ import {
   SentIcon,
   Delete02Icon,
   ArrowTurnBackwardIcon,
+  ArrowRight01Icon,
 } from "@hugeicons/core-free-icons"
 import { titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import type { Comment } from "@/lib/form-types"
@@ -57,6 +58,7 @@ const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
+const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
 
 interface ReviewRecord {
   id: number
@@ -87,6 +89,9 @@ interface TemplateQuestion {
   isArchived: boolean
   isPublished: boolean
   sortOrder: number
+  min_words?: number
+  question_types_id?: number | null
+  _question_types?: { id: number; type: string }
 }
 
 interface StudentResponse {
@@ -151,6 +156,7 @@ export default function AdminStudentLifeMapOverviewPage({
   const [loading, setLoading] = useState(true)
   const [comments, setComments] = useState<Comment[]>([])
   const [allReviews, setAllReviews] = useState<ReviewRecord[]>([])
+  const [questionTypes, setQuestionTypes] = useState<{ id: number; type: string }[]>([])
 
   const [sheetRow, setSheetRow] = useState<SectionRow | null>(null)
   const [sheetGroupId, setSheetGroupId] = useState<number | null>(null)
@@ -185,15 +191,20 @@ export default function AdminStudentLifeMapOverviewPage({
 
   const loadData = useCallback(async () => {
     try {
-      const [sectionsRes, reviewRes, groupsRes] = await Promise.all([
+      const [sectionsRes, reviewRes, groupsRes, qTypesRes] = await Promise.all([
         fetch(SECTIONS_ENDPOINT),
         fetch(REVIEW_ENDPOINT),
         fetch(CUSTOM_GROUP_ENDPOINT),
+        fetch(QUESTION_TYPES_ENDPOINT),
       ])
 
       const sections: LifeMapSection[] = sectionsRes.ok ? await sectionsRes.json() : []
       const reviews: ReviewRecord[] = reviewRes.ok ? await reviewRes.json() : []
       const groups: CustomGroup[] = groupsRes.ok ? await groupsRes.json() : []
+      if (qTypesRes.ok) {
+        const types = await qTypesRes.json()
+        if (Array.isArray(types)) setQuestionTypes(types)
+      }
 
       const studentReviews = reviews.filter((r) => r.students_id === studentId)
       setAllReviews(studentReviews)
@@ -521,8 +532,19 @@ export default function AdminStudentLifeMapOverviewPage({
               </div>
             </div>
 
-            <div className="px-6 py-4">
+            <div className="flex items-center justify-between px-6 py-4">
               <Label className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Questions</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (!sheetRow) return
+                  router.push(`/admin/life-map/${studentId}/${sheetRow.slug}`)
+                  setSheetRow(null)
+                }}
+              >
+                View Responses <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="ml-1 size-3.5" />
+              </Button>
             </div>
 
             {loadingSheet ? (
@@ -541,19 +563,22 @@ export default function AdminStudentLifeMapOverviewPage({
                   const response = sectionResponses.find((r) => r.lifemap_template_id === q.id)
                   const complete = response?.isComplete ?? false
                   const relTime = formatRelativeTime(response?.last_edited)
+                  const typeName = q._question_types?.type ?? (q.question_types_id ? questionTypes.find((t) => t.id === q.question_types_id)?.type : undefined)
                   return (
-                    <div key={q.id} className="flex items-center gap-3 border-b px-6 py-3">
-                      {complete ? (
-                        <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 shrink-0 text-green-600" />
-                      ) : (
-                        <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4 shrink-0" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{q.field_label || q.field_name}</p>
+                    <div key={q.id} className="border-b px-6 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{q.field_label || q.field_name}</p>
+                        </div>
+                        <span className={`shrink-0 text-xs ${complete ? "text-green-600" : "text-muted-foreground"}`}>
+                          {complete ? "Complete" : relTime ?? "—"}
+                        </span>
                       </div>
-                      <span className={`shrink-0 text-xs ${complete ? "text-green-600" : "text-muted-foreground"}`}>
-                        {complete ? "Complete" : relTime ?? "—"}
-                      </span>
+                      {(typeName || (q.min_words != null && q.min_words > 0)) && (
+                        <div className="text-muted-foreground mt-0.5 text-xs">
+                          {typeName}{typeName && q.min_words != null && q.min_words > 0 && " · "}{q.min_words != null && q.min_words > 0 && `${q.min_words} min words`}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -582,20 +607,10 @@ export default function AdminStudentLifeMapOverviewPage({
               <Button
                 variant="outline"
                 className="flex-1"
-                onClick={() => {
-                  if (!sheetRow) return
-                  router.push(`/admin/life-map/${studentId}/${sheetRow.slug}`)
-                  setSheetRow(null)
-                }}
-              >
-                View Responses
-              </Button>
-              <Button
-                variant="outline"
                 onClick={handlePostComment}
                 disabled={!commentNote.trim() || postingComment}
               >
-                {postingComment ? "Posting..." : "Post"}
+                {postingComment ? "Posting..." : "Post Comment"}
               </Button>
               {sheetReview && !sheetReview.isComplete && !sheetReview.revisionNeeded && (
                 <Button

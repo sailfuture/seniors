@@ -1034,7 +1034,7 @@ function DynamicField({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <Label className={cn("text-xs font-medium", aiIsHighest ? "text-red-600" : "text-muted-foreground")}>{question.field_label}</Label>
+          <Label className="text-muted-foreground text-xs font-medium">{question.field_label}</Label>
           {hasComments && (
             <CommentBadge
               fieldName={question.field_name}
