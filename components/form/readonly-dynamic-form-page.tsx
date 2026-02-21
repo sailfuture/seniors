@@ -97,6 +97,7 @@ interface StudentResponse {
   date_response: string | null
   image_response: Record<string, unknown> | null
   students_id: string
+  isArchived?: boolean
   last_edited?: string | number | null
 }
 
@@ -183,7 +184,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           const data = (await responsesRes.json()) as StudentResponse[]
           const map = new Map<number, StudentResponse>()
           for (const r of data) {
-            if ((r as Record<string, unknown>).isArchived) continue
+            if (r.isArchived) continue
             map.set(r.lifemap_template_id, r)
           }
           setResponses(map)

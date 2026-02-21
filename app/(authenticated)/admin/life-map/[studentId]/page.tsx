@@ -96,6 +96,7 @@ interface StudentResponse {
   student_response: string
   wordCount: number
   isComplete?: boolean
+  isArchived?: boolean
   last_edited?: string | number | null
 }
 
@@ -255,7 +256,7 @@ export default function AdminStudentLifeMapOverviewPage({
 
       if (responsesRes.ok) {
         const allResponses: StudentResponse[] = await responsesRes.json()
-        setSectionResponses(allResponses.filter((r) => !(r as Record<string, unknown>).isArchived))
+        setSectionResponses(allResponses.filter((r) => !r.isArchived))
       }
     } catch { /* ignore */ } finally {
       setLoadingSheet(false)
@@ -320,7 +321,7 @@ export default function AdminStudentLifeMapOverviewPage({
           students_id: studentId,
           teachers_id: teachersId,
           field_name: "_section_comment",
-          lifemap_sections_id: sheetRow.section.id,
+          lifemap_sections_id: sheetRow?.section.id,
           note: revisionNote.trim(),
           isOld: false,
           isComplete: false,
@@ -474,7 +475,7 @@ export default function AdminStudentLifeMapOverviewPage({
           </TableHeader>
           <TableBody>
             {rows.map((row) => {
-              const locked = row.section.isLocked
+              const locked = row.section.isLocked ?? false
               return (
                 <SectionTableRows
                   key={row.section.id}
