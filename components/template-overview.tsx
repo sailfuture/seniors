@@ -189,7 +189,7 @@ export function TemplateOverview() {
           fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isDraft: false }),
+            body: JSON.stringify({ isDraft: false, isPublished: true }),
           })
         )
       )
@@ -199,7 +199,7 @@ export function TemplateOverview() {
       setAllQuestions((prev) =>
         prev.map((q) =>
           q.isDraft && !q.isArchived && (sectionId ? q.lifemap_sections_id === sectionId : true)
-            ? { ...q, isDraft: false }
+            ? { ...q, isDraft: false, isPublished: true }
             : q
         )
       )

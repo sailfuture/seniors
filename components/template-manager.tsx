@@ -449,13 +449,13 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
           fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isDraft: false }),
+            body: JSON.stringify({ isDraft: false, isPublished: true }),
           })
         )
       )
       await fetch(SYNC_REVIEWS_ENDPOINT).catch(() => {})
       setQuestions((prev) =>
-        prev.map((q) => (q.isDraft && !q.isArchived ? { ...q, isDraft: false } : q))
+        prev.map((q) => (q.isDraft && !q.isArchived ? { ...q, isDraft: false, isPublished: true } : q))
       )
       toast.success(`${drafts.length} question${drafts.length > 1 ? "s" : ""} published`, { duration: 2000 })
     } catch {
