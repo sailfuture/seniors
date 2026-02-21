@@ -61,7 +61,8 @@ export default function AdminLifeMapSectionPage({
                 setSectionComments(
                   data.filter((c: Comment) =>
                     c.field_name === "_section_comment" &&
-                    Number(c.lifemap_sections_id) === match.id
+                    Number(c.lifemap_sections_id) === match.id &&
+                    !c.lifemap_custom_group_id
                   )
                 )
               }
@@ -112,22 +113,6 @@ export default function AdminLifeMapSectionPage({
     [studentId, session, sectionId]
   )
 
-  const handleMarkComplete = useCallback(
-    async (commentId: number, isComplete: boolean) => {
-      const res = await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isComplete }),
-      })
-      if (res.ok) {
-        setSectionComments((prev) =>
-          prev.map((c) => (c.id === commentId ? { ...c, isComplete } : c))
-        )
-      }
-    },
-    []
-  )
-
   const handleDeleteComment = useCallback(
     async (commentId: number) => {
       const res = await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
@@ -156,7 +141,6 @@ export default function AdminLifeMapSectionPage({
           fieldLabel={label}
           comments={sectionComments}
           onSubmit={handlePostSectionComment}
-          onMarkComplete={handleMarkComplete}
           onDelete={handleDeleteComment}
           square
         />

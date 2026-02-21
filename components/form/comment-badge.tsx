@@ -7,17 +7,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Comment01Icon,
   CheckmarkCircle02Icon,
-  ArrowRight01Icon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
@@ -45,6 +39,19 @@ function parseTimestamp(ts: string | number | undefined): number {
   return new Date(ts).getTime()
 }
 
+interface PlagiarismData {
+  class_probability_ai?: number
+  class_probability_human?: number
+  mixed?: number
+  [key: string]: unknown
+}
+
+function toPercent(val: unknown): number {
+  const n = typeof val === "string" ? parseFloat(val) : typeof val === "number" ? val : 0
+  if (isNaN(n)) return 0
+  return n <= 1 ? Math.round(n * 100) : Math.round(n)
+}
+
 interface CommentBadgeProps {
   fieldName: string
   fieldLabel: string
@@ -52,6 +59,7 @@ interface CommentBadgeProps {
   minWords?: number
   comments: Comment[]
   onMarkRead?: (commentIds: number[]) => void
+  plagiarism?: PlagiarismData
 }
 
 export function CommentBadge({
@@ -61,6 +69,7 @@ export function CommentBadge({
   minWords,
   comments,
   onMarkRead,
+  plagiarism,
 }: CommentBadgeProps) {
   const [open, setOpen] = useState(false)
 
@@ -70,9 +79,8 @@ export function CommentBadge({
 
   if (fieldComments.length === 0) return null
 
-  const unread = fieldComments.filter((c) => !c.isOld)
-  const read = fieldComments.filter((c) => c.isOld)
-  const hasUnread = unread.length > 0
+  const unreadCount = fieldComments.filter((c) => !c.isOld).length
+  const hasUnread = unreadCount > 0
 
   const handleMarkSingleRead = (commentId: number) => {
     if (onMarkRead) onMarkRead([commentId])
@@ -124,23 +132,31 @@ export function CommentBadge({
                       {wordCount} / {minWords} words
                     </p>
                   )}
+                  {plagiarism && <PlagiarismScoresInline data={plagiarism} />}
                 </div>
                 <Separator />
               </>
             )}
 
             <div className="space-y-2 px-6 py-4">
-              {unread.map((comment, i) => {
+              {fieldComments.map((comment, i) => {
+                const isRead = !!comment.isOld
                 const createdDate = comment.created_at
                   ? new Date(parseTimestamp(comment.created_at))
+                  : null
+                const readTime = comment.isRead
+                  ? getRelativeTime(new Date(typeof comment.isRead === "number" ? comment.isRead : new Date(comment.isRead as string).getTime()))
                   : null
 
                 return (
                   <div
                     key={comment.id ?? i}
-                    className="relative rounded-md border border-blue-200 bg-blue-50 p-3 text-sm"
+                    className={cn(
+                      "relative rounded-md border p-3 text-sm",
+                      isRead && "bg-muted/50"
+                    )}
                   >
-                    {comment.id != null && onMarkRead && (
+                    {!isRead && comment.id != null && onMarkRead && (
                       <button
                         type="button"
                         onClick={() => handleMarkSingleRead(comment.id!)}
@@ -150,7 +166,7 @@ export function CommentBadge({
                         <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
                       </button>
                     )}
-                    <p className="whitespace-pre-wrap pr-7">{comment.note}</p>
+                    <p className={cn("whitespace-pre-wrap", !isRead && "pr-7")}>{comment.note}</p>
                     <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
                       {createdDate && <span>{getRelativeTime(createdDate)}</span>}
                       {createdDate && comment.teacher_name && <span>&middot;</span>}
@@ -163,63 +179,47 @@ export function CommentBadge({
                           <span className="font-semibold text-red-500">Revision</span>
                         </>
                       )}
+                      {readTime && (
+                        <>
+                          <span>&middot;</span>
+                          <span className="text-green-600">Read {readTime}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 )
               })}
-
-              {read.length > 0 && (
-                <Collapsible>
-                  <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1.5 py-2 text-xs font-medium transition-colors">
-                    <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5 transition-transform [[data-state=open]>&]:rotate-90" />
-                    Read ({read.length})
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className="space-y-2 pt-1">
-                      {read.map((comment, i) => {
-                        const createdDate = comment.created_at
-                          ? new Date(parseTimestamp(comment.created_at))
-                          : null
-                        const readTime = comment.isRead
-                          ? getRelativeTime(new Date(typeof comment.isRead === "number" ? comment.isRead : new Date(comment.isRead as string).getTime()))
-                          : null
-
-                        return (
-                          <div
-                            key={comment.id ?? i}
-                            className="rounded-md border p-3 text-sm"
-                          >
-                            <p className="whitespace-pre-wrap">{comment.note}</p>
-                            <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
-                              {createdDate && <span>{getRelativeTime(createdDate)}</span>}
-                              {createdDate && comment.teacher_name && <span>&middot;</span>}
-                              {comment.teacher_name && (
-                                <span className="font-medium">{comment.teacher_name}</span>
-                              )}
-                              {comment.isRevisionFeedback && (
-                                <>
-                                  <span>&middot;</span>
-                                  <span className="font-semibold text-red-500">Revision</span>
-                                </>
-                              )}
-                              {readTime && (
-                                <>
-                                  <span>&middot;</span>
-                                  <span className="text-green-600">Read {readTime}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              )}
             </div>
           </div>
         </SheetContent>
       </Sheet>
     </>
+  )
+}
+
+function PlagiarismScoresInline({ data }: { data: PlagiarismData }) {
+  const ai = toPercent(data.class_probability_ai ?? 0)
+  const human = toPercent(data.class_probability_human ?? 0)
+  const mixed = toPercent(data.mixed ?? 0)
+
+  const max = Math.max(ai, human, mixed)
+  const aiIsMax = ai === max
+  const humanIsMax = human === max
+  const mixedIsMax = mixed === max && !aiIsMax && !humanIsMax
+
+  return (
+    <div className="mt-1 flex items-center gap-2 text-xs">
+      <span className={aiIsMax ? "font-bold text-red-600" : "text-muted-foreground"}>
+        AI: {ai}%
+      </span>
+      <span className="text-muted-foreground/40">&bull;</span>
+      <span className={humanIsMax ? "font-bold text-green-600" : "text-muted-foreground"}>
+        Human: {human}%
+      </span>
+      <span className="text-muted-foreground/40">&bull;</span>
+      <span className={mixedIsMax ? "font-bold text-amber-600" : "text-muted-foreground"}>
+        Mixed: {mixed}%
+      </span>
+    </div>
   )
 }

@@ -128,7 +128,7 @@ function useSectionReviewCounts(studentId: string | null): SectionBadgeCounts {
           if (Array.isArray(data)) {
             for (const r of data) {
               const sid = Number(r.lifemap_sections_id)
-              if (sid && r.readyReview) ready.set(sid, (ready.get(sid) ?? 0) + 1)
+              if (sid) ready.set(sid, (ready.get(sid) ?? 0) + 1)
             }
           }
         }
@@ -138,7 +138,7 @@ function useSectionReviewCounts(studentId: string | null): SectionBadgeCounts {
           if (Array.isArray(data)) {
             for (const r of data) {
               const sid = Number(r.lifemap_sections_id)
-              if (sid && r.revisionNeeded) revision.set(sid, (revision.get(sid) ?? 0) + 1)
+              if (sid) revision.set(sid, (revision.get(sid) ?? 0) + 1)
             }
           }
         }

@@ -24,8 +24,6 @@ import { Separator } from "@/components/ui/separator"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Comment01Icon,
-  CheckmarkCircle02Icon,
-  ArrowTurnBackwardIcon,
   Delete02Icon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
@@ -74,7 +72,7 @@ interface TeacherCommentProps {
   minWords?: number
   comments: Comment[]
   onSubmit: (fieldName: string, note: string) => Promise<void>
-  onMarkComplete: (commentId: number, isComplete: boolean) => Promise<void>
+  onMarkComplete?: (commentId: number, isComplete: boolean) => Promise<void>
   onDelete: (commentId: number) => Promise<void>
   square?: boolean
   plagiarism?: PlagiarismData
@@ -87,7 +85,6 @@ export function TeacherComment({
   minWords,
   comments,
   onSubmit,
-  onMarkComplete,
   onDelete,
   square,
   plagiarism,
@@ -95,12 +92,10 @@ export function TeacherComment({
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  const [showCompleted, setShowCompleted] = useState(false)
 
-  const fieldComments = comments.filter((c) => c.field_name === fieldName)
-  const activeComments = sortByRecent(fieldComments.filter((c) => !c.isComplete))
-  const completedComments = sortByRecent(fieldComments.filter((c) => c.isComplete))
-  const activeCount = activeComments.length
+  const fieldComments = sortByRecent(comments.filter((c) => c.field_name === fieldName))
+  const commentCount = fieldComments.length
+  const aiIsHighest = plagiarism ? isAiHighest(plagiarism) : false
 
   const handleSubmit = async () => {
     if (!note.trim()) return
@@ -108,6 +103,7 @@ export function TeacherComment({
     try {
       await onSubmit(fieldName, note.trim())
       setNote("")
+      setOpen(false)
     } finally {
       setSubmitting(false)
     }
@@ -134,17 +130,17 @@ export function TeacherComment({
           strokeWidth={2}
           className={cn(
             "size-4",
-            activeCount > 0 ? "text-blue-500" : "text-muted-foreground/40"
+            commentCount > 0 ? "text-blue-500" : "text-muted-foreground/40"
           )}
         />
-        {activeCount > 0 && (
+        {commentCount > 0 && (
           <span className={cn(
             "absolute flex items-center justify-center rounded-full bg-blue-500 font-bold text-white",
             square
               ? "-right-1 -top-1 size-4 text-[10px] font-medium"
               : "-right-0.5 -top-0.5 size-3.5 text-[9px] ring-2 ring-white"
           )}>
-            {activeCount}
+            {commentCount}
           </span>
         )}
       </button>
@@ -162,7 +158,7 @@ export function TeacherComment({
             {showAnswerBlock && (
               <>
                 <div className="space-y-1 px-6 py-4">
-                  <p className="text-muted-foreground text-sm">{fieldLabel}</p>
+                  <p className={cn("text-sm", aiIsHighest ? "font-medium text-red-600" : "text-muted-foreground")}>{fieldLabel}</p>
                   {displayAnswer && (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
                   )}
@@ -181,43 +177,19 @@ export function TeacherComment({
             )}
 
             <div className="space-y-2 px-6 py-4">
-              {activeComments.length === 0 && completedComments.length === 0 && (
+              {fieldComments.length === 0 && (
                 <p className="text-muted-foreground py-8 text-center text-sm">
                   No comments yet.
                 </p>
               )}
 
-              {activeComments.map((comment) => (
+              {fieldComments.map((comment) => (
                 <CommentCard
                   key={comment.id}
                   comment={comment}
-                  onMarkComplete={onMarkComplete}
                   onDelete={onDelete}
                 />
               ))}
-
-              {completedComments.length > 0 && (
-                <>
-                  {activeComments.length > 0 && <Separator className="my-3" />}
-                  <button
-                    type="button"
-                    onClick={() => setShowCompleted(!showCompleted)}
-                    className="text-muted-foreground hover:text-foreground w-full text-left text-xs font-medium transition-colors"
-                  >
-                    {showCompleted ? "Hide" : "Show"} resolved ({completedComments.length})
-                  </button>
-                  {showCompleted &&
-                    completedComments.map((comment) => (
-                      <CommentCard
-                        key={comment.id}
-                        comment={comment}
-                        onMarkComplete={onMarkComplete}
-                        onDelete={onDelete}
-                        completed
-                      />
-                    ))}
-                </>
-              )}
             </div>
           </div>
 
@@ -251,50 +223,34 @@ export function TeacherComment({
 
 function CommentCard({
   comment,
-  onMarkComplete,
   onDelete,
-  completed = false,
 }: {
   comment: Comment
-  onMarkComplete: (commentId: number, isComplete: boolean) => Promise<void>
   onDelete: (commentId: number) => Promise<void>
-  completed?: boolean
 }) {
-  const [toggling, setToggling] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [exiting, setExiting] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
 
-  const animateOut = (callback: () => Promise<void>) => {
-    setExiting(true)
-    setTimeout(async () => {
-      await callback()
-      setExiting(false)
-    }, 250)
-  }
-
-  const handleToggle = () => {
-    if (!comment.id || toggling) return
-    setToggling(true)
-    animateOut(async () => {
-      await onMarkComplete(comment.id!, !completed)
-      setToggling(false)
-    })
-  }
-
   const handleDelete = () => {
     if (!comment.id) return
     setDeleting(true)
     setConfirmDelete(false)
-    animateOut(async () => {
+    setExiting(true)
+    setTimeout(async () => {
       await onDelete(comment.id!)
       setDeleting(false)
-    })
+      setExiting(false)
+    }, 250)
   }
 
   const createdDate = comment.created_at
     ? new Date(parseTimestamp(comment.created_at))
+    : null
+
+  const readTime = comment.isRead
+    ? getRelativeTime(new Date(typeof comment.isRead === "number" ? comment.isRead : new Date(comment.isRead as string).getTime()))
     : null
 
   return (
@@ -302,31 +258,12 @@ function CommentCard({
       ref={cardRef}
       className={cn(
         "relative overflow-hidden rounded-md border p-3 text-sm transition-all duration-200 ease-in-out",
-        completed && "bg-muted/40 text-muted-foreground",
         exiting && "max-h-0 scale-95 border-transparent opacity-0 !mb-0 !p-0"
       )}
       style={exiting ? { marginTop: 0, marginBottom: 0 } : undefined}
     >
       {comment.id && (
-        <div className="absolute right-2 top-2 flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={handleToggle}
-            disabled={toggling || exiting}
-            className={cn(
-              "inline-flex size-5 items-center justify-center rounded transition-colors",
-              completed
-                ? "text-green-500 hover:bg-green-50 hover:text-green-600"
-                : "text-muted-foreground/40 hover:bg-accent hover:text-muted-foreground"
-            )}
-            title={completed ? "Reopen" : "Resolve"}
-          >
-            <HugeiconsIcon
-              icon={completed ? ArrowTurnBackwardIcon : CheckmarkCircle02Icon}
-              strokeWidth={2}
-              className="size-3.5"
-            />
-          </button>
+        <div className="absolute right-2 top-2">
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
@@ -343,13 +280,25 @@ function CommentCard({
         </div>
       )}
 
-      <p className="whitespace-pre-wrap pr-14">{comment.note}</p>
+      <p className="whitespace-pre-wrap pr-7">{comment.note}</p>
 
       <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
         {createdDate && <span>{getRelativeTime(createdDate)}</span>}
         {createdDate && comment.teacher_name && <span>&middot;</span>}
         {comment.teacher_name && (
           <span className="font-medium">{comment.teacher_name}</span>
+        )}
+        {comment.isRevisionFeedback && (
+          <>
+            <span>&middot;</span>
+            <span className="font-semibold text-red-500">Revision</span>
+          </>
+        )}
+        {readTime && (
+          <>
+            <span>&middot;</span>
+            <span className="text-green-600">Read {readTime}</span>
+          </>
         )}
       </div>
 
@@ -381,6 +330,13 @@ function toPercent(val: unknown): number {
   const n = typeof val === "string" ? parseFloat(val) : typeof val === "number" ? val : 0
   if (isNaN(n)) return 0
   return n <= 1 ? Math.round(n * 100) : Math.round(n)
+}
+
+function isAiHighest(data: PlagiarismData): boolean {
+  const ai = toPercent(data.class_probability_ai ?? 0)
+  const human = toPercent(data.class_probability_human ?? 0)
+  const mixed = toPercent(data.mixed ?? 0)
+  return ai >= human && ai >= mixed && ai > 0
 }
 
 function PlagiarismDisplay({ data }: { data: PlagiarismData }) {

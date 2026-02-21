@@ -148,14 +148,16 @@ export function ReadOnlyFormPage({ title, subtitle, config, studentId, sectionId
         if (res.ok) {
           const data = await res.json()
           if (Array.isArray(data)) {
-            const enriched = data.map((c: Record<string, unknown>) => {
-              const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
-              const teacher = teachers?.[0]
-              const teacherName = teacher
-                ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
-                : undefined
-              return { ...c, teacher_name: teacherName } as Comment
-            })
+            const enriched = data
+              .filter((c: Record<string, unknown>) => !sectionId || Number(c.lifemap_sections_id) === sectionId)
+              .map((c: Record<string, unknown>) => {
+                const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
+                const teacher = teachers?.[0]
+                const teacherName = teacher
+                  ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
+                  : undefined
+                return { ...c, teacher_name: teacherName } as Comment
+              })
             setComments(enriched)
           }
         }
@@ -198,23 +200,6 @@ export function ReadOnlyFormPage({ title, subtitle, config, studentId, sectionId
       }
     },
     [studentId, session, sectionId]
-  )
-
-  const handleMarkComplete = useCallback(
-    async (commentId: number, isComplete: boolean) => {
-      const res = await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isComplete }),
-      })
-
-      if (res.ok) {
-        setComments((prev) =>
-          prev.map((c) => (c.id === commentId ? { ...c, isComplete } : c))
-        )
-      }
-    },
-    []
   )
 
   const handleDelete = useCallback(
@@ -333,7 +318,6 @@ export function ReadOnlyFormPage({ title, subtitle, config, studentId, sectionId
                             minWords={field.minWords}
                             comments={comments}
                             onSubmit={handlePostComment}
-                            onMarkComplete={handleMarkComplete}
                             onDelete={handleDelete}
                           />
                         </div>

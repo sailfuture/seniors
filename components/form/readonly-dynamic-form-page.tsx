@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
+import { cn } from "@/lib/utils"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -193,14 +194,16 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         if (commentsRes.ok) {
           const data = await commentsRes.json()
           if (Array.isArray(data)) {
-            const enriched = data.map((c: Record<string, unknown>) => {
-              const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
-              const teacher = teachers?.[0]
-              const teacherName = teacher
-                ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
-                : undefined
-              return { ...c, teacher_name: teacherName } as Comment
-            })
+            const enriched = data
+              .filter((c: Record<string, unknown>) => Number(c.lifemap_sections_id) === sectionId)
+              .map((c: Record<string, unknown>) => {
+                const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
+                const teacher = teachers?.[0]
+                const teacherName = teacher
+                  ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
+                  : undefined
+                return { ...c, teacher_name: teacherName } as Comment
+              })
             setComments(enriched)
           }
         }
@@ -368,23 +371,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     [studentId, session, sectionId]
   )
 
-  const handleMarkComplete = useCallback(
-    async (commentId: number, isComplete: boolean) => {
-      const res = await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isComplete }),
-      })
-
-      if (res.ok) {
-        setComments((prev) =>
-          prev.map((c) => (c.id === commentId ? { ...c, isComplete } : c))
-        )
-      }
-    },
-    []
-  )
-
   const handleDelete = useCallback(
     async (commentId: number) => {
       const res = await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
@@ -438,6 +424,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
 
         const gptzero = response ? plagiarismData.get(response.id) : undefined
         const isChecking = checkingPlagiarism.has(q.id)
+        const aiIsHighest = gptzero ? isAiHighest(gptzero) : false
 
         let displayValue: React.ReactNode
         if (isImage) {
@@ -478,7 +465,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan}`}
           >
             <div className="mb-1.5 flex items-center justify-between">
-              <Label className="text-muted-foreground text-xs font-medium">
+              <Label className={cn("text-xs font-medium", aiIsHighest ? "text-red-600" : "text-muted-foreground")}>
                 {q.field_label}
               </Label>
               <div className="flex items-center gap-2">
@@ -508,7 +495,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   minWords={q.min_words > 0 ? q.min_words : undefined}
                   comments={comments}
                   onSubmit={handlePostComment}
-                  onMarkComplete={handleMarkComplete}
                   onDelete={handleDelete}
                   plagiarism={isLong ? gptzero : undefined}
                 />
@@ -641,6 +627,13 @@ function toPercent(val: unknown): number {
   const n = typeof val === "string" ? parseFloat(val) : typeof val === "number" ? val : 0
   if (isNaN(n)) return 0
   return n <= 1 ? Math.round(n * 100) : Math.round(n)
+}
+
+function isAiHighest(data: GptZeroResult): boolean {
+  const ai = toPercent(data.class_probability_ai ?? 0)
+  const human = toPercent(data.class_probability_human ?? 0)
+  const mixed = toPercent(data.mixed ?? 0)
+  return ai >= human && ai >= mixed && ai > 0
 }
 
 function PlagiarismScoresInline({ data }: { data: GptZeroResult }) {

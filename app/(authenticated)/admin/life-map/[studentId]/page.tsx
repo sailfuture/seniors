@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
   SheetContent,
@@ -24,6 +23,14 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -156,6 +163,8 @@ export default function AdminStudentLifeMapOverviewPage({
 
   const [commentNote, setCommentNote] = useState("")
   const [postingComment, setPostingComment] = useState(false)
+  const [confirmModal, setConfirmModal] = useState<"revision" | "complete" | null>(null)
+  const [revisionNote, setRevisionNote] = useState("")
 
   const loadComments = useCallback(async () => {
     try {
@@ -282,16 +291,70 @@ export default function AdminStudentLifeMapOverviewPage({
     }
   }
 
-  const handleSetComplete = () => {
+  const handleConfirmAction = async () => {
     const review = sheetRow ? getReviewForGroup(sheetRow.section.id, sheetGroupId) : undefined
-    if (!review) return
-    handlePatchReview(review.id, { isComplete: true, revisionNeeded: false, readyReview: false })
-  }
+    if (!review || !confirmModal) return
 
-  const handleSetRevision = () => {
-    const review = sheetRow ? getReviewForGroup(sheetRow.section.id, sheetGroupId) : undefined
-    if (!review) return
-    handlePatchReview(review.id, { revisionNeeded: true, isComplete: false, readyReview: false })
+    const patch: Partial<ReviewRecord> = confirmModal === "complete"
+      ? { isComplete: true, revisionNeeded: false, readyReview: false }
+      : { revisionNeeded: true, isComplete: false, readyReview: false }
+
+    setSavingReview(true)
+    const now = new Date().toISOString()
+    const fullPatch = { ...patch, update: now }
+    try {
+      const res = await fetch(`${REVIEW_ENDPOINT}/${review.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fullPatch),
+      })
+      if (!res.ok) throw new Error()
+      setAllReviews((prev) =>
+        prev.map((r) => (r.id === review.id ? { ...r, ...fullPatch } : r))
+      )
+
+      if (confirmModal === "revision" && revisionNote.trim()) {
+        const teacherName = session?.user?.name ?? "Teacher"
+        const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
+        const commentPayload: Record<string, unknown> = {
+          students_id: studentId,
+          teachers_id: teachersId,
+          field_name: "_section_comment",
+          lifemap_sections_id: sheetRow.section.id,
+          note: revisionNote.trim(),
+          isOld: false,
+          isComplete: false,
+          isRevisionFeedback: true,
+          teacher_name: teacherName,
+        }
+        if (sheetGroupId !== null) {
+          commentPayload.lifemap_custom_group_id = sheetGroupId
+        }
+        try {
+          const commentRes = await fetch(COMMENTS_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(commentPayload),
+          })
+          if (commentRes.ok) {
+            const newComment = await commentRes.json()
+            setComments((prev) => [
+              ...prev,
+              { ...newComment, teacher_name: newComment.teacher_name || teacherName },
+            ])
+          }
+        } catch { /* ignore */ }
+      }
+
+      toast.success(confirmModal === "complete" ? "Marked as complete" : "Resubmission requested")
+      setConfirmModal(null)
+      setRevisionNote("")
+      setSheetRow(null)
+    } catch {
+      toast.error("Failed to update review")
+    } finally {
+      setSavingReview(false)
+    }
   }
 
   const handlePostComment = async () => {
@@ -299,7 +362,7 @@ export default function AdminStudentLifeMapOverviewPage({
     setPostingComment(true)
     const teacherName = session?.user?.name ?? "Teacher"
     const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
-    const payload = {
+    const payload: Record<string, unknown> = {
       students_id: studentId,
       teachers_id: teachersId,
       field_name: "_section_comment",
@@ -308,6 +371,9 @@ export default function AdminStudentLifeMapOverviewPage({
       isOld: false,
       isComplete: false,
       teacher_name: teacherName,
+    }
+    if (sheetGroupId !== null) {
+      payload.lifemap_custom_group_id = sheetGroupId
     }
     try {
       const res = await fetch(COMMENTS_ENDPOINT, {
@@ -328,22 +394,6 @@ export default function AdminStudentLifeMapOverviewPage({
     }
   }
 
-  const handleMarkCommentComplete = useCallback(
-    async (commentId: number, isComplete: boolean) => {
-      const res = await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isComplete }),
-      })
-      if (res.ok) {
-        setComments((prev) =>
-          prev.map((c) => (c.id === commentId ? { ...c, isComplete } : c))
-        )
-      }
-    },
-    []
-  )
-
   const handleDeleteComment = useCallback(
     async (commentId: number) => {
       const res = await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, { method: "DELETE" })
@@ -356,14 +406,16 @@ export default function AdminStudentLifeMapOverviewPage({
 
   const sheetReview = sheetRow ? getReviewForGroup(sheetRow.section.id, sheetGroupId) : undefined
   const sheetComments = sheetRow
-    ? comments.filter(
-        (c) => c.field_name === "_section_comment" && Number(c.lifemap_sections_id) === sheetRow.section.id
-      )
+    ? comments.filter((c) => {
+        if (c.field_name !== "_section_comment") return false
+        if (Number(c.lifemap_sections_id) !== sheetRow.section.id) return false
+        if (sheetGroupId !== null) {
+          return Number(c.lifemap_custom_group_id) === sheetGroupId
+        }
+        return !c.lifemap_custom_group_id
+      })
     : []
-  const activeSheetComments = [...sheetComments.filter((c) => !c.isComplete)].sort(
-    (a, b) => parseTimestamp(b.created_at) - parseTimestamp(a.created_at)
-  )
-  const completedSheetComments = [...sheetComments.filter((c) => c.isComplete)].sort(
+  const sortedSheetComments = [...sheetComments].sort(
     (a, b) => parseTimestamp(b.created_at) - parseTimestamp(a.created_at)
   )
 
@@ -472,26 +524,18 @@ export default function AdminStudentLifeMapOverviewPage({
 
             <div className="border-b px-6 py-4">
               <Label className="text-muted-foreground mb-3 block text-xs font-medium uppercase tracking-wide">Comments</Label>
-              {activeSheetComments.length === 0 && completedSheetComments.length === 0 && (
+              {sortedSheetComments.length === 0 && (
                 <p className="text-muted-foreground py-4 text-center text-sm">No comments yet.</p>
               )}
               <div className="space-y-2">
-                {activeSheetComments.map((c) => (
+                {sortedSheetComments.map((c) => (
                   <InlineCommentCard
                     key={c.id}
                     comment={c}
-                    onResolve={() => c.id && handleMarkCommentComplete(c.id, true)}
                     onDelete={() => c.id && handleDeleteComment(c.id)}
                   />
                 ))}
               </div>
-              {completedSheetComments.length > 0 && (
-                <CompletedCommentsSection
-                  comments={completedSheetComments}
-                  onReopen={(id) => handleMarkCommentComplete(id, false)}
-                  onDelete={(id) => handleDeleteComment(id)}
-                />
-              )}
             </div>
 
             <div className="px-6 py-4">
@@ -565,25 +609,26 @@ export default function AdminStudentLifeMapOverviewPage({
               </Button>
               {sheetReview && !sheetReview.isComplete && (
                 <Button
-                  variant="destructive"
+                  variant="outline"
                   size="icon"
                   className="size-9 shrink-0"
-                  onClick={handleSetRevision}
+                  onClick={() => { setConfirmModal("revision"); setRevisionNote("") }}
                   disabled={savingReview}
                   title="Needs Revision"
                 >
-                  <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4" />
+                  <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
                 </Button>
               )}
               {sheetReview && !sheetReview.isComplete && (
                 <Button
+                  variant="outline"
                   size="icon"
                   className="size-9 shrink-0"
-                  onClick={handleSetComplete}
+                  onClick={() => setConfirmModal("complete")}
                   disabled={savingReview}
                   title="Mark Complete"
                 >
-                  <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
+                  <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
                 </Button>
               )}
               {sheetReview?.isComplete && (
@@ -602,6 +647,40 @@ export default function AdminStudentLifeMapOverviewPage({
           </div>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={confirmModal !== null} onOpenChange={(open) => { if (!open) { setConfirmModal(null); setRevisionNote("") } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmModal === "complete" ? "Mark as Complete?" : "Request Resubmission?"}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmModal === "complete"
+                ? `This will mark "${sheetGroupId !== null ? rows.flatMap((r) => r.groups).find((g) => g.id === sheetGroupId)?.group_name : sheetRow?.section.section_title}" as complete.`
+                : `This will request a resubmission for "${sheetGroupId !== null ? rows.flatMap((r) => r.groups).find((g) => g.id === sheetGroupId)?.group_name : sheetRow?.section.section_title}".`}
+            </DialogDescription>
+          </DialogHeader>
+          {confirmModal === "revision" && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Comment (optional)</Label>
+              <Textarea
+                placeholder="Add a note for the student..."
+                value={revisionNote}
+                onChange={(e) => setRevisionNote(e.target.value)}
+                rows={3}
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConfirmModal(null); setRevisionNote("") }}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmAction} disabled={savingReview}>
+              {savingReview ? "Saving..." : confirmModal === "complete" ? "Mark Complete" : "Request Resubmission"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -721,37 +800,20 @@ function SectionTableRows({
 
 function InlineCommentCard({
   comment,
-  onResolve,
   onDelete,
-  completed,
 }: {
   comment: Comment
-  onResolve: () => void
   onDelete: () => void
-  completed?: boolean
 }) {
   const createdDate = comment.created_at ? new Date(parseTimestamp(comment.created_at)) : null
+  const readTime = comment.isRead ? formatRelativeTime(
+    typeof comment.isRead === "number" ? comment.isRead : new Date(comment.isRead as string).getTime()
+  ) : null
 
   return (
-    <div className={`relative rounded-md border p-3 text-sm ${completed ? "bg-muted/40 text-muted-foreground" : ""}`}>
+    <div className="relative rounded-md border p-3 text-sm">
       {comment.id && (
-        <div className="absolute right-2 top-2 flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={onResolve}
-            className={`inline-flex size-5 items-center justify-center rounded transition-colors ${
-              completed
-                ? "text-green-500 hover:bg-green-50 hover:text-green-600"
-                : "text-muted-foreground/40 hover:bg-accent hover:text-muted-foreground"
-            }`}
-            title={completed ? "Reopen" : "Resolve"}
-          >
-            <HugeiconsIcon
-              icon={completed ? ArrowTurnBackwardIcon : CheckmarkCircle02Icon}
-              strokeWidth={2}
-              className="size-3.5"
-            />
-          </button>
+        <div className="absolute right-2 top-2">
           <button
             type="button"
             onClick={onDelete}
@@ -762,53 +824,28 @@ function InlineCommentCard({
           </button>
         </div>
       )}
-      <p className="whitespace-pre-wrap pr-14">{comment.note}</p>
+      <p className="whitespace-pre-wrap pr-7">{comment.note}</p>
       <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
         {createdDate && <span>{formatRelativeTime(createdDate.getTime())}</span>}
         {createdDate && comment.teacher_name && <span>&middot;</span>}
         {comment.teacher_name && <span className="font-medium">{comment.teacher_name}</span>}
+        {comment.isRevisionFeedback && (
+          <>
+            <span>&middot;</span>
+            <span className="font-semibold text-red-500">Revision</span>
+          </>
+        )}
+        {readTime && (
+          <>
+            <span>&middot;</span>
+            <span className="text-green-600">Read {readTime}</span>
+          </>
+        )}
       </div>
     </div>
   )
 }
 
-function CompletedCommentsSection({
-  comments,
-  onReopen,
-  onDelete,
-}: {
-  comments: Comment[]
-  onReopen: (id: number) => void
-  onDelete: (id: number) => void
-}) {
-  const [show, setShow] = useState(false)
-
-  return (
-    <div className="mt-3">
-      {comments.length > 0 && <Separator className="mb-3" />}
-      <button
-        type="button"
-        onClick={() => setShow(!show)}
-        className="text-muted-foreground hover:text-foreground w-full text-left text-xs font-medium transition-colors"
-      >
-        {show ? "Hide" : "Show"} resolved ({comments.length})
-      </button>
-      {show && (
-        <div className="mt-2 space-y-2">
-          {comments.map((c) => (
-            <InlineCommentCard
-              key={c.id}
-              comment={c}
-              onResolve={() => c.id && onReopen(c.id)}
-              onDelete={() => c.id && onDelete(c.id)}
-              completed
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 function parseTimestamp(ts: string | number | undefined): number {
   if (!ts) return 0

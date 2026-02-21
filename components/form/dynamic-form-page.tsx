@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -38,11 +39,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ImageUploadIcon,
@@ -54,7 +50,6 @@ import {
   SentIcon,
   AlertCircleIcon,
   Robot01Icon,
-  ArrowRight01Icon,
 } from "@hugeicons/core-free-icons"
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
@@ -206,14 +201,16 @@ export function DynamicFormPage({ title, sectionId }: DynamicFormPageProps) {
       if (commentsRes.ok) {
         const data = await commentsRes.json()
         if (Array.isArray(data)) {
-          const enriched = data.map((c: Record<string, unknown>) => {
-            const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
-            const teacher = teachers?.[0]
-            const teacherName = teacher
-              ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
-              : (c.teacher_name as string | undefined)
-            return { ...c, teacher_name: teacherName } as Comment
-          })
+          const enriched = data
+            .filter((c: Record<string, unknown>) => Number(c.lifemap_sections_id) === sectionId)
+            .map((c: Record<string, unknown>) => {
+              const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
+              const teacher = teachers?.[0]
+              const teacherName = teacher
+                ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
+                : (c.teacher_name as string | undefined)
+              return { ...c, teacher_name: teacherName } as Comment
+            })
           setComments(enriched)
         }
       }
@@ -819,7 +816,7 @@ function StudentCommentCard({
   const isRead = !!c.isRead || c.isOld
 
   return (
-    <div className="relative rounded-md border p-3 text-sm">
+    <div className={cn("relative rounded-md border p-3 text-sm", isRead && "bg-muted/50")}>
       {!isRead && c.id != null && onMarkRead && (
         <button
           type="button"
@@ -830,7 +827,7 @@ function StudentCommentCard({
           <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
         </button>
       )}
-      <p className={`whitespace-pre-wrap ${!isRead ? "pr-7" : ""}`}>{c.note}</p>
+      <p className={cn("whitespace-pre-wrap", !isRead && "pr-7")}>{c.note}</p>
       <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
         {commentTime && <span>{commentTime}</span>}
         {commentTime && c.teacher_name && <span>&middot;</span>}
@@ -859,8 +856,18 @@ function StudentCommentList({
   comments: Comment[]
   onMarkRead?: (commentId: number) => void
 }) {
-  const unread = comments.filter((c) => !c.isOld)
-  const read = comments.filter((c) => c.isOld)
+  const sorted = [...comments].sort((a, b) => {
+    const aUnread = !a.isOld ? 0 : 1
+    const bUnread = !b.isOld ? 0 : 1
+    if (aUnread !== bUnread) return aUnread - bUnread
+    const aTime = a.created_at
+      ? (typeof a.created_at === "number" ? a.created_at : new Date(a.created_at as string).getTime())
+      : 0
+    const bTime = b.created_at
+      ? (typeof b.created_at === "number" ? b.created_at : new Date(b.created_at as string).getTime())
+      : 0
+    return bTime - aTime
+  })
 
   if (comments.length === 0) {
     return <p className="text-muted-foreground py-8 text-center text-sm">No comments.</p>
@@ -868,24 +875,9 @@ function StudentCommentList({
 
   return (
     <div className="space-y-3">
-      {unread.map((c) => (
+      {sorted.map((c) => (
         <StudentCommentCard key={c.id} comment={c} onMarkRead={onMarkRead} />
       ))}
-      {read.length > 0 && (
-        <Collapsible>
-          <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1.5 py-2 text-xs font-medium transition-colors">
-            <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5 transition-transform [[data-state=open]>&]:rotate-90" />
-            Read ({read.length})
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="space-y-3 pt-1">
-              {read.map((c) => (
-                <StudentCommentCard key={c.id} comment={c} />
-              ))}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
     </div>
   )
 }
@@ -922,7 +914,12 @@ function DynamicField({
 
   const fieldComments = comments.filter((c) => c.field_name === question.field_name && !c.isComplete)
   const hasComments = fieldComments.length > 0
-  const isTextType = typeId === QUESTION_TYPE.SHORT_RESPONSE || typeId === QUESTION_TYPE.LONG_RESPONSE
+  const aiIsHighest = plagiarism ? (() => {
+    const ai = toPercent(plagiarism.class_probability_ai ?? 0)
+    const human = toPercent(plagiarism.class_probability_human ?? 0)
+    const mixed = toPercent(plagiarism.mixed ?? 0)
+    return ai >= human && ai >= mixed && ai > 0
+  })() : false
 
   const relativeTime = formatRelativeTime(lastEdited)
 
@@ -930,7 +927,7 @@ function DynamicField({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <Label className="text-muted-foreground text-xs font-medium">{question.field_label}</Label>
+          <Label className={cn("text-xs font-medium", aiIsHighest ? "text-red-600" : "text-muted-foreground")}>{question.field_label}</Label>
           {hasComments && (
             <CommentBadge
               fieldName={question.field_name}
@@ -939,6 +936,7 @@ function DynamicField({
               minWords={question.min_words > 0 ? question.min_words : undefined}
               comments={comments}
               onMarkRead={onMarkRead}
+              plagiarism={plagiarism}
             />
           )}
           {typeId === QUESTION_TYPE.LONG_RESPONSE && (
