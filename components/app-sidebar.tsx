@@ -88,6 +88,37 @@ function useStudentInfo(studentId: string | null): StudentInfo | null {
   return info
 }
 
+interface StudentListItem {
+  id: string
+  name: string
+}
+
+function useStudentList(): StudentListItem[] {
+  const [students, setStudents] = useState<StudentListItem[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch(STUDENTS_ENDPOINT)
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          const list = (data as { id: string; firstName: string; lastName: string; yearGroup?: string }[])
+            .filter((s) => s.yearGroup === "Batch Year 2026")
+            .map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}` }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+          if (!cancelled) setStudents(list)
+        }
+      } catch { /* ignore */ }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  return students
+}
+
 function useLifeMapSections() {
   const [sections, setSections] = useState<LifeMapSection[]>([])
 
@@ -231,28 +262,34 @@ function buildStudentNav(sections: LifeMapSection[], commentCounts?: Map<number,
   ]
 }
 
-function buildTeacherBaseNav(sections: LifeMapSection[]) {
+function buildTeacherBaseNav(sections: LifeMapSection[], pathname: string, students: StudentListItem[]) {
   const mapItems = buildLifeMapNavItems(sections)
+  const onTemplate = pathname.startsWith("/admin/life-map-template")
+  const onLifeMap = !onTemplate && (pathname === "/admin/life-map" || pathname.startsWith("/admin/life-map/"))
+
   return [
     {
       title: "Life Map",
       url: "/admin/life-map",
       icon: <HugeiconsIcon icon={MapsIcon} strokeWidth={2} />,
-      isActive: true,
-      items: [],
+      isActive: onLifeMap,
+      items: students.map((s) => ({
+        title: s.name,
+        url: `/admin/life-map/${s.id}`,
+      })),
     },
     {
       title: "Business Thesis",
       url: "/admin/business-thesis",
       icon: <HugeiconsIcon icon={BookOpen02Icon} strokeWidth={2} />,
-      isActive: true,
+      isActive: false,
       items: [],
     },
     {
       title: "Life Map Template",
       url: "/admin/life-map-template",
       icon: <HugeiconsIcon icon={Settings02Icon} strokeWidth={2} />,
-      isActive: true,
+      isActive: onTemplate,
       items: mapItems.map((s) => ({
         title: s.title,
         url: `/admin/life-map-template/${s.slug}`,
@@ -311,12 +348,12 @@ interface NavBadgeData {
   readyReviewCounts?: Map<number, number>
 }
 
-function getNavFromPathname(pathname: string, isAdmin: boolean, sections: LifeMapSection[], badges: NavBadgeData) {
+function getNavFromPathname(pathname: string, isAdmin: boolean, sections: LifeMapSection[], badges: NavBadgeData, students: StudentListItem[]) {
   if (pathname.startsWith("/admin/")) {
-    return getTeacherStudentNav(pathname, sections, badges.readyReviewCounts) ?? buildTeacherBaseNav(sections)
+    return getTeacherStudentNav(pathname, sections, badges.readyReviewCounts) ?? buildTeacherBaseNav(sections, pathname, students)
   }
   if (isAdmin) {
-    return buildTeacherBaseNav(sections)
+    return buildTeacherBaseNav(sections, pathname, students)
   }
   return buildStudentNav(sections, badges.commentCounts, badges.revisionCounts)
 }
@@ -338,11 +375,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const studentId = adminStudentId ?? ownStudentId
   const reviewCounts = useSectionReviewCounts(studentId)
   const commentCounts = useSectionCommentCounts(!isAdmin ? studentId : null)
+  const studentList = useStudentList()
   const navItems = getNavFromPathname(pathname, isAdmin, sections, {
     commentCounts,
     revisionCounts: reviewCounts.revisionNeeded,
     readyReviewCounts: reviewCounts.readyReview,
-  })
+  }, studentList)
   const studentInfo = useStudentInfo(adminStudentId)
 
   const isLifeMap = pathname.startsWith("/admin/life-map/") && adminStudentId

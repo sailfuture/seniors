@@ -186,6 +186,7 @@ export function DynamicFormPage({ title, sectionId }: DynamicFormPageProps) {
         const map = new Map<number, StudentResponse>()
         const values = new Map<number, string>()
         for (const r of data) {
+          if ((r as Record<string, unknown>).isArchived) continue
           map.set(r.lifemap_template_id, r)
           values.set(r.lifemap_template_id, r.student_response ?? "")
         }

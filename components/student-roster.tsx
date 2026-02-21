@@ -39,8 +39,6 @@ const STUDENTS_ENDPOINT =
 
 const ALL_REVIEWS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/all_reviews"
-const ALL_REVISIONS_ENDPOINT =
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/all_revisions"
 
 function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
@@ -106,15 +104,13 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [reviewCounts, setReviewCounts] = useState<Map<string, number>>(new Map())
-  const [revisionCounts, setRevisionCounts] = useState<Map<string, number>>(new Map())
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [studentsRes, reviewsRes, revisionsRes] = await Promise.all([
+        const [studentsRes, reviewsRes] = await Promise.all([
           fetch(STUDENTS_ENDPOINT),
           fetch(ALL_REVIEWS_ENDPOINT),
-          fetch(ALL_REVISIONS_ENDPOINT),
         ])
 
         if (studentsRes.ok) {
@@ -127,26 +123,10 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
           if (Array.isArray(reviews)) {
             const counts = new Map<string, number>()
             for (const r of reviews) {
-              if (r.readyReview) {
-                const sid = r.students_id as string
-                counts.set(sid, (counts.get(sid) ?? 0) + 1)
-              }
+              const sid = String(r.students_id)
+              counts.set(sid, (counts.get(sid) ?? 0) + 1)
             }
             setReviewCounts(counts)
-          }
-        }
-
-        if (revisionsRes.ok) {
-          const revisions = await revisionsRes.json()
-          if (Array.isArray(revisions)) {
-            const counts = new Map<string, number>()
-            for (const r of revisions) {
-              if (r.revisionNeeded) {
-                const sid = r.students_id as string
-                counts.set(sid, (counts.get(sid) ?? 0) + 1)
-              }
-            }
-            setRevisionCounts(counts)
           }
         }
       } catch {
@@ -220,25 +200,22 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
                       >
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <Avatar className="size-8">
-                              <AvatarImage src={student.profileImage} />
-                              <AvatarFallback className="text-xs">
-                                {getInitials(student.firstName, student.lastName)}
-                              </AvatarFallback>
-                            </Avatar>
+                            <div className="relative">
+                              <Avatar className="size-8">
+                                <AvatarImage src={student.profileImage} />
+                                <AvatarFallback className="text-xs">
+                                  {getInitials(student.firstName, student.lastName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              {(reviewCounts.get(student.id) ?? 0) > 0 && (
+                                <span className="absolute -right-1.5 -top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white ring-2 ring-white">
+                                  {reviewCounts.get(student.id)}
+                                </span>
+                              )}
+                            </div>
                             <span className="font-medium">
                               {student.firstName} {student.lastName}
                             </span>
-                            {(revisionCounts.get(student.id) ?? 0) > 0 && (
-                              <Badge className="bg-red-500 text-white hover:bg-red-600">
-                                {revisionCounts.get(student.id)} revision
-                              </Badge>
-                            )}
-                            {(reviewCounts.get(student.id) ?? 0) > 0 && (
-                              <Badge className="bg-blue-500 text-white hover:bg-blue-600">
-                                {reviewCounts.get(student.id)} ready
-                              </Badge>
-                            )}
                           </div>
                         </TableCell>
                         <TableCell>

@@ -43,7 +43,6 @@ import {
   Add01Icon,
   Settings02Icon,
 } from "@hugeicons/core-free-icons"
-import { Switch } from "@/components/ui/switch"
 import {
   titleToSlug,
   invalidateSectionsCache,
@@ -112,6 +111,7 @@ export function TemplateOverview() {
   const [editDescription, setEditDescription] = useState("")
   const [editLocked, setEditLocked] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
+  const [sheetLockConfirm, setSheetLockConfirm] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -565,19 +565,6 @@ export function TemplateOverview() {
                   rows={3}
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div className="space-y-0.5">
-                  <Label htmlFor="sheet-lock-toggle" className="text-sm font-medium">Lock Section</Label>
-                  <p className="text-muted-foreground text-xs">
-                    Prevent students from editing responses.
-                  </p>
-                </div>
-                <Switch
-                  id="sheet-lock-toggle"
-                  checked={editLocked}
-                  onCheckedChange={setEditLocked}
-                />
-              </div>
             </div>
 
             {sheetSection && (() => {
@@ -620,7 +607,16 @@ export function TemplateOverview() {
           </div>
 
           {sheetSection && (
-            <div className="flex shrink-0 gap-2 border-t px-6 py-4">
+            <div className="flex shrink-0 items-center gap-2 border-t px-6 py-4">
+              <Button
+                variant="outline"
+                size="icon"
+                className={editLocked ? "text-muted-foreground" : "text-green-600"}
+                onClick={() => setSheetLockConfirm(true)}
+                title={editLocked ? "Section is locked — click to unlock" : "Section is unlocked — click to lock"}
+              >
+                <HugeiconsIcon icon={editLocked ? SquareLock02Icon : SquareUnlock02Icon} strokeWidth={2} className="size-4" />
+              </Button>
               <Button
                 variant="outline"
                 className="flex-1"
@@ -638,6 +634,27 @@ export function TemplateOverview() {
           )}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={sheetLockConfirm} onOpenChange={setSheetLockConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {editLocked ? "Unlock" : "Lock"} {sheetSection?.section.section_title}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {editLocked
+                ? "Unlocking this section will allow students to edit their responses."
+                : "Locking this section will prevent students from editing their responses."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setEditLocked(!editLocked); setSheetLockConfirm(false) }}>
+              {editLocked ? "Unlock Section" : "Lock Section"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!lockTarget} onOpenChange={(open) => { if (!open) setLockTarget(null) }}>
         <AlertDialogContent>

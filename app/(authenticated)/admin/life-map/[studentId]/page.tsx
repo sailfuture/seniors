@@ -255,7 +255,7 @@ export default function AdminStudentLifeMapOverviewPage({
 
       if (responsesRes.ok) {
         const allResponses: StudentResponse[] = await responsesRes.json()
-        setSectionResponses(allResponses)
+        setSectionResponses(allResponses.filter((r) => !(r as Record<string, unknown>).isArchived))
       }
     } catch { /* ignore */ } finally {
       setLoadingSheet(false)

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useCallback, useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   Table,
@@ -27,7 +28,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -53,6 +53,8 @@ import {
   SquareLock02Icon,
   SquareUnlock02Icon,
   Settings02Icon,
+  EyeIcon,
+  ViewOffIcon,
 } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
 import { invalidateSectionsCache } from "@/lib/lifemap-sections"
@@ -67,6 +69,8 @@ const PUBLISH_ENDPOINT = `${XANO_BASE}/publish_questions`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
+const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses`
+const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
 
 interface TemplateQuestion {
   id?: number
@@ -113,7 +117,7 @@ const emptyQuestion: Omit<TemplateQuestion, "id"> = {
   sentence_starters: [],
   lifemap_sections_id: null,
   isArchived: false,
-  isPublished: false,
+  isPublished: true,
   question_types_id: null,
   lifemap_custom_group_id: null,
   dropdownOptions: [],
@@ -146,6 +150,7 @@ interface TemplateManagerProps {
 }
 
 export function TemplateManager({ section, sectionId, sectionLabel, sectionDescription: initialDescription, sectionLocked: initialLocked }: TemplateManagerProps) {
+  const router = useRouter()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
@@ -158,7 +163,13 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const [groupSheetOpen, setGroupSheetOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<CustomGroup | null>(null)
   const [savingGroup, setSavingGroup] = useState(false)
+  
   const [unpublishTarget, setUnpublishTarget] = useState<TemplateQuestion | null>(null)
+  const [hideUnpublished, setHideUnpublished] = useState(false)
+  const [deleteSectionOpen, setDeleteSectionOpen] = useState(false)
+  const [deletingSection, setDeletingSection] = useState(false)
+  const [lockConfirmOpen, setLockConfirmOpen] = useState(false)
+  
 
   const [localDescription, setLocalDescription] = useState(initialDescription ?? "")
   const [isLocked, setIsLocked] = useState(initialLocked ?? false)
@@ -176,11 +187,9 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       ])
 
       if (templateRes.ok) {
-        const all = await templateRes.json()
-        const filtered = (all as TemplateQuestion[])
-          .filter((q) => q.lifemap_sections_id === sectionId && !q.isArchived)
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-        setQuestions(filtered)
+        const all = (await templateRes.json()) as TemplateQuestion[]
+        const sectionQuestions = all.filter((q) => q.lifemap_sections_id === sectionId)
+        setQuestions(sectionQuestions.sort((a, b) => a.sortOrder - b.sortOrder))
       }
 
       if (typesRes.ok) {
@@ -223,6 +232,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         ...data,
         lifemap_sections_id: sectionId,
         sortOrder: isEdit ? data.sortOrder : questions.length + 1,
+        isPublished: true,
       }
 
       const res = await fetch(url, {
@@ -232,6 +242,12 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       })
 
       if (res.ok) {
+        if (!isEdit) {
+          await fetch(PUBLISH_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          }).catch(() => {})
+        }
         toast(isEdit ? "Question updated" : "Question added", { duration: 2000 })
         setSheetOpen(false)
         await loadData()
@@ -248,17 +264,46 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const handleDelete = async () => {
     if (!deleteTarget?.id) return
     try {
-      const res = await fetch(`${TEMPLATE_ENDPOINT}/${deleteTarget.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isArchived: true }),
-      })
+      const [responsesRes, commentsRes] = await Promise.all([
+        fetch(RESPONSES_ENDPOINT),
+        fetch(COMMENTS_ENDPOINT),
+      ])
+
+      if (commentsRes.ok) {
+        const allComments = await commentsRes.json()
+        if (Array.isArray(allComments)) {
+          const related = allComments.filter(
+            (c: { lifemap_template_id?: number }) => c.lifemap_template_id === deleteTarget.id
+          )
+          await Promise.all(
+            related.map((c: { id: number }) =>
+              fetch(`${COMMENTS_ENDPOINT}/${c.id}`, { method: "DELETE" })
+            )
+          )
+        }
+      }
+
+      if (responsesRes.ok) {
+        const allResponses = await responsesRes.json()
+        if (Array.isArray(allResponses)) {
+          const related = allResponses.filter(
+            (r: { lifemap_template_id?: number }) => r.lifemap_template_id === deleteTarget.id
+          )
+          await Promise.all(
+            related.map((r: { id: number }) =>
+              fetch(`${RESPONSES_ENDPOINT}/${r.id}`, { method: "DELETE" })
+            )
+          )
+        }
+      }
+
+      const res = await fetch(`${TEMPLATE_ENDPOINT}/${deleteTarget.id}`, { method: "DELETE" })
       if (res.ok) {
-        toast("Question archived", { duration: 2000 })
+        toast("Question deleted", { duration: 2000 })
         setQuestions((prev) => prev.filter((q) => q.id !== deleteTarget.id))
       }
     } catch {
-      toast("Failed to archive question", { duration: 3000 })
+      toast("Failed to delete question", { duration: 3000 })
     } finally {
       setDeleteTarget(null)
     }
@@ -308,6 +353,22 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const handleDeleteGroup = async () => {
     if (!editingGroup?.id) return
     try {
+      const commentsRes = await fetch(COMMENTS_ENDPOINT)
+      if (commentsRes.ok) {
+        const allComments = await commentsRes.json()
+        if (Array.isArray(allComments)) {
+          const groupComments = allComments.filter(
+            (c: { lifemap_custom_group_id?: number; lifemap_template_id?: number | null }) =>
+              c.lifemap_custom_group_id === editingGroup.id && !c.lifemap_template_id
+          )
+          await Promise.all(
+            groupComments.map((c: { id: number }) =>
+              fetch(`${COMMENTS_ENDPOINT}/${c.id}`, { method: "DELETE" })
+            )
+          )
+        }
+      }
+
       const res = await fetch(`${CUSTOM_GROUP_ENDPOINT}/${editingGroup.id}`, {
         method: "DELETE",
       })
@@ -346,7 +407,6 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isPublished }),
       })
-
       if (!res.ok) throw new Error("PATCH failed")
 
       if (isPublished) {
@@ -369,37 +429,6 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     if (!unpublishTarget?.id) return
     await doTogglePublish(unpublishTarget.id, false)
     setUnpublishTarget(null)
-  }
-
-  const handlePublishAll = async () => {
-    const drafts = questions.filter((q) => !q.isPublished && q.id)
-    if (drafts.length === 0) {
-      toast("All questions are already published", { duration: 2000 })
-      return
-    }
-
-    setQuestions((prev) => prev.map((q) => ({ ...q, isPublished: true })))
-    try {
-      await Promise.all(
-        drafts.map((q) =>
-          fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isPublished: true }),
-          })
-        )
-      )
-
-      await fetch(PUBLISH_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }).catch(() => {})
-
-      toast(`${drafts.length} question${drafts.length > 1 ? "s" : ""} published`, { duration: 2000 })
-    } catch {
-      await loadData()
-      toast("Failed to publish some questions", { duration: 3000 })
-    }
   }
 
   const handleSaveSectionSettings = async () => {
@@ -439,7 +468,75 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     }
   }
 
-  const draftCount = questions.filter((q) => !q.isPublished).length
+  const handleDeleteSection = async () => {
+    setDeletingSection(true)
+    try {
+      const [allTemplateRes, allGroupsRes, allReviewsRes, allCommentsRes, allResponsesRes] = await Promise.all([
+        fetch(TEMPLATE_ENDPOINT),
+        fetch(CUSTOM_GROUP_ENDPOINT),
+        fetch(REVIEW_ENDPOINT),
+        fetch(`${COMMENTS_ENDPOINT}?lifemap_sections_id=${sectionId}`),
+        fetch(RESPONSES_ENDPOINT),
+      ])
+
+      const deleteAll = async (endpoint: string, items: { id: number }[]) => {
+        await Promise.all(items.map((item) => fetch(`${endpoint}/${item.id}`, { method: "DELETE" })))
+      }
+
+      if (allCommentsRes.ok) {
+        const comments = await allCommentsRes.json()
+        if (Array.isArray(comments)) {
+          const sectionComments = comments.filter((c: { lifemap_sections_id?: number }) => Number(c.lifemap_sections_id) === sectionId)
+          await deleteAll(COMMENTS_ENDPOINT, sectionComments)
+        }
+      }
+
+      if (allReviewsRes.ok) {
+        const reviews = await allReviewsRes.json()
+        if (Array.isArray(reviews)) {
+          const sectionReviews = reviews.filter((r: { lifemap_sections_id?: number }) => Number(r.lifemap_sections_id) === sectionId)
+          await deleteAll(REVIEW_ENDPOINT, sectionReviews)
+        }
+      }
+
+      if (allResponsesRes.ok && allTemplateRes.ok) {
+        const allTemplate = await allTemplateRes.json()
+        const templateIds = new Set(
+          (allTemplate as TemplateQuestion[])
+            .filter((q) => q.lifemap_sections_id === sectionId)
+            .map((q) => q.id)
+            .filter(Boolean)
+        )
+        const responses = await allResponsesRes.json()
+        if (Array.isArray(responses)) {
+          const sectionResponses = responses.filter((r: { lifemap_template_id?: number }) => templateIds.has(r.lifemap_template_id))
+          await deleteAll(RESPONSES_ENDPOINT, sectionResponses)
+        }
+
+        const sectionQuestions = (allTemplate as TemplateQuestion[]).filter((q) => q.lifemap_sections_id === sectionId && q.id)
+        await deleteAll(TEMPLATE_ENDPOINT, sectionQuestions as { id: number }[])
+      }
+
+      if (allGroupsRes.ok) {
+        const allGroups = await allGroupsRes.json()
+        if (Array.isArray(allGroups)) {
+          const sectionGroups = allGroups.filter((g: { lifemap_sections_id?: number }) => Number(g.lifemap_sections_id) === sectionId)
+          await deleteAll(CUSTOM_GROUP_ENDPOINT, sectionGroups)
+        }
+      }
+
+      await fetch(`${SECTIONS_ENDPOINT}/${sectionId}`, { method: "DELETE" })
+
+      invalidateSectionsCache()
+      toast.success("Section deleted")
+      router.push("/admin/life-map-template")
+    } catch {
+      toast.error("Failed to delete section")
+    } finally {
+      setDeletingSection(false)
+      setDeleteSectionOpen(false)
+    }
+  }
 
   /* ── Drag-and-drop reorder + group assignment ── */
 
@@ -453,18 +550,26 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     pos: "above" | "below"
   } | null>(null)
 
+  const unpublishedCount = questions.filter((q) => !q.isPublished).length
+
+  const sortPublishedFirst = (a: TemplateQuestion, b: TemplateQuestion) => {
+    if (a.isPublished !== b.isPublished) return a.isPublished ? -1 : 1
+    return a.sortOrder - b.sortOrder
+  }
+
   const buildFlatList = useCallback((): FlatItem[] => {
     const list: FlatItem[] = []
-    const ungrouped = questions.filter((q) => !q.lifemap_custom_group_id)
+    const visible = hideUnpublished ? questions.filter((q) => q.isPublished) : questions
+    const ungrouped = visible.filter((q) => !q.lifemap_custom_group_id).sort(sortPublishedFirst)
     for (const q of ungrouped) list.push({ kind: "question", q, groupId: null })
     for (const g of customGroups) {
       if (!g.id) continue
       list.push({ kind: "group", g })
-      const gq = questions.filter((q) => q.lifemap_custom_group_id === g.id)
+      const gq = visible.filter((q) => q.lifemap_custom_group_id === g.id).sort(sortPublishedFirst)
       for (const q of gq) list.push({ kind: "question", q, groupId: g.id })
     }
     return list
-  }, [questions, customGroups])
+  }, [questions, customGroups, hideUnpublished])
 
   const handleDragOver = (e: React.DragEvent, flatIdx: number) => {
     e.preventDefault()
@@ -589,9 +694,23 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
           </Link>
         </Button>
         <div className="flex items-center gap-2">
-          {draftCount > 0 && (
-            <Button variant="outline" onClick={handlePublishAll} className="gap-2">
-              Publish All ({draftCount})
+          <Button
+            variant="outline"
+            size="icon"
+            className="text-muted-foreground hover:text-red-500"
+            onClick={() => setDeleteSectionOpen(true)}
+            title="Delete Section"
+          >
+            <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
+          </Button>
+          {unpublishedCount > 0 && (
+            <Button
+              variant={hideUnpublished ? "secondary" : "outline"}
+              size="icon"
+              onClick={() => setHideUnpublished(!hideUnpublished)}
+              title={hideUnpublished ? "Show unpublished questions" : "Hide unpublished questions"}
+            >
+              <HugeiconsIcon icon={hideUnpublished ? ViewOffIcon : EyeIcon} strokeWidth={2} className="size-4" />
             </Button>
           )}
           <Button variant="outline" onClick={handleAddGroup} className="gap-2">
@@ -622,8 +741,8 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
             <TableHeader>
               <TableRow>
                 <TableHead className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Label</TableHead>
-                <TableHead className="text-muted-foreground w-[150px] text-xs font-medium uppercase tracking-wide">Type</TableHead>
                 <TableHead className="text-muted-foreground w-[90px] text-xs font-medium uppercase tracking-wide">Status</TableHead>
+                <TableHead className="text-muted-foreground w-[150px] text-xs font-medium uppercase tracking-wide">Type</TableHead>
                 <TableHead className="text-muted-foreground w-[100px] text-right text-xs font-medium uppercase tracking-wide">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -671,6 +790,8 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
                     onDrop={handleDrop}
                     onClick={() => handleEdit(q)}
                     className={`cursor-pointer hover:bg-muted/50 [&>td]:py-3 ${
+                      !q.isPublished ? "bg-muted/40 text-muted-foreground" : ""
+                    } ${
                       dragId === q.id ? "opacity-40" : ""
                     } ${
                       dropIndicator?.flatIdx === flatIdx
@@ -693,14 +814,11 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
                         <span className="text-sm font-medium">{q.field_label || q.field_name}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {getTypeName(q, questionTypes)}
-                    </TableCell>
                     <TableCell>
                       <Button
                         variant="outline"
                         size="icon"
-                        className={`size-7 ${q.isPublished ? "border-green-500 text-green-600 hover:bg-green-50" : ""}`}
+                        className={`size-7 ${q.isPublished ? "text-green-600 hover:bg-green-50" : ""}`}
                         onClick={(e) => { e.stopPropagation(); handleTogglePublish(q, !q.isPublished) }}
                         title={q.isPublished ? "Published — click to unpublish" : "Draft — click to publish"}
                       >
@@ -711,13 +829,16 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
                         )}
                       </Button>
                     </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {getTypeName(q, questionTypes)}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="outline"
                         size="icon"
                         className="size-7 text-muted-foreground hover:text-red-500"
                         onClick={(e) => { e.stopPropagation(); setDeleteTarget(q) }}
-                        title="Archive"
+                        title="Delete"
                       >
                         <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-3.5" />
                       </Button>
@@ -752,10 +873,10 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Archive question?</AlertDialogTitle>
+            <AlertDialogTitle>Delete question?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will hide &ldquo;{deleteTarget?.field_label}&rdquo; from students.
-              The question data will be preserved but no longer visible.
+              This will permanently delete &ldquo;{deleteTarget?.field_label}&rdquo; along with
+              all associated student responses and comments. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -764,7 +885,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Archive
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -815,34 +936,76 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
                 rows={4}
               />
             </div>
-
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="section-lock-toggle" className="text-sm font-medium">Lock Section</Label>
-                <p className="text-muted-foreground text-xs">
-                  Locked sections prevent students from editing responses.
-                </p>
-              </div>
-              <Switch
-                id="section-lock-toggle"
-                checked={isLocked}
-                onCheckedChange={setIsLocked}
-              />
-            </div>
           </div>
 
           <div className="border-t px-6 py-4">
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setSectionSettingsOpen(false)}>
-                Cancel
+            <div className="flex items-center justify-between">
+              <Button
+                variant="outline"
+                size="icon"
+                className={isLocked ? "text-muted-foreground" : "text-green-600"}
+                onClick={() => setLockConfirmOpen(true)}
+                title={isLocked ? "Section is locked — click to unlock" : "Section is unlocked — click to lock"}
+              >
+                <HugeiconsIcon icon={isLocked ? SquareLock02Icon : SquareUnlock02Icon} strokeWidth={2} className="size-4" />
               </Button>
-              <Button size="sm" onClick={handleSaveSectionSettings} disabled={savingSection}>
-                {savingSection ? "Saving..." : "Save Settings"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setSectionSettingsOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveSectionSettings} disabled={savingSection}>
+                  {savingSection ? "Saving..." : "Save Settings"}
+                </Button>
+              </div>
             </div>
           </div>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={lockConfirmOpen} onOpenChange={setLockConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isLocked ? "Unlock" : "Lock"} {sectionLabel}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {isLocked
+                ? "Unlocking this section will allow students to edit their responses."
+                : "Locking this section will prevent students from editing their responses."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setIsLocked(!isLocked); setLockConfirmOpen(false) }}>
+              {isLocked ? "Unlock Section" : "Lock Section"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteSectionOpen} onOpenChange={setDeleteSectionOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-5 text-red-500" />
+              Delete &ldquo;{sectionLabel}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this section and all of its questions, student responses, groups, reviews, and comments. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingSection}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteSection}
+              disabled={deletingSection}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingSection ? "Deleting..." : "Delete Section"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -1218,10 +1381,10 @@ function QuestionSheet({
 
         <div className="shrink-0 border-t px-6 py-4">
           <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button size="sm" onClick={handleSubmit} disabled={saving}>
+            <Button onClick={handleSubmit} disabled={saving}>
               {saving ? "Saving..." : isEdit ? "Update Question" : "Add Question"}
             </Button>
           </div>
@@ -1376,60 +1539,53 @@ function GroupSheet({
             </p>
           </div>
 
-          {isEdit && (
-            <div className="rounded-lg border border-red-200 p-3 dark:border-red-900">
-              {confirmingDelete ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-red-600 dark:text-red-400">
-                    Are you sure? Questions in this group will become ungrouped.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={handleDelete}
-                    >
-                      Confirm Delete
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setConfirmingDelete(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-red-600 dark:text-red-400">Delete Group</p>
-                    <p className="text-muted-foreground text-xs">Remove this group permanently</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950"
-                    onClick={() => setConfirmingDelete(true)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="border-t px-6 py-4">
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleSubmit} disabled={saving}>
-              {saving ? "Saving..." : isEdit ? "Update Group" : "Create Group"}
-            </Button>
+          <div className="flex items-center justify-between">
+            {isEdit ? (
+              <Button
+                variant="outline"
+                size="icon"
+                className="text-muted-foreground hover:text-red-500"
+                onClick={() => setConfirmingDelete(true)}
+                title="Delete Group"
+              >
+                <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
+              </Button>
+            ) : (
+              <div />
+            )}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSubmit} disabled={saving}>
+                {saving ? "Saving..." : isEdit ? "Update Group" : "Create Group"}
+              </Button>
+            </div>
           </div>
         </div>
+
+        <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete group?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete this group. Questions in this group will become ungrouped.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SheetContent>
     </Sheet>
   )

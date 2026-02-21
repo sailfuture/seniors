@@ -182,7 +182,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         if (responsesRes.ok) {
           const data = (await responsesRes.json()) as StudentResponse[]
           const map = new Map<number, StudentResponse>()
-          for (const r of data) map.set(r.lifemap_template_id, r)
+          for (const r of data) {
+            if ((r as Record<string, unknown>).isArchived) continue
+            map.set(r.lifemap_template_id, r)
+          }
           setResponses(map)
         }
 
