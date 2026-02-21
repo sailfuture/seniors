@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useState } from "react"
+import { use, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import Link from "next/link"
@@ -155,6 +155,7 @@ export default function AdminStudentLifeMapOverviewPage({
   const [sheetRow, setSheetRow] = useState<SectionRow | null>(null)
   const [sheetGroupId, setSheetGroupId] = useState<number | null>(null)
   const [savingReview, setSavingReview] = useState(false)
+  const commentTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   const [sectionQuestions, setSectionQuestions] = useState<TemplateQuestion[]>([])
   const [sectionResponses, setSectionResponses] = useState<StudentResponse[]>([])
@@ -162,6 +163,13 @@ export default function AdminStudentLifeMapOverviewPage({
 
   const [commentNote, setCommentNote] = useState("")
   const [postingComment, setPostingComment] = useState(false)
+
+  useEffect(() => {
+    if (sheetRow) {
+      const timer = setTimeout(() => commentTextareaRef.current?.focus(), 300)
+      return () => clearTimeout(timer)
+    }
+  }, [sheetRow])
   const [confirmModal, setConfirmModal] = useState<"revision" | "complete" | null>(null)
   const [revisionNote, setRevisionNote] = useState("")
 
@@ -554,21 +562,21 @@ export default function AdminStudentLifeMapOverviewPage({
           </div>
 
           <div className="shrink-0 border-t">
-            <div className="space-y-2 px-6 py-3">
+            <div className="px-6 py-3">
               <Textarea
+                ref={commentTextareaRef}
                 placeholder="Add a comment..."
                 value={commentNote}
                 onChange={(e) => setCommentNote(e.target.value)}
-                rows={2}
-              />
-              <Button
-                variant="outline"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && commentNote.trim() && !postingComment) {
+                    e.preventDefault()
+                    handlePostComment()
+                  }
+                }}
+                rows={3}
                 className="w-full"
-                onClick={handlePostComment}
-                disabled={!commentNote.trim() || postingComment}
-              >
-                {postingComment ? "Posting..." : "Add Comment"}
-              </Button>
+              />
             </div>
             <div className="flex items-center gap-2 border-t px-6 py-3">
               <Button
@@ -582,7 +590,14 @@ export default function AdminStudentLifeMapOverviewPage({
               >
                 View Responses
               </Button>
-              {sheetReview && !sheetReview.isComplete && (
+              <Button
+                variant="outline"
+                onClick={handlePostComment}
+                disabled={!commentNote.trim() || postingComment}
+              >
+                {postingComment ? "Posting..." : "Post"}
+              </Button>
+              {sheetReview && !sheetReview.isComplete && !sheetReview.revisionNeeded && (
                 <Button
                   variant="outline"
                   size="icon"

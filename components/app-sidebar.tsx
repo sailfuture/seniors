@@ -181,6 +181,22 @@ function useSectionReviewCounts(studentId: string | null): SectionBadgeCounts {
     return () => { cancelled = true }
   }, [studentId])
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { sectionId, delta } = (e as CustomEvent).detail as { sectionId: number; delta: number }
+      setCounts((prev) => {
+        const next = new Map(prev.readyReview)
+        const current = next.get(sectionId) ?? 0
+        const updated = Math.max(0, current + delta)
+        if (updated === 0) next.delete(sectionId)
+        else next.set(sectionId, updated)
+        return { ...prev, readyReview: next }
+      })
+    }
+    window.addEventListener("review-update", handler)
+    return () => window.removeEventListener("review-update", handler)
+  }, [])
+
   return counts
 }
 
@@ -192,13 +208,28 @@ function useSectionCommentCounts(studentId: string | null): Map<number, number> 
     let cancelled = false
     const load = async () => {
       try {
-        const res = await fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`)
-        if (!res.ok || cancelled) return
-        const data: Comment[] = await res.json()
+        const [commentsRes, templateRes] = await Promise.all([
+          fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`),
+          fetch(`${XANO_BASE}/lifeplan_template`),
+        ])
+        if (!commentsRes.ok || cancelled) return
+        const data: Comment[] = await commentsRes.json()
         if (!Array.isArray(data) || cancelled) return
+
+        const excludedIds = new Set<number>()
+        if (templateRes.ok) {
+          const questions = await templateRes.json()
+          if (Array.isArray(questions)) {
+            for (const q of questions as { id: number; isArchived?: boolean; isDraft?: boolean }[]) {
+              if (q.isArchived || q.isDraft) excludedIds.add(q.id)
+            }
+          }
+        }
+
         const map = new Map<number, number>()
         for (const c of data) {
           if (c.isComplete || c.isOld) continue
+          if (c.lifemap_template_id && excludedIds.has(c.lifemap_template_id)) continue
           const sid = Number(c.lifemap_sections_id)
           if (sid) map.set(sid, (map.get(sid) ?? 0) + 1)
         }
@@ -208,6 +239,22 @@ function useSectionCommentCounts(studentId: string | null): Map<number, number> 
     load()
     return () => { cancelled = true }
   }, [studentId])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { sectionId, count } = (e as CustomEvent).detail as { sectionId: number; count: number }
+      setCounts((prev) => {
+        const next = new Map(prev)
+        const current = next.get(sectionId) ?? 0
+        const updated = Math.max(0, current - count)
+        if (updated === 0) next.delete(sectionId)
+        else next.set(sectionId, updated)
+        return next
+      })
+    }
+    window.addEventListener("comment-read", handler)
+    return () => window.removeEventListener("comment-read", handler)
+  }, [])
 
   return counts
 }
@@ -302,7 +349,7 @@ function buildTeacherBaseNav(sections: LifeMapSection[], pathname: string, stude
   ]
 }
 
-function getTeacherStudentNav(pathname: string, sections: LifeMapSection[], readyReviewCounts?: Map<number, number>) {
+function getTeacherStudentNav(pathname: string, sections: LifeMapSection[], readyReviewCounts?: Map<number, number>, revisionCounts?: Map<number, number>) {
   const mapItems = buildLifeMapNavItems(sections)
 
   const lifeMapMatch = pathname.match(/^\/admin\/life-map\/([^/]+)/)
@@ -319,7 +366,8 @@ function getTeacherStudentNav(pathname: string, sections: LifeMapSection[], read
           return {
             title: s.title,
             url: `/admin/life-map/${studentId}/${s.slug}`,
-            badge: sec && readyReviewCounts ? (readyReviewCounts.get(sec.id) ?? 0) : 0,
+            badgeGray: sec && readyReviewCounts ? (readyReviewCounts.get(sec.id) ?? 0) : 0,
+            badgeRed: sec && revisionCounts ? (revisionCounts.get(sec.id) ?? 0) : 0,
           }
         }),
       },
@@ -354,7 +402,7 @@ interface NavBadgeData {
 
 function getNavFromPathname(pathname: string, isAdmin: boolean, sections: LifeMapSection[], badges: NavBadgeData, students: StudentListItem[]) {
   if (pathname.startsWith("/admin/")) {
-    return getTeacherStudentNav(pathname, sections, badges.readyReviewCounts) ?? buildTeacherBaseNav(sections, pathname, students)
+    return getTeacherStudentNav(pathname, sections, badges.readyReviewCounts, badges.revisionCounts) ?? buildTeacherBaseNav(sections, pathname, students)
   }
   if (isAdmin) {
     return buildTeacherBaseNav(sections, pathname, students)

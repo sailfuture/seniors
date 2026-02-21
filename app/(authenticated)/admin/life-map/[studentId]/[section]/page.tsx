@@ -144,7 +144,7 @@ export default function AdminLifeMapSectionPage({
           <HugeiconsIcon
             icon={sectionLocked ? SquareLock02Icon : SquareUnlock02Icon}
             strokeWidth={1.5}
-            className={`size-4 ${sectionLocked ? "text-muted-foreground" : "text-green-600"}`}
+            className="text-muted-foreground size-4"
           />
         </div>
         <Button variant="outline" size="icon" className="size-8" asChild title="Edit section template">

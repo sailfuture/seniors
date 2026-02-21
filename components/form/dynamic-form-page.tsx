@@ -92,6 +92,7 @@ interface TemplateQuestion {
   lifemap_sections_id: number
   isPublished: boolean
   isArchived: boolean
+  isDraft?: boolean
   question_types_id: number
   lifemap_custom_group_id: number | null
   dropdownOptions: string[]
@@ -177,13 +178,18 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
       ])
 
+      let allTemplateQuestions: TemplateQuestion[] = []
       if (templateRes.ok) {
-        const all = (await templateRes.json()) as TemplateQuestion[]
-        const filtered = all
+        allTemplateQuestions = (await templateRes.json()) as TemplateQuestion[]
+        const filtered = allTemplateQuestions
           .filter((q) => q.lifemap_sections_id === sectionId && q.isPublished && !q.isArchived)
           .sort((a, b) => a.sortOrder - b.sortOrder)
         setQuestions(filtered)
       }
+
+      const excludedTemplateIds = new Set(
+        allTemplateQuestions.filter((q) => q.isArchived || q.isDraft).map((q) => q.id)
+      )
 
       if (responsesRes.ok) {
         const data = (await responsesRes.json()) as StudentResponse[]
@@ -207,7 +213,12 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         const data = await commentsRes.json()
         if (Array.isArray(data)) {
           const enriched = data
-            .filter((c: Record<string, unknown>) => Number(c.lifemap_sections_id) === sectionId)
+            .filter((c: Record<string, unknown>) => {
+              if (Number(c.lifemap_sections_id) !== sectionId) return false
+              const tid = c.lifemap_template_id as number | null | undefined
+              if (tid && excludedTemplateIds.has(tid)) return false
+              return true
+            })
             .map((c: Record<string, unknown>) => {
               const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
               const teacher = teachers?.[0]
@@ -246,7 +257,11 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
           if (Array.isArray(gptzeroData)) {
             const map = new Map<number, GptZeroResult>()
             for (const r of gptzeroData) {
-              if (r.lifemap_responses_id) map.set(r.lifemap_responses_id, r)
+              if (!r.lifemap_responses_id) continue
+              const existing = map.get(r.lifemap_responses_id)
+              if (!existing || (r.id as number) > (existing.id as number)) {
+                map.set(r.lifemap_responses_id, r)
+              }
             }
             setPlagiarismData(map)
           }
@@ -262,6 +277,75 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  const refreshLiveData = useCallback(async () => {
+    if (!studentId) return
+    try {
+      const [commentsRes, reviewRes, gptzeroRes] = await Promise.all([
+        fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
+        fetch(REVIEW_ENDPOINT),
+        fetch(`${GPTZERO_BY_SECTION_ENDPOINT}?lifemap_sections_id=${sectionId}&students_id=${studentId}`),
+      ])
+
+      if (commentsRes.ok) {
+        const data = await commentsRes.json()
+        if (Array.isArray(data)) {
+          const enriched = data
+            .filter((c: Record<string, unknown>) => Number(c.lifemap_sections_id) === sectionId)
+            .map((c: Record<string, unknown>) => {
+              const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
+              const teacher = teachers?.[0]
+              const teacherName = teacher
+                ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
+                : (c.teacher_name as string | undefined)
+              return { ...c, teacher_name: teacherName } as Comment
+            })
+          setComments(enriched)
+        }
+      }
+
+      if (reviewRes.ok) {
+        const allReviews = await reviewRes.json()
+        if (Array.isArray(allReviews)) {
+          const sectionReviews = allReviews.filter(
+            (r: ReviewRecord) => r.lifemap_sections_id === sectionId && r.students_id === studentId
+          )
+          const map = new Map<number | null, ReviewRecord>()
+          for (const r of sectionReviews) {
+            map.set(r.lifemap_custom_group_id ?? null, r)
+          }
+          setGroupReviews(map)
+        }
+      }
+
+      if (gptzeroRes.ok) {
+        const data = await gptzeroRes.json()
+        if (Array.isArray(data)) {
+          const map = new Map<number, GptZeroResult>()
+          for (const r of data) {
+            if (!r.lifemap_responses_id) continue
+            const existing = map.get(r.lifemap_responses_id)
+            if (!existing || (r.id as number) > (existing.id as number)) {
+              map.set(r.lifemap_responses_id, r)
+            }
+          }
+          setPlagiarismData(map)
+        }
+      }
+    } catch { /* ignore */ }
+  }, [studentId, sectionId])
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refreshLiveData()
+    }
+    document.addEventListener("visibilitychange", handleVisibility)
+    const interval = setInterval(refreshLiveData, 15000)
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility)
+      clearInterval(interval)
+    }
+  }, [refreshLiveData])
 
   const saveAll = useCallback(async () => {
     const dirty = dirtyRef.current
@@ -350,11 +434,20 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     }, 3000)
   }
 
+  const dispatchCommentRead = useCallback((count: number) => {
+    window.dispatchEvent(new CustomEvent("comment-read", { detail: { sectionId, count } }))
+  }, [sectionId])
+
   const handleMarkRead = useCallback(async (commentIds: number[]) => {
     const now = new Date().toISOString()
+    let readCount = 0
     setComments((prev) =>
-      prev.map((c) => commentIds.includes(c.id!) ? { ...c, isOld: true, isRead: now } : c)
+      prev.map((c) => {
+        if (commentIds.includes(c.id!) && !c.isOld) { readCount++; return { ...c, isOld: true, isRead: now } }
+        return commentIds.includes(c.id!) ? { ...c, isOld: true, isRead: now } : c
+      })
     )
+    if (readCount > 0) dispatchCommentRead(readCount)
     for (const id of commentIds) {
       try {
         await fetch(`${COMMENTS_ENDPOINT}/${id}`, {
@@ -364,13 +457,18 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         })
       } catch { /* ignore */ }
     }
-  }, [])
+  }, [dispatchCommentRead])
 
   const handleMarkCommentRead = useCallback(async (commentId: number) => {
     const now = new Date().toISOString()
+    let wasUnread = false
     setComments((prev) =>
-      prev.map((c) => c.id === commentId ? { ...c, isOld: true, isRead: now } : c)
+      prev.map((c) => {
+        if (c.id === commentId && !c.isOld) { wasUnread = true }
+        return c.id === commentId ? { ...c, isOld: true, isRead: now } : c
+      })
     )
+    if (wasUnread) dispatchCommentRead(1)
     try {
       await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
         method: "PATCH",
@@ -378,7 +476,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         body: JSON.stringify({ isOld: true, isRead: now }),
       })
     } catch { /* ignore */ }
-  }, [])
+  }, [dispatchCommentRead])
 
   const handlePlagiarismCheck = useCallback(
     async (responseId: number, text: string, templateId: number) => {
@@ -391,24 +489,17 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
           students_id: studentId,
           lifemap_sections_id: String(sectionId),
         })
+
         const checkRes = await fetch(`${PLAGIARISM_CHECK_ENDPOINT}?${params}`)
         if (!checkRes.ok) throw new Error()
 
-        const freshRes = await fetch(
-          `${GPTZERO_BY_SECTION_ENDPOINT}?lifemap_sections_id=${sectionId}&students_id=${studentId}`
-        )
-        if (freshRes.ok) {
-          const freshData = await freshRes.json()
-          if (Array.isArray(freshData)) {
-            const match = freshData.find((r: GptZeroResult) => r.lifemap_responses_id === responseId)
-            if (match) {
-              setPlagiarismData((prev) => {
-                const next = new Map(prev)
-                next.set(responseId, match)
-                return next
-              })
-            }
-          }
+        const record = await checkRes.json() as GptZeroResult
+        if (record && record.lifemap_responses_id) {
+          setPlagiarismData((prev) => {
+            const next = new Map(prev)
+            next.set(responseId, record)
+            return next
+          })
         }
         toast.success("Plagiarism check complete")
       } catch {

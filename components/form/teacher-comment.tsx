@@ -94,7 +94,7 @@ export function TeacherComment({
   const [submitting, setSubmitting] = useState(false)
 
   const fieldComments = sortByRecent(comments.filter((c) => c.field_name === fieldName))
-  const commentCount = fieldComments.length
+  const commentCount = fieldComments.filter((c) => !c.isOld).length
   const aiIsHighest = plagiarism ? isAiHighest(plagiarism) : false
 
   const handleSubmit = async () => {
@@ -130,12 +130,12 @@ export function TeacherComment({
           strokeWidth={2}
           className={cn(
             "size-4",
-            commentCount > 0 ? "text-blue-500" : "text-muted-foreground/40"
+            commentCount > 0 ? "text-gray-500" : "text-muted-foreground/40"
           )}
         />
         {commentCount > 0 && (
           <span className={cn(
-            "absolute flex items-center justify-center rounded-full bg-blue-500 font-bold text-white",
+            "absolute flex items-center justify-center rounded-full bg-gray-500 font-bold text-white",
             square
               ? "-right-1 -top-1 size-4 text-[10px] font-medium"
               : "-right-0.5 -top-0.5 size-3.5 text-[9px] ring-2 ring-white"
@@ -196,9 +196,16 @@ export function TeacherComment({
           <div className="border-t px-6 py-4">
             <div className="space-y-3">
               <Textarea
+                autoFocus
                 placeholder="Add a comment..."
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && note.trim() && !submitting) {
+                    e.preventDefault()
+                    handleSubmit()
+                  }
+                }}
                 rows={3}
               />
               <div className="flex justify-end gap-2">

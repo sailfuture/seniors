@@ -32,6 +32,7 @@ export interface Comment {
   field_name: string
   lifemap_sections_id?: number | null
   lifemap_custom_group_id?: number | null
+  lifemap_template_id?: number | null
   isOld: boolean
   isComplete?: boolean
   isRevisionFeedback?: boolean

@@ -75,6 +75,7 @@ interface TemplateQuestion {
   lifemap_sections_id: number
   isPublished: boolean
   isArchived: boolean
+  isDraft?: boolean
   question_types_id: number
   lifemap_custom_group_id: number | null
   dropdownOptions: string[]
@@ -173,13 +174,18 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
         ])
 
+        let allTemplateQuestions: TemplateQuestion[] = []
         if (templateRes.ok) {
-          const all = (await templateRes.json()) as TemplateQuestion[]
-          const filtered = all
+          allTemplateQuestions = (await templateRes.json()) as TemplateQuestion[]
+          const filtered = allTemplateQuestions
             .filter((q) => q.lifemap_sections_id === sectionId && q.isPublished && !q.isArchived)
             .sort((a, b) => a.sortOrder - b.sortOrder)
           setQuestions(filtered)
         }
+
+        const excludedTemplateIds = new Set(
+          allTemplateQuestions.filter((q) => q.isArchived || q.isDraft).map((q) => q.id)
+        )
 
         if (responsesRes.ok) {
           const data = (await responsesRes.json()) as StudentResponse[]
@@ -200,7 +206,12 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           const data = await commentsRes.json()
           if (Array.isArray(data)) {
             const enriched = data
-              .filter((c: Record<string, unknown>) => Number(c.lifemap_sections_id) === sectionId)
+              .filter((c: Record<string, unknown>) => {
+                if (Number(c.lifemap_sections_id) !== sectionId) return false
+                const tid = c.lifemap_template_id as number | null | undefined
+                if (tid && excludedTemplateIds.has(tid)) return false
+                return true
+              })
               .map((c: Record<string, unknown>) => {
                 const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
                 const teacher = teachers?.[0]
@@ -237,7 +248,11 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             if (Array.isArray(gptzeroData)) {
               const map = new Map<number, GptZeroResult>()
               for (const r of gptzeroData) {
-                if (r.lifemap_responses_id) map.set(r.lifemap_responses_id, r)
+                if (!r.lifemap_responses_id) continue
+                const existing = map.get(r.lifemap_responses_id)
+                if (!existing || (r.id as number) > (existing.id as number)) {
+                  map.set(r.lifemap_responses_id, r)
+                }
               }
               setPlagiarismData(map)
             }
@@ -252,6 +267,74 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
 
     loadData()
   }, [studentId, sectionId])
+
+  const refreshLiveData = useCallback(async () => {
+    if (!studentId) return
+    try {
+      const [commentsRes, reviewRes, gptzeroRes] = await Promise.all([
+        fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
+        fetch(REVIEW_ENDPOINT),
+        fetch(`${GPTZERO_BY_SECTION_ENDPOINT}?lifemap_sections_id=${sectionId}&students_id=${studentId}`),
+      ])
+
+      if (commentsRes.ok) {
+        const data = await commentsRes.json()
+        if (Array.isArray(data)) {
+          const enriched = data
+            .filter((c: Record<string, unknown>) => Number(c.lifemap_sections_id) === sectionId)
+            .map((c: Record<string, unknown>) => {
+              const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
+              const teacher = teachers?.[0]
+              const teacherName = teacher
+                ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
+                : undefined
+              return { ...c, teacher_name: teacherName } as Comment
+            })
+          setComments(enriched)
+        }
+      }
+
+      if (reviewRes.ok) {
+        const allReviews = await reviewRes.json()
+        if (Array.isArray(allReviews)) {
+          const map = new Map<number, ReviewRecord>()
+          for (const r of allReviews) {
+            if (String(r.students_id) === String(studentId) && Number(r.lifemap_sections_id) === sectionId && r.lifemap_custom_group_id) {
+              map.set(r.lifemap_custom_group_id, r)
+            }
+          }
+          setGroupReviews(map)
+        }
+      }
+
+      if (gptzeroRes.ok) {
+        const data = await gptzeroRes.json()
+        if (Array.isArray(data)) {
+          const map = new Map<number, GptZeroResult>()
+          for (const r of data) {
+            if (!r.lifemap_responses_id) continue
+            const existing = map.get(r.lifemap_responses_id)
+            if (!existing || (r.id as number) > (existing.id as number)) {
+              map.set(r.lifemap_responses_id, r)
+            }
+          }
+          setPlagiarismData(map)
+        }
+      }
+    } catch { /* ignore */ }
+  }, [studentId, sectionId])
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refreshLiveData()
+    }
+    document.addEventListener("visibilitychange", handleVisibility)
+    const interval = setInterval(refreshLiveData, 15000)
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility)
+      clearInterval(interval)
+    }
+  }, [refreshLiveData])
 
   const handlePlagiarismCheck = useCallback(
     async (responseId: number, text: string, templateId: number) => {
@@ -310,6 +393,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           next.set(groupId, { ...review, ...patch })
           return next
         })
+
+        if (review.readyReview) {
+          window.dispatchEvent(new CustomEvent("review-update", { detail: { sectionId, delta: -1 } }))
+        }
 
         if (reviewComment.trim()) {
           const teacherName = session?.user?.name ?? "Teacher"
@@ -551,41 +638,43 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               <Card key={group.id} className="overflow-hidden !pt-0 !gap-0">
                 <div className="border-b px-6 py-4">
                   <div className="flex items-center justify-between">
-                    <div className="min-w-0 flex-1">
-                      <CardTitle className="text-lg">{group.group_name}</CardTitle>
-                      {group.group_description && (
-                        <p className="text-muted-foreground mt-1 text-sm">{group.group_description}</p>
-                      )}
-                    </div>
+                    <CardTitle className="min-w-0 flex-1 truncate text-lg">{group.group_name}</CardTitle>
                     {review && (
                       <div className="flex shrink-0 items-center gap-2">
+                        {!review.revisionNeeded && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="size-7"
+                            title="Request resubmission"
+                            onClick={() => { setReviewModal({ groupId: group.id, action: "resubmission" }); setReviewComment("") }}
+                          >
+                            <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3.5" />
+                          </Button>
+                        )}
+                        {!review.isComplete && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="size-7"
+                            title="Mark complete"
+                            onClick={() => { setReviewModal({ groupId: group.id, action: "complete" }); setReviewComment("") }}
+                          >
+                            <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
+                          </Button>
+                        )}
                         {relTime && (
                           <span className="text-muted-foreground/60 text-[11px]">{relTime}</span>
                         )}
                         <div className="inline-flex size-7 items-center justify-center rounded-md border" title={statusDisplay.label}>
                           <HugeiconsIcon icon={statusDisplay.icon} strokeWidth={statusDisplay.icon === CircleIcon ? 1.5 : 2} className={`size-4 ${statusDisplay.color}`} />
                         </div>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="size-7"
-                          title="Request resubmission"
-                          onClick={() => { setReviewModal({ groupId: group.id, action: "resubmission" }); setReviewComment("") }}
-                        >
-                          <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3.5" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="size-7"
-                          title="Mark complete"
-                          onClick={() => { setReviewModal({ groupId: group.id, action: "complete" }); setReviewComment("") }}
-                        >
-                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-green-600" />
-                        </Button>
                       </div>
                     )}
                   </div>
+                  {group.group_description && (
+                    <p className="text-muted-foreground mt-1 text-sm">{group.group_description}</p>
+                  )}
                 </div>
                 <CardContent className="p-6">
                   {renderQuestionList(gQuestions)}
