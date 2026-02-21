@@ -3,9 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import Link from "next/link"
-import { ReadOnlyFormPage } from "@/components/form/readonly-form-page"
 import { ReadOnlyDynamicFormPage } from "@/components/form/readonly-dynamic-form-page"
-import { sectionConfigMap } from "@/lib/form-configs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -125,8 +123,6 @@ export default function AdminLifeMapSectionPage({
     []
   )
 
-  const sectionConfig = sectionConfigMap[section]
-
   const actionBar = (
     <div className="flex items-center justify-between">
       <Button variant="outline" size="sm" asChild className="gap-2">
@@ -166,19 +162,6 @@ export default function AdminLifeMapSectionPage({
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-4 w-96" />
       </div>
-    )
-  }
-
-  if (sectionConfig) {
-    return (
-      <ReadOnlyFormPage
-        title={label}
-        subtitle={sectionDescription}
-        config={sectionConfig.config}
-        studentId={studentId}
-        sectionId={sectionId ?? undefined}
-        headerContent={actionBar}
-      />
     )
   }
 

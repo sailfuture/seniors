@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd"
 import {
   Table,
   TableBody,
@@ -48,13 +49,15 @@ import {
   DragDropIcon,
   Alert02Icon,
   CheckmarkCircle02Icon,
-  CircleIcon,
   ArrowLeft02Icon,
   SquareLock02Icon,
   SquareUnlock02Icon,
   Settings02Icon,
   EyeIcon,
   ViewOffIcon,
+  Archive02Icon,
+  ArrowTurnBackwardIcon,
+  SentIcon,
 } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
 import { invalidateSectionsCache } from "@/lib/lifemap-sections"
@@ -65,7 +68,7 @@ const XANO_BASE =
 
 const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
-const PUBLISH_ENDPOINT = `${XANO_BASE}/publish_questions`
+const SYNC_REVIEWS_ENDPOINT = `${XANO_BASE}/lifemap_review_add_all`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
@@ -85,6 +88,7 @@ interface TemplateQuestion {
   lifemap_sections_id: number | null
   isArchived: boolean
   isPublished: boolean
+  isDraft: boolean
   question_types_id: number | null
   lifemap_custom_group_id: number | null
   dropdownOptions: string[]
@@ -104,6 +108,7 @@ interface CustomGroup {
   instructions: string
   resources: string[]
   lifemap_sections_id: number
+  order?: number
 }
 
 const emptyQuestion: Omit<TemplateQuestion, "id"> = {
@@ -118,6 +123,7 @@ const emptyQuestion: Omit<TemplateQuestion, "id"> = {
   lifemap_sections_id: null,
   isArchived: false,
   isPublished: true,
+  isDraft: true,
   question_types_id: null,
   lifemap_custom_group_id: null,
   dropdownOptions: [],
@@ -158,14 +164,15 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingQuestion, setEditingQuestion] = useState<TemplateQuestion | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TemplateQuestion | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<TemplateQuestion | null>(null)
   const [saving, setSaving] = useState(false)
 
   const [groupSheetOpen, setGroupSheetOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<CustomGroup | null>(null)
   const [savingGroup, setSavingGroup] = useState(false)
   
-  const [unpublishTarget, setUnpublishTarget] = useState<TemplateQuestion | null>(null)
-  const [hideUnpublished, setHideUnpublished] = useState(false)
+  const [hideArchived, setHideArchived] = useState(true)
+  const [publishing, setPublishing] = useState(false)
   const [deleteSectionOpen, setDeleteSectionOpen] = useState(false)
   const [deletingSection, setDeletingSection] = useState(false)
   const [lockConfirmOpen, setLockConfirmOpen] = useState(false)
@@ -211,8 +218,11 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     loadData()
   }, [loadData])
 
-  const handleAdd = () => {
+  const [defaultGroupId, setDefaultGroupId] = useState<number | null>(null)
+
+  const handleAdd = (groupId?: number | null) => {
     setEditingQuestion(null)
+    setDefaultGroupId(groupId ?? null)
     setSheetOpen(true)
   }
 
@@ -232,7 +242,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         ...data,
         lifemap_sections_id: sectionId,
         sortOrder: isEdit ? data.sortOrder : questions.length + 1,
-        isPublished: true,
+        ...(!isEdit && { isDraft: true }),
       }
 
       const res = await fetch(url, {
@@ -242,12 +252,6 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       })
 
       if (res.ok) {
-        if (!isEdit) {
-          await fetch(PUBLISH_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          }).catch(() => {})
-        }
         toast(isEdit ? "Question updated" : "Question added", { duration: 2000 })
         setSheetOpen(false)
         await loadData()
@@ -309,6 +313,46 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     }
   }
 
+  const handleArchive = async () => {
+    if (!archiveTarget?.id) return
+    try {
+      const res = await fetch(`${TEMPLATE_ENDPOINT}/${archiveTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isArchived: true, isPublished: false }),
+      })
+      if (res.ok) {
+        setQuestions((prev) =>
+          prev.map((q) => (q.id === archiveTarget.id ? { ...q, isArchived: true, isPublished: false } : q))
+        )
+        toast("Question archived", { duration: 2000 })
+      }
+    } catch {
+      toast("Failed to archive question", { duration: 3000 })
+    } finally {
+      setArchiveTarget(null)
+    }
+  }
+
+  const handleUnarchive = async (q: TemplateQuestion) => {
+    if (!q.id) return
+    try {
+      const res = await fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isArchived: false, isDraft: true }),
+      })
+      if (res.ok) {
+        setQuestions((prev) =>
+          prev.map((existing) => (existing.id === q.id ? { ...existing, isArchived: false, isDraft: true } : existing))
+        )
+        toast("Question unarchived", { duration: 2000 })
+      }
+    } catch {
+      toast("Failed to unarchive question", { duration: 3000 })
+    }
+  }
+
   /* ── Custom Group CRUD ── */
 
   const handleAddGroup = () => {
@@ -328,7 +372,11 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       const url = isEdit ? `${CUSTOM_GROUP_ENDPOINT}/${data.id}` : CUSTOM_GROUP_ENDPOINT
       const method = isEdit ? "PATCH" : "POST"
 
-      const payload = { ...data, lifemap_sections_id: sectionId }
+      const payload = {
+        ...data,
+        lifemap_sections_id: sectionId,
+        ...(!isEdit && { order: customGroups.length + 1 }),
+      }
 
       const res = await fetch(url, {
         method,
@@ -388,47 +436,33 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     }
   }
 
-  const handleTogglePublish = async (q: TemplateQuestion, isPublished: boolean) => {
-    if (!q.id) return
-    if (!isPublished) {
-      setUnpublishTarget(q)
+  const handlePublishDrafts = async () => {
+    const drafts = questions.filter((q) => q.isDraft && !q.isArchived)
+    if (drafts.length === 0) {
+      toast("No drafts to publish", { duration: 2000 })
       return
     }
-    await doTogglePublish(q.id, true)
-  }
-
-  const doTogglePublish = async (questionId: number, isPublished: boolean) => {
-    setQuestions((prev) =>
-      prev.map((q) => (q.id === questionId ? { ...q, isPublished } : q))
-    )
+    setPublishing(true)
     try {
-      const res = await fetch(`${TEMPLATE_ENDPOINT}/${questionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isPublished }),
-      })
-      if (!res.ok) throw new Error("PATCH failed")
-
-      if (isPublished) {
-        await fetch(PUBLISH_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        }).catch(() => {})
-      }
-
-      toast.success(isPublished ? "Question published" : "Question unpublished", { duration: 2000 })
-    } catch {
-      setQuestions((prev) =>
-        prev.map((q) => (q.id === questionId ? { ...q, isPublished: !isPublished } : q))
+      await Promise.all(
+        drafts.map((q) =>
+          fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isDraft: false }),
+          })
+        )
       )
-      toast.error("Failed to update question", { duration: 3000 })
+      await fetch(SYNC_REVIEWS_ENDPOINT).catch(() => {})
+      setQuestions((prev) =>
+        prev.map((q) => (q.isDraft && !q.isArchived ? { ...q, isDraft: false } : q))
+      )
+      toast.success(`${drafts.length} question${drafts.length > 1 ? "s" : ""} published`, { duration: 2000 })
+    } catch {
+      toast.error("Failed to publish drafts", { duration: 3000 })
+    } finally {
+      setPublishing(false)
     }
-  }
-
-  const handleConfirmUnpublish = async () => {
-    if (!unpublishTarget?.id) return
-    await doTogglePublish(unpublishTarget.id, false)
-    setUnpublishTarget(null)
   }
 
   const handleSaveSectionSettings = async () => {
@@ -544,67 +578,110 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     | { kind: "question"; q: TemplateQuestion; groupId: number | null }
     | { kind: "group"; g: CustomGroup }
 
-  const [dragId, setDragId] = useState<number | null>(null)
-  const [dropIndicator, setDropIndicator] = useState<{
-    flatIdx: number
-    pos: "above" | "below"
-  } | null>(null)
-
-  const unpublishedCount = questions.filter((q) => !q.isPublished).length
+  const draftCount = questions.filter((q) => q.isDraft && !q.isArchived).length
+  const archivedCount = questions.filter((q) => q.isArchived).length
 
   const sortPublishedFirst = (a: TemplateQuestion, b: TemplateQuestion) => {
-    if (a.isPublished !== b.isPublished) return a.isPublished ? -1 : 1
+    if (a.isArchived !== b.isArchived) return a.isArchived ? 1 : -1
     return a.sortOrder - b.sortOrder
   }
 
   const buildFlatList = useCallback((): FlatItem[] => {
     const list: FlatItem[] = []
-    const visible = hideUnpublished ? questions.filter((q) => q.isPublished) : questions
+    const visible = hideArchived ? questions.filter((q) => !q.isArchived) : questions
     const ungrouped = visible.filter((q) => !q.lifemap_custom_group_id).sort(sortPublishedFirst)
     for (const q of ungrouped) list.push({ kind: "question", q, groupId: null })
-    for (const g of customGroups) {
+    const sortedGroups = [...customGroups].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    for (const g of sortedGroups) {
       if (!g.id) continue
       list.push({ kind: "group", g })
       const gq = visible.filter((q) => q.lifemap_custom_group_id === g.id).sort(sortPublishedFirst)
       for (const q of gq) list.push({ kind: "question", q, groupId: g.id })
     }
     return list
-  }, [questions, customGroups, hideUnpublished])
+  }, [questions, customGroups, hideArchived])
 
-  const handleDragOver = (e: React.DragEvent, flatIdx: number) => {
-    e.preventDefault()
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const midY = rect.top + rect.height / 2
-    const pos = e.clientY < midY ? "above" : "below"
-    setDropIndicator({ flatIdx, pos })
-  }
+  const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination) return
+    const srcIdx = result.source.index
+    const destIdx = result.destination.index
+    if (srcIdx === destIdx) return
 
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault()
-    if (dragId === null || !dropIndicator) {
-      setDragId(null)
-      setDropIndicator(null)
+    const flat = buildFlatList()
+    const reordered = Array.from(flat)
+    const [removed] = reordered.splice(srcIdx, 1)
+
+    if (removed.kind === "group") {
+      const groupId = removed.g.id!
+      const children = reordered.filter(
+        (item) => item.kind === "question" && item.q.lifemap_custom_group_id === groupId
+      )
+      const withoutChildren = reordered.filter(
+        (item) => !(item.kind === "question" && item.q.lifemap_custom_group_id === groupId)
+      )
+
+      const adjustedDest = Math.min(destIdx > srcIdx ? destIdx - children.length : destIdx, withoutChildren.length)
+      withoutChildren.splice(adjustedDest, 0, removed, ...children)
+
+      const newGroups: CustomGroup[] = []
+      const newQuestions: TemplateQuestion[] = []
+      let currentGroupId: number | null = null
+      let groupOrder = 0
+      for (const item of withoutChildren) {
+        if (item.kind === "group") {
+          groupOrder++
+          currentGroupId = item.g.id!
+          newGroups.push({ ...item.g, order: groupOrder })
+        } else {
+          newQuestions.push({
+            ...item.q,
+            lifemap_custom_group_id: currentGroupId,
+            sortOrder: newQuestions.length + 1,
+          })
+        }
+      }
+
+      setCustomGroups(newGroups)
+      setQuestions(newQuestions)
+
+      try {
+        await Promise.all([
+          ...newGroups
+            .filter((ng) => {
+              const orig = customGroups.find((og) => og.id === ng.id)
+              return !orig || orig.order !== ng.order
+            })
+            .filter((ng) => ng.id)
+            .map((ng) =>
+              fetch(`${CUSTOM_GROUP_ENDPOINT}/${ng.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ order: ng.order }),
+              })
+            ),
+          ...newQuestions
+            .filter((nq) => {
+              const orig = questions.find((oq) => oq.id === nq.id)
+              return !orig || orig.sortOrder !== nq.sortOrder || orig.lifemap_custom_group_id !== nq.lifemap_custom_group_id
+            })
+            .filter((nq) => nq.id)
+            .map((nq) =>
+              fetch(`${TEMPLATE_ENDPOINT}/${nq.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sortOrder: nq.sortOrder, lifemap_custom_group_id: nq.lifemap_custom_group_id }),
+              })
+            ),
+        ])
+      } catch { /* local state already updated */ }
       return
     }
 
-    const flat = buildFlatList()
-    const draggedFlatIdx = flat.findIndex(
-      (item) => item.kind === "question" && item.q.id === dragId
-    )
-    if (draggedFlatIdx === -1) { setDragId(null); setDropIndicator(null); return }
-
-    const withoutDragged = flat.filter((_, i) => i !== draggedFlatIdx)
-    const draggedItem = flat[draggedFlatIdx] as Extract<FlatItem, { kind: "question" }>
-
-    let targetIdx = dropIndicator.flatIdx
-    if (draggedFlatIdx < targetIdx) targetIdx -= 1
-    const insertIdx = dropIndicator.pos === "below" ? targetIdx + 1 : targetIdx
-
-    withoutDragged.splice(insertIdx, 0, draggedItem)
+    reordered.splice(destIdx, 0, removed)
 
     let currentGroupId: number | null = null
     const newQuestions: TemplateQuestion[] = []
-    for (const item of withoutDragged) {
+    for (const item of reordered) {
       if (item.kind === "group") {
         currentGroupId = item.g.id!
       } else {
@@ -617,17 +694,11 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     }
 
     setQuestions(newQuestions)
-    setDragId(null)
-    setDropIndicator(null)
 
     const patches: { id: number; sortOrder: number; lifemap_custom_group_id: number | null }[] = []
     for (const nq of newQuestions) {
       const orig = questions.find((oq) => oq.id === nq.id)
-      if (
-        !orig ||
-        orig.sortOrder !== nq.sortOrder ||
-        orig.lifemap_custom_group_id !== nq.lifemap_custom_group_id
-      ) {
+      if (!orig || orig.sortOrder !== nq.sortOrder || orig.lifemap_custom_group_id !== nq.lifemap_custom_group_id) {
         if (nq.id) patches.push({ id: nq.id, sortOrder: nq.sortOrder, lifemap_custom_group_id: nq.lifemap_custom_group_id })
       }
     }
@@ -643,9 +714,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
             })
           )
         )
-      } catch {
-        // local state is already updated
-      }
+      } catch { /* local state already updated */ }
     }
   }
 
@@ -703,21 +772,32 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
           >
             <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
           </Button>
-          {unpublishedCount > 0 && (
+          {archivedCount > 0 && (
             <Button
-              variant={hideUnpublished ? "secondary" : "outline"}
+              variant={hideArchived ? "secondary" : "outline"}
               size="icon"
-              onClick={() => setHideUnpublished(!hideUnpublished)}
-              title={hideUnpublished ? "Show unpublished questions" : "Hide unpublished questions"}
+              onClick={() => setHideArchived(!hideArchived)}
+              title={hideArchived ? "Show archived questions" : "Hide archived questions"}
             >
-              <HugeiconsIcon icon={hideUnpublished ? ViewOffIcon : EyeIcon} strokeWidth={2} className="size-4" />
+              <HugeiconsIcon icon={hideArchived ? ViewOffIcon : EyeIcon} strokeWidth={2} className="size-4" />
+            </Button>
+          )}
+          {draftCount > 0 && (
+            <Button
+              variant="outline"
+              onClick={handlePublishDrafts}
+              disabled={publishing}
+              className="gap-2"
+            >
+              <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4" />
+              {publishing ? "Publishing..." : `Publish (${draftCount})`}
             </Button>
           )}
           <Button variant="outline" onClick={handleAddGroup} className="gap-2">
             <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4" />
             Add Group
           </Button>
-          <Button onClick={handleAdd} className="gap-2">
+          <Button onClick={() => handleAdd()} className="gap-2">
             <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4" />
             Add Question
           </Button>
@@ -730,125 +810,149 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       {questions.length === 0 && customGroups.length === 0 ? (
         <div className="text-muted-foreground flex flex-col items-center gap-2 py-16">
           <p className="text-sm">No questions configured for this section yet.</p>
-          <Button variant="outline" size="sm" onClick={handleAdd} className="mt-2 gap-2">
+          <Button variant="outline" size="sm" onClick={() => handleAdd()} className="mt-2 gap-2">
             <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4" />
             Add First Question
           </Button>
         </div>
       ) : (
-        <div className="rounded-md border" onDragOver={(e) => e.preventDefault()}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Label</TableHead>
-                <TableHead className="text-muted-foreground w-[90px] text-xs font-medium uppercase tracking-wide">Status</TableHead>
-                <TableHead className="text-muted-foreground w-[150px] text-xs font-medium uppercase tracking-wide">Type</TableHead>
-                <TableHead className="text-muted-foreground w-[100px] text-right text-xs font-medium uppercase tracking-wide">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {flatList.map((item, flatIdx) => {
-                if (item.kind === "group") {
-                  return (
-                    <TableRow
-                      key={`group-${item.g.id}`}
-                      className={`bg-muted/40 hover:bg-muted/40 ${
-                        dropIndicator?.flatIdx === flatIdx
-                          ? dropIndicator.pos === "above"
-                            ? "border-t-primary border-t-2"
-                            : "border-b-primary border-b-2"
-                          : ""
-                      }`}
-                      onDragOver={(e) => handleDragOver(e, flatIdx)}
-                      onDragLeave={() => setDropIndicator(null)}
-                      onDrop={handleDrop}
-                    >
-                      <TableCell colSpan={COL_COUNT}>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold uppercase tracking-wide">{item.g.group_name}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="ml-auto size-7"
-                            onClick={() => handleEditGroup(item.g)}
-                            title="Edit group"
-                          >
-                            <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <Droppable droppableId="template-list">
+            {(droppableProvided) => (
+              <div className="rounded-md border" ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Label</TableHead>
+                      <TableHead className="text-muted-foreground w-[90px] text-xs font-medium uppercase tracking-wide">Status</TableHead>
+                      <TableHead className="text-muted-foreground w-[150px] text-xs font-medium uppercase tracking-wide">Type</TableHead>
+                      <TableHead className="text-muted-foreground w-[100px] text-right text-xs font-medium uppercase tracking-wide">Actions</TableHead>
                     </TableRow>
-                  )
-                }
+                  </TableHeader>
+                  <TableBody>
+                    {flatList.map((item, flatIdx) => {
+                      const draggableId = item.kind === "group" ? `group-${item.g.id}` : `question-${item.q.id}`
+                      return (
+                        <Draggable key={draggableId} draggableId={draggableId} index={flatIdx}>
+                          {(provided, snapshot) => {
+                            if (item.kind === "group") {
+                              return (
+                                <TableRow
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  className={`bg-muted/40 hover:bg-muted/40 ${snapshot.isDragging ? "opacity-70 shadow-lg" : ""}`}
+                                >
+                                  <TableCell colSpan={COL_COUNT}>
+                                    <div className="flex items-center gap-2">
+                                      <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                                        <HugeiconsIcon icon={DragDropIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-3.5 shrink-0" />
+                                      </div>
+                                      <span className="text-xs font-semibold uppercase tracking-wide">{item.g.group_name}</span>
+                                      <div className="ml-auto flex items-center gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="size-7"
+                                          onClick={() => handleAdd(item.g.id)}
+                                          title="Add question to group"
+                                        >
+                                          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-3.5" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="size-7"
+                                          onClick={() => handleEditGroup(item.g)}
+                                          title="Edit group"
+                                        >
+                                          <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="size-3.5" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            }
 
-                const q = item.q
-                return (
-                  <TableRow
-                    key={q.id}
-                    onDragOver={(e) => handleDragOver(e, flatIdx)}
-                    onDragLeave={() => setDropIndicator(null)}
-                    onDrop={handleDrop}
-                    onClick={() => handleEdit(q)}
-                    className={`cursor-pointer hover:bg-muted/50 [&>td]:py-3 ${
-                      !q.isPublished ? "bg-muted/40 text-muted-foreground" : ""
-                    } ${
-                      dragId === q.id ? "opacity-40" : ""
-                    } ${
-                      dropIndicator?.flatIdx === flatIdx
-                        ? dropIndicator.pos === "above"
-                          ? "border-t-primary border-t-2"
-                          : "border-b-primary border-b-2"
-                        : ""
-                    }`}
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div
-                          draggable
-                          onDragStart={(e) => { e.stopPropagation(); q.id && setDragId(q.id) }}
-                          onDragEnd={() => { setDragId(null); setDropIndicator(null) }}
-                          className="cursor-grab active:cursor-grabbing"
-                        >
-                          <HugeiconsIcon icon={DragDropIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-3.5 shrink-0" />
-                        </div>
-                        <span className="text-sm font-medium">{q.field_label || q.field_name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className={`size-7 ${q.isPublished ? "text-green-600 hover:bg-green-50" : ""}`}
-                        onClick={(e) => { e.stopPropagation(); handleTogglePublish(q, !q.isPublished) }}
-                        title={q.isPublished ? "Published — click to unpublish" : "Draft — click to publish"}
-                      >
-                        {q.isPublished ? (
-                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
-                        ) : (
-                          <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-                        )}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {getTypeName(q, questionTypes)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-red-500"
-                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(q) }}
-                        title="Delete"
-                      >
-                        <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-3.5" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                            const q = item.q
+                            return (
+                              <TableRow
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                onClick={() => handleEdit(q)}
+                                className={`cursor-pointer hover:bg-muted/50 [&>td]:py-3 ${
+                                  q.isArchived ? "bg-muted/40 text-muted-foreground" : ""
+                                } ${snapshot.isDragging ? "opacity-70 shadow-lg" : ""}`}
+                              >
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                                      <HugeiconsIcon icon={DragDropIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-3.5 shrink-0" />
+                                    </div>
+                                    <span className="text-sm font-medium">{q.field_label || q.field_name}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="inline-flex size-7 items-center justify-center" title={q.isArchived ? "Archived" : q.isDraft ? "Draft" : q.isPublished ? "Published" : "Unpublished"}>
+                                    {q.isArchived ? (
+                                      <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="text-muted-foreground/60 size-4" />
+                                    ) : q.isDraft || !q.isPublished ? (
+                                      <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-4 text-amber-500" />
+                                    ) : (
+                                      <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-sm">
+                                  {getTypeName(q, questionTypes)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {q.isArchived ? (
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="size-7 text-muted-foreground hover:text-foreground"
+                                        onClick={(e) => { e.stopPropagation(); handleUnarchive(q) }}
+                                        title="Unarchive"
+                                      >
+                                        <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="size-7 text-muted-foreground hover:text-red-500"
+                                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(q) }}
+                                        title="Delete permanently"
+                                      >
+                                        <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-3.5" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="size-7 text-muted-foreground hover:text-amber-500"
+                                      onClick={(e) => { e.stopPropagation(); setArchiveTarget(q) }}
+                                      title="Archive"
+                                    >
+                                      <HugeiconsIcon icon={Archive02Icon} strokeWidth={2} className="size-3.5" />
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            )
+                          }}
+                        </Draggable>
+                      )
+                    })}
+                    {droppableProvided.placeholder}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </Droppable>
+        </DragDropContext>
       )}
 
       <QuestionSheet
@@ -859,6 +963,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         customGroups={customGroups}
         saving={saving}
         onSave={handleSave}
+        defaultGroupId={defaultGroupId}
       />
 
       <GroupSheet
@@ -870,10 +975,34 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         onDelete={handleDeleteGroup}
       />
 
+      <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <HugeiconsIcon icon={Archive02Icon} strokeWidth={2} className="text-amber-500 size-5" />
+              Archive question?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              &ldquo;{archiveTarget?.field_label}&rdquo; will be archived and hidden from students.
+              You can unarchive it later, or permanently delete it from the archive.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleArchive}>
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete question?</AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-5 text-red-500" />
+              Permanently delete question?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete &ldquo;{deleteTarget?.field_label}&rdquo; along with
               all associated student responses and comments. This action cannot be undone.
@@ -886,27 +1015,6 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={!!unpublishTarget} onOpenChange={(open) => !open && setUnpublishTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="text-amber-500 size-5" />
-              Unpublish question?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Unpublishing &ldquo;{unpublishTarget?.field_label}&rdquo; will hide it from
-              students. Any existing responses will be preserved.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmUnpublish}>
-              Unpublish
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1018,6 +1126,7 @@ function QuestionSheet({
   customGroups,
   saving,
   onSave,
+  defaultGroupId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1026,6 +1135,7 @@ function QuestionSheet({
   customGroups: CustomGroup[]
   saving: boolean
   onSave: (data: Omit<TemplateQuestion, "id"> & { id?: number }) => Promise<void>
+  defaultGroupId?: number | null
 }) {
   const isEdit = !!question
   const [form, setForm] = useState<Omit<TemplateQuestion, "id"> & { id?: number }>(
@@ -1038,13 +1148,17 @@ function QuestionSheet({
 
   useEffect(() => {
     if (open) {
-      setForm(question ?? { ...emptyQuestion })
+      const base = question ?? { ...emptyQuestion }
+      if (!question && defaultGroupId) {
+        base.lifemap_custom_group_id = defaultGroupId
+      }
+      setForm(base)
       setDropdownInput("")
       setResourceInput("")
       setSentenceStarterInput("")
       setExampleInput("")
     }
-  }, [open, question])
+  }, [open, question, defaultGroupId])
 
   const updateField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -1074,8 +1188,8 @@ function QuestionSheet({
       return
     }
     const typeName = questionTypes.find((t) => t.id === form.question_types_id)?.type ?? ""
-    if ((typeName === "Long Response" || typeName === "Short Response") && (!form.min_words || form.min_words < 1)) {
-      toast("Minimum word count is required for response questions", { duration: 2000 })
+    if (typeName === "Long Response" && (!form.min_words || form.min_words < 1)) {
+      toast("Minimum word count is required for long response questions", { duration: 2000 })
       return
     }
     const fieldName = form.field_name.trim() || form.field_label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
@@ -1117,10 +1231,11 @@ function QuestionSheet({
 
           <div className="space-y-2">
             <Label>Question Label *</Label>
-            <Input
+            <Textarea
               placeholder="e.g. Why did you choose this housing?"
               value={form.field_label}
               onChange={(e) => updateField("field_label", e.target.value)}
+              rows={3}
             />
           </div>
 
@@ -1159,7 +1274,7 @@ function QuestionSheet({
 
           {showMinWords && (
             <div className="space-y-2">
-              <Label>Minimum Word Count *</Label>
+              <Label>Minimum Word Count {selectedTypeName === "Long Response" ? "*" : "(optional)"}</Label>
               <Input
                 type="number"
                 min={1}

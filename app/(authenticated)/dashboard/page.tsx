@@ -1,13 +1,27 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MapsIcon, BookOpen02Icon } from "@hugeicons/core-free-icons"
 import { TeacherDashboard } from "@/components/teacher-dashboard"
+import { fetchSections, titleToSlug } from "@/lib/lifemap-sections"
 
 function StudentDashboard() {
+  const [lifeMapUrl, setLifeMapUrl] = useState("/life-map")
+  const [sectionCount, setSectionCount] = useState(0)
+
+  useEffect(() => {
+    fetchSections().then((sections) => {
+      setSectionCount(sections.length)
+      if (sections.length > 0) {
+        setLifeMapUrl(`/life-map/${titleToSlug(sections[0].section_title)}`)
+      }
+    })
+  }, [])
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div>
@@ -17,7 +31,7 @@ function StudentDashboard() {
         </p>
       </div>
       <div className="grid gap-6 md:grid-cols-2">
-        <Link href="/life-map/overview" className="block">
+        <Link href={lifeMapUrl} className="block">
           <Card className="transition-colors hover:border-foreground/20">
             <CardHeader>
               <div className="bg-primary/10 mb-2 flex size-10 items-center justify-center rounded-lg">
@@ -29,7 +43,7 @@ function StudentDashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground text-sm">9 sections</p>
+              <p className="text-muted-foreground text-sm">{sectionCount} sections</p>
             </CardContent>
           </Card>
         </Link>

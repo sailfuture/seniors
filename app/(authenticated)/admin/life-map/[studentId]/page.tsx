@@ -35,7 +35,6 @@ import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
-  RefreshIcon,
   CheckmarkCircle02Icon,
   CircleIcon,
   SquareLock02Icon,
@@ -53,7 +52,6 @@ const XANO_BASE =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
 
 const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
-const REVIEW_SYNC_ENDPOINT = `${XANO_BASE}/lifemap_review_add_all`
 const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
@@ -77,6 +75,7 @@ interface CustomGroup {
   group_name: string
   group_description: string
   lifemap_sections_id: number
+  order?: number
 }
 
 interface TemplateQuestion {
@@ -150,7 +149,6 @@ export default function AdminStudentLifeMapOverviewPage({
 
   const [rows, setRows] = useState<SectionRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
   const [comments, setComments] = useState<Comment[]>([])
   const [allReviews, setAllReviews] = useState<ReviewRecord[]>([])
 
@@ -197,7 +195,7 @@ export default function AdminStudentLifeMapOverviewPage({
       const result: SectionRow[] = sorted.map((s) => ({
         section: s,
         slug: titleToSlug(s.section_title),
-        groups: groups.filter((g) => g.lifemap_sections_id === s.id),
+        groups: groups.filter((g) => g.lifemap_sections_id === s.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
         reviews: studentReviews.filter((r) => r.lifemap_sections_id === s.id),
       }))
 
@@ -213,20 +211,6 @@ export default function AdminStudentLifeMapOverviewPage({
     loadData()
     loadComments()
   }, [loadData, loadComments])
-
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      const res = await fetch(REVIEW_SYNC_ENDPOINT, { method: "POST" })
-      if (!res.ok) throw new Error()
-      toast.success("Review records synced")
-      await loadData()
-    } catch {
-      toast.error("Failed to sync review records")
-    } finally {
-      setSyncing(false)
-    }
-  }
 
   const openSheet = async (row: SectionRow, groupId: number | null) => {
     setSheetRow(row)
@@ -451,16 +435,6 @@ export default function AdminStudentLifeMapOverviewPage({
             Back
           </Link>
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleSync}
-          disabled={syncing}
-          className="gap-2"
-        >
-          <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className={`size-4 ${syncing ? "animate-spin" : ""}`} />
-          {syncing ? "Syncing..." : "Sync Reviews"}
-        </Button>
       </div>
 
       <div className="rounded-md border">
@@ -518,7 +492,7 @@ export default function AdminStudentLifeMapOverviewPage({
             {!sheetReview && (
               <div className="border-b px-6 py-4">
                 <p className="text-muted-foreground text-center text-xs">
-                  No review record found. Click &ldquo;Sync Reviews&rdquo; to create one.
+                  No review record found.
                 </p>
               </div>
             )}

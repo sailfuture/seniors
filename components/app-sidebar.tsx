@@ -231,14 +231,17 @@ function buildLifeMapNavItems(sections: LifeMapSection[]) {
   }))
 }
 
-function buildStudentNav(sections: LifeMapSection[], commentCounts?: Map<number, number>, revisionCounts?: Map<number, number>) {
+function buildStudentNav(sections: LifeMapSection[], pathname: string, commentCounts?: Map<number, number>, revisionCounts?: Map<number, number>) {
   const mapItems = buildLifeMapNavItems(sections)
+  const onLifeMap = pathname.startsWith("/life-map")
+  const onBusiness = pathname.startsWith("/business-thesis")
+  const firstSlug = mapItems.length > 0 ? mapItems[0].slug : "overview"
   return [
     {
       title: "Life Map",
-      url: "/life-map/overview",
+      url: `/life-map/${firstSlug}`,
       icon: <HugeiconsIcon icon={MapsIcon} strokeWidth={2} />,
-      isActive: true,
+      isActive: onLifeMap,
       items: mapItems.map((s) => {
         const sec = sections.find((sec) => sec.section_title === s.title)
         return {
@@ -246,6 +249,7 @@ function buildStudentNav(sections: LifeMapSection[], commentCounts?: Map<number,
           url: `/life-map/${s.slug}`,
           badge: sec && commentCounts ? (commentCounts.get(sec.id) ?? 0) : 0,
           badgeRed: sec && revisionCounts ? (revisionCounts.get(sec.id) ?? 0) : 0,
+          isLocked: sec?.isLocked ?? false,
         }
       }),
     },
@@ -253,7 +257,7 @@ function buildStudentNav(sections: LifeMapSection[], commentCounts?: Map<number,
       title: "Business Thesis",
       url: "/business-thesis/executive-summary",
       icon: <HugeiconsIcon icon={BookOpen02Icon} strokeWidth={2} />,
-      isActive: true,
+      isActive: onBusiness,
       items: businessSections.map((s) => ({
         title: s.title,
         url: `/business-thesis/${s.slug}`,
@@ -355,7 +359,7 @@ function getNavFromPathname(pathname: string, isAdmin: boolean, sections: LifeMa
   if (isAdmin) {
     return buildTeacherBaseNav(sections, pathname, students)
   }
-  return buildStudentNav(sections, badges.commentCounts, badges.revisionCounts)
+  return buildStudentNav(sections, pathname, badges.commentCounts, badges.revisionCounts)
 }
 
 function extractStudentId(pathname: string): string | null {

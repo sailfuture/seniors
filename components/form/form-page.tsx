@@ -65,8 +65,8 @@ export function FormPage({ title, config, commentsEndpoint, sectionId: sectionId
 
   // Register save state into the layout-level context so the header can access it
   useEffect(() => {
-    registerSave({ saveStatus, saveNow, lastSavedAt })
-  }, [saveStatus, saveNow, lastSavedAt, registerSave])
+    registerSave({ saveStatus, saveNow, lastSavedAt, hasDirty: hasDirtyForm })
+  }, [saveStatus, saveNow, lastSavedAt, hasDirtyForm, registerSave])
 
   // Unregister when unmounting (navigating away from form page)
   useEffect(() => {

@@ -13,6 +13,7 @@ export default function LifeMapDynamicSectionPage({
   const { section } = use(params)
   const [sectionId, setSectionId] = useState<number | null>(null)
   const [title, setTitle] = useState(slugToTitle(section))
+  const [description, setDescription] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function LifeMapDynamicSectionPage({
       if (match) {
         setSectionId(match.id)
         setTitle(match.section_title)
+        setDescription(match.section_description || match.description || undefined)
       }
       setLoading(false)
     })
@@ -53,5 +55,5 @@ export default function LifeMapDynamicSectionPage({
     )
   }
 
-  return <DynamicFormPage title={title} sectionId={sectionId} />
+  return <DynamicFormPage title={title} subtitle={description} sectionId={sectionId} />
 }

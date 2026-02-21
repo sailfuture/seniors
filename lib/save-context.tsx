@@ -7,6 +7,7 @@ interface SaveState {
   saveStatus: SaveStatus
   saveNow: () => void
   lastSavedAt: Date | null
+  hasDirty: boolean
 }
 
 interface SaveContextValue {

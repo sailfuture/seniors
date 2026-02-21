@@ -88,6 +88,7 @@ interface CustomGroup {
   instructions: string
   resources: string[]
   lifemap_sections_id: number
+  order?: number
 }
 
 interface StudentResponse {
@@ -407,10 +408,13 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   }
 
   const ungroupedQuestions = questions.filter((q) => !q.lifemap_custom_group_id)
-  const groupedSections = customGroups
+  const groupedSections = [...customGroups]
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .map((group) => ({
       group,
-      questions: questions.filter((q) => q.lifemap_custom_group_id === group.id),
+      questions: questions
+        .filter((q) => q.lifemap_custom_group_id === group.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
     }))
     .filter((gs) => gs.questions.length > 0)
 

@@ -293,7 +293,7 @@ function SaveControls() {
 
   if (!saveCtx) return null
 
-  const { saveStatus, saveNow, lastSavedAt } = saveCtx
+  const { saveStatus, saveNow, lastSavedAt, hasDirty } = saveCtx
   const isSaving = saveStatus === "saving"
 
   return (
@@ -316,9 +316,9 @@ function SaveControls() {
       <Button
         type="button"
         size="sm"
-        className="h-8 px-4 text-sm font-medium"
+        className="h-8 bg-gray-100 px-4 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:pointer-events-none disabled:opacity-50"
         onClick={saveNow}
-        disabled={isSaving}
+        disabled={isSaving || !hasDirty}
       >
         {isSaving ? "Saving..." : "Save"}
       </Button>

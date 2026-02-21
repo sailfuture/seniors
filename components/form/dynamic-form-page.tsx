@@ -105,6 +105,7 @@ interface CustomGroup {
   instructions: string
   resources: string[]
   lifemap_sections_id: number
+  order?: number
 }
 
 interface ReviewRecord {
@@ -141,10 +142,11 @@ const QUESTION_TYPE = {
 
 interface DynamicFormPageProps {
   title: string
+  subtitle?: string
   sectionId: number
 }
 
-export function DynamicFormPage({ title, sectionId }: DynamicFormPageProps) {
+export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageProps) {
   const { data: session } = useSession()
   const { register: registerSave, unregister: unregisterSave } = useSaveRegister()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
@@ -159,6 +161,7 @@ export function DynamicFormPage({ title, sectionId }: DynamicFormPageProps) {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [plagiarismData, setPlagiarismData] = useState<Map<number, GptZeroResult>>(new Map())
   const [checkingPlagiarism, setCheckingPlagiarism] = useState<Set<number>>(new Set())
+  const [hasDirty, setHasDirty] = useState(false)
   const dirtyRef = useRef(new Set<number>())
 
   const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
@@ -288,6 +291,7 @@ export function DynamicFormPage({ title, sectionId }: DynamicFormPageProps) {
 
       await Promise.all(promises)
       dirtyRef.current = new Set()
+      setHasDirty(false)
       setSaveStatus("saved")
       setLastSavedAt(new Date())
     } catch {
@@ -304,21 +308,20 @@ export function DynamicFormPage({ title, sectionId }: DynamicFormPageProps) {
   }, [saveAll])
 
   useEffect(() => {
-    registerSave({ saveStatus, saveNow, lastSavedAt })
-  }, [saveStatus, saveNow, lastSavedAt, registerSave])
+    registerSave({ saveStatus, saveNow, lastSavedAt, hasDirty })
+  }, [saveStatus, saveNow, lastSavedAt, hasDirty, registerSave])
 
   useEffect(() => {
     return () => unregisterSave()
   }, [unregisterSave])
 
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (dirtyRef.current.size > 0) {
-        saveAll()
-      }
-    }, 3 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [saveAll])
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     const handleSave = (e: KeyboardEvent) => {
@@ -338,7 +341,13 @@ export function DynamicFormPage({ title, sectionId }: DynamicFormPageProps) {
       return next
     })
     dirtyRef.current.add(templateId)
+    setHasDirty(true)
     setSaveStatus("idle")
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    autosaveTimerRef.current = setTimeout(() => {
+      if (dirtyRef.current.size > 0) saveAll()
+    }, 3000)
   }
 
   const handleMarkRead = useCallback(async (commentIds: number[]) => {
@@ -466,17 +475,21 @@ export function DynamicFormPage({ title, sectionId }: DynamicFormPageProps) {
     return (
       <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
         <h1 className="text-2xl font-bold">{title}</h1>
+        {subtitle && <p className="text-muted-foreground text-sm">{subtitle}</p>}
         <p className="text-muted-foreground">No questions have been published for this section yet.</p>
       </div>
     )
   }
 
   const ungroupedQuestions = questions.filter((q) => !q.lifemap_custom_group_id)
-  const groupedSections = customGroups
+  const groupedSections = [...customGroups]
     .filter((g) => g.id)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .map((g) => ({
       group: g,
-      questions: questions.filter((q) => q.lifemap_custom_group_id === g.id),
+      questions: questions
+        .filter((q) => q.lifemap_custom_group_id === g.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
     }))
     .filter((gs) => gs.questions.length > 0)
 
@@ -535,6 +548,7 @@ export function DynamicFormPage({ title, sectionId }: DynamicFormPageProps) {
             </button>
           )}
         </div>
+        {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
       </div>
 
       <Sheet open={sectionCommentsOpen} onOpenChange={setSectionCommentsOpen}>

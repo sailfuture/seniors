@@ -16,7 +16,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Link01Icon } from "@hugeicons/core-free-icons"
+import { Link01Icon, RefreshIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { toast } from "sonner"
 
 interface Student {
   id: string
@@ -39,6 +40,9 @@ const STUDENTS_ENDPOINT =
 
 const ALL_REVIEWS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/all_reviews"
+
+const REVIEW_SYNC_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/lifemap_review_add_all"
 
 function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
@@ -103,7 +107,9 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [syncing, setSyncing] = useState(false)
   const [reviewCounts, setReviewCounts] = useState<Map<string, number>>(new Map())
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const fetchData = async () => {
@@ -115,7 +121,12 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
 
         if (studentsRes.ok) {
           const data = await studentsRes.json()
-          setStudents(Array.isArray(data) ? data : [])
+          const studentList: Student[] = Array.isArray(data) ? data : []
+          setStudents(studentList)
+
+          const yearGroups = new Set(studentList.map((s) => s.yearGroup || "Other"))
+          const nonBatch2026 = [...yearGroups].filter((g) => !g.includes("2026"))
+          setCollapsedGroups(new Set(nonBatch2026))
         }
 
         if (reviewsRes.ok) {
@@ -138,6 +149,19 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
 
     fetchData()
   }, [])
+
+  const handleSync = async () => {
+    setSyncing(true)
+    try {
+      const res = await fetch(REVIEW_SYNC_ENDPOINT)
+      if (!res.ok) throw new Error()
+      toast.success("Review records synced")
+    } catch {
+      toast.error("Failed to sync review records")
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const filtered = students.filter((s) => {
     const q = search.toLowerCase()
@@ -162,25 +186,51 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
         <TableSkeleton />
       ) : (
         <div className="space-y-8">
-          <Input
-            placeholder="Search by name, email, or crew..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-sm"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Search by name, email, or crew..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="max-w-sm"
+            />
+            <Button
+              variant="outline"
+              onClick={handleSync}
+              disabled={syncing}
+              className="gap-2"
+            >
+              <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className={`size-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing..." : "Sync Reviews"}
+            </Button>
+          </div>
 
           {groups.length === 0 && (
             <p className="text-muted-foreground py-8 text-center">No students found.</p>
           )}
 
-          {groups.map((group) => (
+          {groups.map((group) => {
+            const isCollapsed = collapsedGroups.has(group.label)
+            const toggleCollapse = () => {
+              setCollapsedGroups((prev) => {
+                const next = new Set(prev)
+                if (next.has(group.label)) next.delete(group.label)
+                else next.add(group.label)
+                return next
+              })
+            }
+            return (
             <div key={group.label} className="space-y-2">
-              <h2 className="text-muted-foreground text-sm font-semibold uppercase tracking-wide">
+              <h2
+                className="text-muted-foreground flex cursor-pointer select-none items-center gap-1 text-sm font-semibold uppercase tracking-wide"
+                onClick={toggleCollapse}
+              >
+                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className={`size-4 transition-transform ${isCollapsed ? "" : "rotate-90"}`} />
                 {group.label}
-                <span className="text-muted-foreground/60 ml-2 text-xs font-normal normal-case">
+                <span className="text-muted-foreground/60 ml-1 text-xs font-normal normal-case">
                   ({group.students.length} {group.students.length === 1 ? "student" : "students"})
                 </span>
               </h2>
+              {!isCollapsed && (
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
@@ -257,8 +307,10 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
                   </TableBody>
                 </Table>
               </div>
+              )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

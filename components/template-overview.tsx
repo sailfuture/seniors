@@ -38,10 +38,11 @@ import {
   SquareLock02Icon,
   SquareUnlock02Icon,
   CheckmarkCircle02Icon,
-  CircleIcon,
   DragDropIcon,
   Add01Icon,
-  Settings02Icon,
+  Alert02Icon,
+  SentIcon,
+  PencilEdit02Icon,
 } from "@hugeicons/core-free-icons"
 import {
   titleToSlug,
@@ -57,8 +58,8 @@ const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const GROUPS_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const TYPES_ENDPOINT = `${XANO_BASE}/question_types`
-const PUBLISH_ENDPOINT = `${XANO_BASE}/publish_questions`
 const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
+const SYNC_REVIEWS_ENDPOINT = `${XANO_BASE}/lifemap_review_add_all`
 
 interface TemplateQuestion {
   id: number
@@ -69,6 +70,7 @@ interface TemplateQuestion {
   question_types_id: number | null
   isArchived: boolean
   isPublished: boolean
+  isDraft: boolean
   sortOrder: number
 }
 
@@ -88,8 +90,8 @@ interface SectionSummary {
   section: LifeMapSection
   slug: string
   total: number
-  published: number
-  draft: number
+  drafts: number
+  archived: number
 }
 
 export function TemplateOverview() {
@@ -129,19 +131,18 @@ export function TemplateOverview() {
         const groups: CustomGroup[] = groupsRes.ok ? await groupsRes.json() : []
         const types: QuestionType[] = typesRes.ok ? await typesRes.json() : []
 
-        const active = questions.filter((q) => !q.isArchived)
-        setAllQuestions(active)
+        setAllQuestions(questions)
         setAllGroups(groups)
         setQuestionTypes(types)
 
         const result: SectionSummary[] = sections.map((s) => {
-          const sectionQs = active.filter((q) => q.lifemap_sections_id === s.id)
+          const allSectionQs = questions.filter((q) => q.lifemap_sections_id === s.id)
           return {
             section: s,
             slug: titleToSlug(s.section_title),
-            total: sectionQs.length,
-            published: sectionQs.filter((q) => q.isPublished).length,
-            draft: sectionQs.filter((q) => !q.isPublished).length,
+            total: allSectionQs.filter((q) => !q.isArchived).length,
+            drafts: allSectionQs.filter((q) => q.isDraft && !q.isArchived).length,
+            archived: allSectionQs.filter((q) => q.isArchived).length,
           }
         })
 
@@ -156,12 +157,28 @@ export function TemplateOverview() {
     load()
   }, [])
 
-  const totalDrafts = allQuestions.filter((q) => !q.isPublished).length
+  useEffect(() => {
+    setSummaries((prev) =>
+      prev.map((s) => {
+        const allSectionQs = allQuestions.filter((q) => q.lifemap_sections_id === s.section.id)
+        return {
+          ...s,
+          total: allSectionQs.filter((q) => !q.isArchived).length,
+          drafts: allSectionQs.filter((q) => q.isDraft && !q.isArchived).length,
+          archived: allSectionQs.filter((q) => q.isArchived).length,
+        }
+      })
+    )
+  }, [allQuestions])
 
-  const handlePublishAll = async () => {
-    const drafts = allQuestions.filter((q) => !q.isPublished)
+  const totalDrafts = allQuestions.filter((q) => q.isDraft && !q.isArchived).length
+
+  const handlePublishDrafts = async (sectionId?: number) => {
+    const drafts = allQuestions.filter(
+      (q) => q.isDraft && !q.isArchived && (sectionId ? q.lifemap_sections_id === sectionId : true)
+    )
     if (drafts.length === 0) {
-      toast("All questions are already published", { duration: 2000 })
+      toast("No drafts to publish", { duration: 2000 })
       return
     }
 
@@ -172,23 +189,23 @@ export function TemplateOverview() {
           fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isPublished: true }),
+            body: JSON.stringify({ isDraft: false }),
           })
         )
       )
 
-      await fetch(PUBLISH_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }).catch(() => {})
+      await fetch(SYNC_REVIEWS_ENDPOINT).catch(() => {})
 
-      setAllQuestions((prev) => prev.map((q) => ({ ...q, isPublished: true })))
-      setSummaries((prev) =>
-        prev.map((s) => ({ ...s, published: s.total, draft: 0 }))
+      setAllQuestions((prev) =>
+        prev.map((q) =>
+          q.isDraft && !q.isArchived && (sectionId ? q.lifemap_sections_id === sectionId : true)
+            ? { ...q, isDraft: false }
+            : q
+        )
       )
       toast.success(`${drafts.length} question${drafts.length > 1 ? "s" : ""} published`, { duration: 2000 })
     } catch {
-      toast.error("Failed to publish some questions", { duration: 3000 })
+      toast.error("Failed to publish drafts", { duration: 3000 })
     } finally {
       setPublishing(false)
     }
@@ -375,8 +392,8 @@ export function TemplateOverview() {
           section: created,
           slug: titleToSlug(created.section_title),
           total: 0,
-          published: 0,
-          draft: 0,
+          drafts: 0,
+          archived: 0,
         },
       ])
       setNewSectionTitle("")
@@ -395,7 +412,7 @@ export function TemplateOverview() {
 
   const getSectionQuestions = (sectionId: number) => {
     const qs = allQuestions
-      .filter((q) => q.lifemap_sections_id === sectionId)
+      .filter((q) => q.lifemap_sections_id === sectionId && !q.isArchived)
       .sort((a, b) => a.sortOrder - b.sortOrder)
     const groups = allGroups.filter((g) => g.lifemap_sections_id === sectionId)
 
@@ -444,17 +461,15 @@ export function TemplateOverview() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {totalDrafts > 0 && (
-            <Button
-              variant="outline"
-              onClick={handlePublishAll}
-              disabled={publishing}
-              className="gap-2"
-            >
-              {publishing ? "Publishing..." : `Publish All Drafts (${totalDrafts})`}
-            </Button>
-          )}
-          <Button onClick={() => setAddSectionOpen(true)} className="gap-2">
+          <Button
+            onClick={() => handlePublishDrafts()}
+            disabled={publishing || totalDrafts === 0}
+            className="gap-2"
+          >
+            <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4" />
+            {publishing ? "Publishing..." : `Publish (${totalDrafts})`}
+          </Button>
+          <Button variant="outline" onClick={() => setAddSectionOpen(true)} className="gap-2">
             <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4" />
             Add Section
           </Button>
@@ -467,9 +482,9 @@ export function TemplateOverview() {
             <TableRow>
               <TableHead className="text-muted-foreground w-[180px] text-xs font-medium uppercase tracking-wide">Section</TableHead>
               <TableHead className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Description</TableHead>
-              <TableHead className="text-muted-foreground w-[100px] text-center text-xs font-medium uppercase tracking-wide">Questions</TableHead>
-              <TableHead className="text-muted-foreground w-[100px] text-center text-xs font-medium uppercase tracking-wide">Published</TableHead>
-              <TableHead className="text-muted-foreground w-[100px] text-center text-xs font-medium uppercase tracking-wide">Drafts</TableHead>
+              <TableHead className="text-muted-foreground w-[80px] text-center text-xs font-medium uppercase tracking-wide">Questions</TableHead>
+              <TableHead className="text-muted-foreground w-[70px] text-center text-xs font-medium uppercase tracking-wide">Drafts</TableHead>
+              <TableHead className="text-muted-foreground w-[80px] text-center text-xs font-medium uppercase tracking-wide">Archived</TableHead>
               <TableHead className="text-muted-foreground w-[60px] text-xs font-medium uppercase tracking-wide" />
             </TableRow>
           </TableHeader>
@@ -516,14 +531,10 @@ export function TemplateOverview() {
                   <span className="text-sm">{s.total}</span>
                 </TableCell>
                 <TableCell className="text-center">
-                  <span className={`text-sm ${s.published > 0 ? "font-medium text-green-600" : "text-muted-foreground"}`}>
-                    {s.published}
-                  </span>
+                  <span className={`text-sm ${s.drafts > 0 ? "font-medium text-amber-500" : "text-muted-foreground"}`}>{s.drafts}</span>
                 </TableCell>
                 <TableCell className="text-center">
-                  <span className={`text-sm ${s.draft > 0 ? "text-muted-foreground font-medium" : "text-muted-foreground"}`}>
-                    {s.draft}
-                  </span>
+                  <span className={`text-sm ${s.archived > 0 ? "text-muted-foreground font-medium" : "text-muted-foreground"}`}>{s.archived}</span>
                 </TableCell>
                 <TableCell>
                   <Button
@@ -590,13 +601,16 @@ export function TemplateOverview() {
                     return (
                       <div key={q.id} className="flex items-center gap-3 border-b px-6 py-3">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{q.field_label || q.field_name}</p>
+                          <p className="truncate text-sm font-medium">
+                            {q.field_label || q.field_name}
+                            {q.isDraft && <span className="text-muted-foreground ml-2 text-xs font-normal">(draft)</span>}
+                          </p>
                           <p className="text-muted-foreground text-xs">{getTypeName(q)}</p>
                         </div>
-                        {q.isPublished ? (
-                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 shrink-0 text-green-600" />
+                        {q.isDraft || !q.isPublished ? (
+                          <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-4 shrink-0 text-amber-500" />
                         ) : (
-                          <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4 shrink-0" />
+                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 shrink-0 text-green-600" />
                         )}
                       </div>
                     )
@@ -606,32 +620,47 @@ export function TemplateOverview() {
             })()}
           </div>
 
-          {sheetSection && (
-            <div className="flex shrink-0 items-center gap-2 border-t px-6 py-4">
-              <Button
-                variant="outline"
-                size="icon"
-                className={editLocked ? "text-muted-foreground" : "text-green-600"}
-                onClick={() => setSheetLockConfirm(true)}
-                title={editLocked ? "Section is locked — click to unlock" : "Section is unlocked — click to lock"}
-              >
-                <HugeiconsIcon icon={editLocked ? SquareLock02Icon : SquareUnlock02Icon} strokeWidth={2} className="size-4" />
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  router.push(`/admin/life-map-template/${sheetSection.slug}`)
-                  setSheetSection(null)
-                }}
-              >
-                Manage Questions
-              </Button>
-              <Button className="flex-1" onClick={handleSaveSheetSettings} disabled={savingSettings}>
-                {savingSettings ? "Saving..." : "Save Settings"}
-              </Button>
-            </div>
-          )}
+          {sheetSection && (() => {
+            const sectionDrafts = allQuestions.filter(
+              (q) => q.lifemap_sections_id === sheetSection.section.id && q.isDraft && !q.isArchived
+            ).length
+            return (
+              <div className="flex shrink-0 items-center gap-2 border-t px-6 py-4">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handlePublishDrafts(sheetSection.section.id)}
+                    disabled={publishing || sectionDrafts === 0}
+                    title={sectionDrafts > 0 ? `Publish ${sectionDrafts} draft${sectionDrafts !== 1 ? "s" : ""}` : "No drafts to publish"}
+                  >
+                    <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={editLocked ? "text-muted-foreground" : "text-green-600"}
+                    onClick={() => setSheetLockConfirm(true)}
+                    title={editLocked ? "Section is locked — click to unlock" : "Section is unlocked — click to lock"}
+                  >
+                    <HugeiconsIcon icon={editLocked ? SquareLock02Icon : SquareUnlock02Icon} strokeWidth={2} className="size-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      router.push(`/admin/life-map-template/${sheetSection.slug}`)
+                      setSheetSection(null)
+                    }}
+                    title="Manage Questions"
+                  >
+                    <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="size-4" />
+                  </Button>
+                  <Button className="flex-1" onClick={handleSaveSheetSettings} disabled={savingSettings}>
+                    {savingSettings ? "Saving..." : "Save Settings"}
+                  </Button>
+              </div>
+            )
+          })()}
         </SheetContent>
       </Sheet>
 
