@@ -24,6 +24,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { TeacherComment } from "./teacher-comment"
 import type { Comment } from "@/lib/form-types"
@@ -43,6 +54,7 @@ const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
 const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
 const RESPONSE_PATCH_BASE = `${XANO_BASE}/lifemap_responses`
+const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
 
 interface ReviewRecord {
   id: number
@@ -78,6 +90,7 @@ interface TemplateQuestion {
   isArchived: boolean
   isDraft?: boolean
   question_types_id: number
+  _question_types?: { id: number; type: string; noInput?: boolean }
   lifemap_custom_group_id: number | null
   dropdownOptions: string[]
   sortOrder: number
@@ -93,6 +106,7 @@ interface CustomGroup {
   lifemap_sections_id: number
   order?: number
   lifemap_group_display_types_id?: number | null
+  _lifemap_group_display_types?: { id: number; columns?: number }
 }
 
 interface StudentResponse {
@@ -157,6 +171,49 @@ function getWordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length
 }
 
+function ConfirmAllButton({ readyCount, onConfirmAll }: { readyCount: number; onConfirmAll: () => Promise<void> }) {
+  const [loading, setLoading] = useState(false)
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-6 w-px bg-border" />
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogTrigger asChild>
+          <Button variant="outline" size="sm" disabled={loading}>
+            {loading ? (
+              <span className="mr-2 size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} className="mr-1.5 size-4" />
+            )}
+            Confirm All ({readyCount})
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm all pending items?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark {readyCount} pending review {readyCount === 1 ? "item" : "items"} as complete. This action can be undone individually.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault()
+                setLoading(true)
+                setOpen(false)
+                try { await onConfirmAll() } finally { setLoading(false) }
+              }}
+            >
+              Confirm All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
 export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId, headerContent }: ReadOnlyDynamicFormPageProps) {
   const { data: session } = useSession()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
@@ -174,18 +231,27 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [templateRes, responsesRes, groupsRes, commentsRes] = await Promise.all([
+        const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
           fetch(TEMPLATE_ENDPOINT),
           fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
           fetch(CUSTOM_GROUP_ENDPOINT),
           fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
+          fetch(QUESTION_TYPES_ENDPOINT),
         ])
+
+        const noInputTypeIds = new Set<number>()
+        if (qTypesRes.ok) {
+          const types = (await qTypesRes.json()) as { id: number; noInput?: boolean }[]
+          for (const t of types) {
+            if (t.noInput) noInputTypeIds.add(t.id)
+          }
+        }
 
         let allTemplateQuestions: TemplateQuestion[] = []
         if (templateRes.ok) {
           allTemplateQuestions = (await templateRes.json()) as TemplateQuestion[]
           const filtered = allTemplateQuestions
-            .filter((q) => q.lifemap_sections_id === sectionId && q.isPublished && !q.isArchived)
+            .filter((q) => q.lifemap_sections_id === sectionId && q.isPublished && !q.isArchived && !noInputTypeIds.has(q.question_types_id))
             .sort((a, b) => a.sortOrder - b.sortOrder)
           setQuestions(filtered)
         }
@@ -383,7 +449,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   )
 
   const handleResponseReviewAction = useCallback(
-    async (responseId: number, templateId: number, action: "complete" | "revision" | "ready" | "clear", comment?: string) => {
+    async (responseId: number, templateId: number, action: "complete" | "revision" | "ready" | "clear", comment?: string, silent = false) => {
       const now = new Date().toISOString()
       const patch =
         action === "complete"
@@ -434,8 +500,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             }).catch(() => {})
           }
 
-          const labels: Record<string, string> = { complete: "Marked complete", revision: "Revision requested", ready: "Marked ready for review", clear: "Status cleared" }
-          toast.success(labels[action] ?? "Status updated")
+          if (!silent) {
+            const labels: Record<string, string> = { complete: "Marked complete", revision: "Revision requested", ready: "Marked ready for review", clear: "Status cleared" }
+            toast.success(labels[action] ?? "Status updated")
+          }
 
           if (action === "complete") {
             const q = questions.find((qt) => qt.id === templateId)
@@ -463,7 +531,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                           next.set(groupId, { ...review, ...groupPatch })
                           return next
                         })
-                        toast.success("Group automatically marked complete")
+                        if (!silent) toast.success("Group automatically marked complete")
                       }
                     }).catch(() => {})
                   }
@@ -474,7 +542,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           }
         }
       } catch {
-        toast.error("Failed to update status")
+        if (!silent) toast.error("Failed to update status")
       }
     },
     [session, studentId, sectionId, questions, groupReviews]
@@ -647,11 +715,30 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     )
   }
 
+  const allReadyQuestions = questions.filter((q) => {
+    const r = responses.get(q.id)
+    return r?.readyReview && !r?.isComplete && !r?.revisionNeeded
+  })
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      <div>
-        <h1 className="text-2xl font-bold">{title}</h1>
-        {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">{title}</h1>
+          {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
+        </div>
+        {allReadyQuestions.length > 0 && (
+          <ConfirmAllButton
+            readyCount={allReadyQuestions.length}
+            onConfirmAll={async () => {
+              for (const q of allReadyQuestions) {
+                const r = responses.get(q.id)
+                if (r) await handleResponseReviewAction(r.id, q.id, "complete", undefined, true)
+              }
+              toast.success(`${allReadyQuestions.length} question${allReadyQuestions.length > 1 ? "s" : ""} confirmed`, { duration: 3000 })
+            }}
+          />
+        )}
       </div>
 
       {headerContent}
@@ -707,6 +794,22 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                           <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
                         </div>
                       )}
+                      {readyCount > 0 && (
+                        <ConfirmAllButton
+                          readyCount={readyCount}
+                          onConfirmAll={async () => {
+                            const readyQuestions = gQuestions.filter((q) => {
+                              const r = responses.get(q.id)
+                              return r?.readyReview && !r?.isComplete && !r?.revisionNeeded
+                            })
+                            for (const q of readyQuestions) {
+                              const r = responses.get(q.id)
+                              if (r) await handleResponseReviewAction(r.id, q.id, "complete", undefined, true)
+                            }
+                            toast.success(`${readyQuestions.length} question${readyQuestions.length > 1 ? "s" : ""} confirmed`, { duration: 3000 })
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                   {group.group_description && (
@@ -714,11 +817,15 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   )}
                 </div>
                 <CardContent className="p-6">
-                  {hasDisplayType && group.lifemap_group_display_types_id !== DISPLAY_TYPE.GOOGLE_BUDGET ? (
-                    <div className="grid gap-3 md:grid-cols-4">
-                      {renderQuestionList(gQuestions, true)}
-                    </div>
-                  ) : (
+                  {hasDisplayType ? (() => {
+                    const cols = group._lifemap_group_display_types?.columns ?? 4
+                    const colClass = cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : cols === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
+                    return cols === 1 ? renderQuestionList(gQuestions) : (
+                      <div className={`grid gap-3 ${colClass}`}>
+                        {renderQuestionList(gQuestions, true)}
+                      </div>
+                    )
+                  })() : (
                     renderQuestionList(gQuestions)
                   )}
                 </CardContent>

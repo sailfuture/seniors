@@ -2,13 +2,21 @@
 
 import React from "react"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 interface TemplateQuestion {
   id: number
   field_name: string
   field_label: string
   question_types_id?: number | null
-  _question_types?: { id: number; type: string }
+  _question_types?: { id: number; type: string; noInput?: boolean }
   public_display_title?: string
   public_display_description?: string
 }
@@ -64,6 +72,7 @@ export const DISPLAY_TYPE = {
   GALLERY: 3,
   COMPETITOR_MAP: 4,
   GOOGLE_BUDGET: 6,
+  TRANSPORTATION_BUDGET: 7,
 } as const
 
 export function isGroupDisplayType(typeId: number | null | undefined): boolean {
@@ -89,6 +98,8 @@ export function GroupDisplayRenderer({
       return <CompetitorMapDisplay questions={questions} responseMap={responseMap} mode={mode} />
     case DISPLAY_TYPE.GOOGLE_BUDGET:
       return <GoogleBudgetDisplay questions={questions} responseMap={responseMap} />
+    case DISPLAY_TYPE.TRANSPORTATION_BUDGET:
+      return <TransportationBudgetDisplay questions={questions} responseMap={responseMap} />
     default:
       return null
   }
@@ -320,7 +331,10 @@ function toGoogleEmbedUrl(url: string): string {
   if (!url) return ""
   const trimmed = url.trim()
   const match = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/)
-  if (match) return `https://docs.google.com/spreadsheets/d/${match[1]}/preview`
+  if (match) {
+    const gid = trimmed.match(/gid=(\d+)/)
+    return `https://docs.google.com/spreadsheets/d/${match[1]}/htmlview${gid ? `?gid=${gid[1]}` : ""}`
+  }
   return trimmed
 }
 
@@ -357,25 +371,148 @@ function GoogleBudgetDisplay({
   const summary = getTextValue("google_sheet_summary", questions, responseMap)
   const embedUrl = toGoogleEmbedUrl(sheetUrl)
 
+  const tableQuestions = questions.filter(
+    (q) => q.field_name !== "google_sheet_url" && q.field_name !== "google_sheet_summary"
+  )
+
+  type Section = { header: string; rows: { label: string; value: string }[] }
+  const sections: Section[] = []
+  let current: Section | null = null
+
+  for (const q of tableQuestions) {
+    const isTextHeader = q._question_types?.noInput === true
+    if (isTextHeader) {
+      current = { header: q.public_display_title || q.field_label, rows: [] }
+      sections.push(current)
+    } else {
+      const value = getTextValue(q.field_name, questions, responseMap)
+      const label = q.public_display_title || q.field_label
+      if (!current) {
+        current = { header: "", rows: [] }
+        sections.push(current)
+      }
+      current.rows.push({ label, value })
+    }
+  }
+
   return (
     <div className="space-y-0">
       {embedUrl ? (
-        <iframe
-          src={embedUrl}
-          title="Google Budget Sheet"
-          className="h-[500px] w-full border-0"
-          allowFullScreen
-        />
+        <div className="h-[500px] w-full overflow-hidden">
+          <iframe
+            src={embedUrl}
+            title="Google Budget Sheet"
+            className="w-full border-0"
+            style={{ height: "calc(100% + 56px)", marginTop: "-56px" }}
+          />
+        </div>
       ) : (
         <div className="flex h-[300px] items-center justify-center bg-gray-50 text-sm text-muted-foreground">
           No budget sheet linked
         </div>
       )}
-      {summary && (
-        <div className="border-t px-5 py-4">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">{summary}</p>
+
+      {sections.length > 0 && (
+        <div className="border-t">
+          <Table>
+            {sections.map((section, sIdx) => (
+              <React.Fragment key={sIdx}>
+                {section.header && (
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead colSpan={2} className="text-xs font-semibold uppercase tracking-wide">
+                        {section.header}
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                )}
+                <TableBody>
+                  {section.rows.map((row, rIdx) => (
+                    <TableRow key={rIdx}>
+                      <TableCell className="text-muted-foreground w-1/3 text-sm">{row.label}</TableCell>
+                      <TableCell className="whitespace-pre-wrap text-sm font-semibold">{row.value || "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </React.Fragment>
+            ))}
+          </Table>
         </div>
       )}
+
+      {summary && (() => {
+        const summaryQ = questions.find((q) => q.field_name === "google_sheet_summary")
+        const label = summaryQ?.public_display_title || summaryQ?.field_label || "Summary"
+        return (
+          <div className="border-t px-5 py-4">
+            <p className="text-muted-foreground mb-1 text-xs font-medium">{label}</p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{summary}</p>
+          </div>
+        )
+      })()}
+    </div>
+  )
+}
+
+// ── Transportation Budget (type 7) ──
+
+const TRANSPORT_LAYOUT: { header: string; fields: string[] }[] = [
+  {
+    header: "Monthly Expenses",
+    fields: ["insurance_amount", "gas", "maintenance", "total_monthly_cost"],
+  },
+  {
+    header: "One Time Expenses",
+    fields: ["initial_insurance", "tax_title_license", "total_one_time"],
+  },
+]
+
+function formatUSD(raw: string): string {
+  if (!raw) return "—"
+  const num = parseFloat(raw.replace(/[^0-9.-]/g, ""))
+  if (isNaN(num)) return raw
+  return `$${num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function TransportationBudgetDisplay({
+  questions,
+  responseMap,
+}: {
+  questions: TemplateQuestion[]
+  responseMap: Map<number, StudentResponse>
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border">
+      <Table>
+        {TRANSPORT_LAYOUT.map((section, sIdx) => {
+          const rows = section.fields.map((fieldName) => {
+            const q = questions.find((q) => q.field_name === fieldName)
+            const label = q?.public_display_title || q?.field_label || fieldName
+            const value = getTextValue(fieldName, questions, responseMap)
+            return { label, value }
+          })
+
+          return (
+            <React.Fragment key={sIdx}>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead colSpan={2} className="text-xs font-semibold uppercase tracking-wide">
+                    {section.header}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row, rIdx) => (
+                  <TableRow key={rIdx}>
+                    <TableCell className="text-muted-foreground w-1/2 text-sm">{row.label}</TableCell>
+                    <TableCell className="text-sm font-semibold">{formatUSD(row.value)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </React.Fragment>
+          )
+        })}
+      </Table>
     </div>
   )
 }

@@ -60,7 +60,7 @@ interface TemplateQuestion {
   dropdownOptions?: string[]
   public_display_title?: string
   public_display_description?: string
-  _question_types?: { id: number; type: string }
+  _question_types?: { id: number; type: string; noInput?: boolean }
 }
 
 interface StudentResponse {
@@ -365,9 +365,10 @@ export default function PublicLifeMapPage({
 
                             if (isGroupDisplayType(group.lifemap_group_display_types_id)) {
                               const isGoogleBudget = group.lifemap_group_display_types_id === DISPLAY_TYPE.GOOGLE_BUDGET
+                              const isTransportBudget = group.lifemap_group_display_types_id === DISPLAY_TYPE.TRANSPORTATION_BUDGET
                               const sheetUrl = isGoogleBudget ? getGoogleSheetUrl(groupQuestions, responseMap) : ""
                               return (
-                                <div key={group.id} className="md:col-span-2">
+                                <div key={group.id} className={isTransportBudget ? "md:col-span-1" : "md:col-span-2"}>
                                   <Card className="border-gray-200 shadow-none">
                                     <CardHeader className="border-b">
                                       <div className="flex items-center justify-between">

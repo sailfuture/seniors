@@ -123,6 +123,7 @@ interface CustomGroup {
 interface GroupDisplayType {
   id: number
   display_type: string
+  columns?: number
 }
 
 const emptyQuestion: Omit<TemplateQuestion, "id"> = {

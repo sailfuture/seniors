@@ -70,6 +70,7 @@ const RESPONSE_PATCH_BASE = `${XANO_BASE}/lifemap_responses`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
 const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
+const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
 
 interface GptZeroResult {
   lifemap_responses_id: number
@@ -94,6 +95,7 @@ interface TemplateQuestion {
   isArchived: boolean
   isDraft?: boolean
   question_types_id: number
+  _question_types?: { id: number; type: string; noInput?: boolean }
   lifemap_custom_group_id: number | null
   dropdownOptions: string[]
   sortOrder: number
@@ -108,6 +110,7 @@ interface CustomGroup {
   lifemap_sections_id: number
   order?: number
   lifemap_group_display_types_id?: number | null
+  _lifemap_group_display_types?: { id: number; columns?: number }
 }
 
 interface ReviewRecord {
@@ -176,18 +179,27 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     if (!studentId) return
 
     try {
-      const [templateRes, responsesRes, groupsRes, commentsRes] = await Promise.all([
+      const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
         fetch(TEMPLATE_ENDPOINT),
         fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
         fetch(CUSTOM_GROUP_ENDPOINT),
         fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
+        fetch(QUESTION_TYPES_ENDPOINT),
       ])
+
+      const noInputTypeIds = new Set<number>()
+      if (qTypesRes.ok) {
+        const types = (await qTypesRes.json()) as { id: number; noInput?: boolean }[]
+        for (const t of types) {
+          if (t.noInput) noInputTypeIds.add(t.id)
+        }
+      }
 
       let allTemplateQuestions: TemplateQuestion[] = []
       if (templateRes.ok) {
         allTemplateQuestions = (await templateRes.json()) as TemplateQuestion[]
         const filtered = allTemplateQuestions
-          .filter((q) => q.lifemap_sections_id === sectionId && q.isPublished && !q.isArchived)
+          .filter((q) => q.lifemap_sections_id === sectionId && q.isPublished && !q.isArchived && !noInputTypeIds.has(q.question_types_id))
           .sort((a, b) => a.sortOrder - b.sortOrder)
         setQuestions(filtered)
       }
@@ -455,7 +467,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
   }
 
   const handleResponseStatusChange = useCallback(
-    async (responseId: number, templateId: number, action: "ready" | "clear") => {
+    async (responseId: number, templateId: number, action: "ready" | "clear", silent = false) => {
       if (action === "ready" && studentId) {
         const response = responses.get(templateId)
         const text = localValues.get(templateId) ?? response?.student_response ?? ""
@@ -521,10 +533,10 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
             if (existing) next.set(templateId, { ...existing, ...patch, last_edited: now })
             return next
           })
-          toast.success(action === "ready" ? "Sent for review" : "Reopened for editing")
+          if (!silent) toast.success(action === "ready" ? "Sent for review" : "Reopened for editing")
         }
       } catch {
-        toast.error("Failed to update status")
+        if (!silent) toast.error("Failed to update status")
       }
     },
     [studentId, sectionId, responses, localValues, questions]
@@ -683,7 +695,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
             }
             for (const q of eligibleForReview) {
               const r = responses.get(q.id)
-              if (r) await handleResponseStatusChange(r.id, q.id, "ready")
+              if (r) await handleResponseStatusChange(r.id, q.id, "ready", true)
             }
             toast.success(`${eligibleForReview.length} question${eligibleForReview.length > 1 ? "s" : ""} submitted for review`, { duration: 3000 })
           }}
@@ -711,11 +723,15 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
             }
           }}
         >
-          {isGroupDisplayType(group.lifemap_group_display_types_id) && group.lifemap_group_display_types_id !== DISPLAY_TYPE.GOOGLE_BUDGET ? (
-            <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4">
-              {renderQuestionList(gQuestions, true)}
-            </div>
-          ) : (
+          {isGroupDisplayType(group.lifemap_group_display_types_id) ? (() => {
+            const cols = group._lifemap_group_display_types?.columns ?? 3
+            const colClass = cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : cols === 4 ? "md:grid-cols-3 lg:grid-cols-4" : "md:grid-cols-3"
+            return cols === 1 ? renderQuestionList(gQuestions) : (
+              <div className={`grid gap-6 ${colClass}`}>
+                {renderQuestionList(gQuestions, true)}
+              </div>
+            )
+          })() : (
             renderQuestionList(gQuestions)
           )}
         </GroupSection>

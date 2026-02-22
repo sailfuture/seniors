@@ -80,7 +80,7 @@ interface TemplateQuestion {
   sortOrder: number
   min_words?: number
   question_types_id?: number | null
-  _question_types?: { id: number; type: string }
+  _question_types?: { id: number; type: string; noInput?: boolean }
 }
 
 interface StudentResponse {
