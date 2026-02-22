@@ -76,6 +76,7 @@ interface TeacherCommentProps {
   onDelete: (commentId: number) => Promise<void>
   square?: boolean
   plagiarism?: PlagiarismData
+  teacherGuideline?: string
 }
 
 export function TeacherComment({
@@ -88,6 +89,7 @@ export function TeacherComment({
   onDelete,
   square,
   plagiarism,
+  teacherGuideline,
 }: TeacherCommentProps) {
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState("")
@@ -157,8 +159,8 @@ export function TeacherComment({
           <div className="flex-1 overflow-y-auto">
             {showAnswerBlock && (
               <>
-                <div className="space-y-1 px-6 py-4">
-                  <p className="text-muted-foreground text-sm">{fieldLabel}</p>
+                <div className="space-y-3 px-6 py-4">
+                  <p className="text-sm font-semibold">{fieldLabel}</p>
                   {displayAnswer && (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
                   )}
@@ -174,6 +176,13 @@ export function TeacherComment({
                 </div>
                 <Separator />
               </>
+            )}
+
+            {teacherGuideline && (
+              <div className="border-b px-6 py-4">
+                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase tracking-wide">Teacher Guideline</p>
+                <p className="text-sm">{teacherGuideline}</p>
+              </div>
             )}
 
             <div className="space-y-2 px-6 py-4">

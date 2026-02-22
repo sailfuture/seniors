@@ -1,9 +1,8 @@
 "use client"
 
-import { use, useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
-import Link from "next/link"
 import {
   Table,
   TableBody,
@@ -15,7 +14,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Sheet,
   SheetContent,
@@ -23,26 +21,14 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  ArrowLeft02Icon,
   CheckmarkCircle02Icon,
   CircleIcon,
   SquareLock02Icon,
   SquareUnlock02Icon,
   AlertCircleIcon,
   SentIcon,
-  Delete02Icon,
-  ArrowTurnBackwardIcon,
   ArrowRight01Icon,
   ArrowDown01Icon,
   ArrowUp01Icon,
@@ -50,6 +36,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import type { Comment } from "@/lib/form-types"
+import { cn } from "@/lib/utils"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -68,7 +55,6 @@ interface ReviewRecord {
   lifemap_sections_id: number
   lifemap_custom_group_id: number | null
   students_id: string
-  teachers_id: string | null
   readyReview: boolean
   revisionNeeded: boolean
   isComplete: boolean
@@ -132,14 +118,6 @@ function formatRelativeTime(ts: string | number | null | undefined): string | nu
   return date.toLocaleDateString()
 }
 
-function ReviewStatusIcon({ review }: { review: ReviewRecord | undefined }) {
-  if (!review) return <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-  if (review.isComplete) return <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-  if (review.revisionNeeded) return <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-  if (review.readyReview) return <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
-  return <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-}
-
 function reviewStatusLabel(review: ReviewRecord | undefined): string {
   if (!review) return ""
   if (review.isComplete) return "Complete"
@@ -148,14 +126,10 @@ function reviewStatusLabel(review: ReviewRecord | undefined): string {
   return ""
 }
 
-export default function AdminStudentLifeMapOverviewPage({
-  params,
-}: {
-  params: Promise<{ studentId: string }>
-}) {
-  const { studentId } = use(params)
+export default function StudentLifeMapOverviewPage() {
   const router = useRouter()
   const { data: session } = useSession()
+  const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
 
   const [rows, setRows] = useState<SectionRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -167,23 +141,13 @@ export default function AdminStudentLifeMapOverviewPage({
 
   const [sheetRow, setSheetRow] = useState<SectionRow | null>(null)
   const [sheetGroupId, setSheetGroupId] = useState<number | null>(null)
-  const commentTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   const [sectionQuestions, setSectionQuestions] = useState<TemplateQuestion[]>([])
   const [sectionResponses, setSectionResponses] = useState<StudentResponse[]>([])
   const [loadingSheet, setLoadingSheet] = useState(false)
 
-  const [commentNote, setCommentNote] = useState("")
-  const [postingComment, setPostingComment] = useState(false)
-
-  useEffect(() => {
-    if (sheetRow) {
-      const timer = setTimeout(() => commentTextareaRef.current?.focus(), 300)
-      return () => clearTimeout(timer)
-    }
-  }, [sheetRow])
-
   const loadComments = useCallback(async () => {
+    if (!studentId) return
     try {
       const res = await fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`)
       if (res.ok) {
@@ -194,6 +158,7 @@ export default function AdminStudentLifeMapOverviewPage({
   }, [studentId])
 
   const loadData = useCallback(async () => {
+    if (!studentId) return
     try {
       const [sectionsRes, reviewRes, groupsRes, qTypesRes, templateRes, responsesRes] = await Promise.all([
         fetch(SECTIONS_ENDPOINT),
@@ -233,9 +198,7 @@ export default function AdminStudentLifeMapOverviewPage({
       }))
 
       setRows(result)
-    } catch {
-      toast.error("Failed to load data")
-    } finally {
+    } catch { /* ignore */ } finally {
       setLoading(false)
     }
   }, [studentId])
@@ -251,7 +214,6 @@ export default function AdminStudentLifeMapOverviewPage({
     setLoadingSheet(true)
     setSectionQuestions([])
     setSectionResponses([])
-    setCommentNote("")
 
     try {
       const [templateRes, responsesRes] = await Promise.all([
@@ -272,8 +234,8 @@ export default function AdminStudentLifeMapOverviewPage({
       }
 
       if (responsesRes.ok) {
-        const allResponses: StudentResponse[] = await responsesRes.json()
-        setSectionResponses(allResponses.filter((r) => !r.isArchived))
+        const resp: StudentResponse[] = await responsesRes.json()
+        setSectionResponses(resp.filter((r) => !r.isArchived))
       }
     } catch { /* ignore */ } finally {
       setLoadingSheet(false)
@@ -286,52 +248,21 @@ export default function AdminStudentLifeMapOverviewPage({
     )
   }
 
-  const handlePostComment = async () => {
-    if (!commentNote.trim() || !sheetRow) return
-    setPostingComment(true)
-    const teacherName = session?.user?.name ?? "Teacher"
-    const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
-    const payload: Record<string, unknown> = {
-      students_id: studentId,
-      teachers_id: teachersId,
-      field_name: "_section_comment",
-      lifemap_sections_id: sheetRow.section.id,
-      note: commentNote.trim(),
-      isOld: false,
-      isComplete: false,
-      teacher_name: teacherName,
-    }
-    if (sheetGroupId !== null) {
-      payload.lifemap_custom_group_id = sheetGroupId
-    }
+  const handleMarkCommentRead = useCallback(async (commentId: number) => {
+    const now = new Date().toISOString()
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId ? { ...c, isOld: true, isRead: now } : c
+      )
+    )
     try {
-      const res = await fetch(COMMENTS_ENDPOINT, {
-        method: "POST",
+      await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ isOld: true, isRead: now }),
       })
-      if (res.ok) {
-        const newComment = await res.json()
-        setComments((prev) => [
-          ...prev,
-          { ...newComment, teacher_name: newComment.teacher_name || teacherName },
-        ])
-        setCommentNote("")
-      }
-    } catch { /* ignore */ } finally {
-      setPostingComment(false)
-    }
-  }
-
-  const handleDeleteComment = useCallback(
-    async (commentId: number) => {
-      const res = await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, { method: "DELETE" })
-      if (res.ok) {
-        setComments((prev) => prev.filter((c) => c.id !== commentId))
-      }
-    },
-    []
-  )
+    } catch { /* ignore */ }
+  }, [])
 
   const sheetComments = sheetRow
     ? comments.filter((c) => {
@@ -343,11 +274,20 @@ export default function AdminStudentLifeMapOverviewPage({
         return !c.lifemap_custom_group_id
       })
     : []
-  const sortedSheetComments = [...sheetComments].sort(
-    (a, b) => parseTimestamp(b.created_at) - parseTimestamp(a.created_at)
-  )
+  const sortedSheetComments = [...sheetComments].sort((a, b) => {
+    const aUnread = !a.isOld ? 0 : 1
+    const bUnread = !b.isOld ? 0 : 1
+    if (aUnread !== bUnread) return aUnread - bUnread
+    const aTime = a.created_at
+      ? (typeof a.created_at === "number" ? a.created_at : new Date(a.created_at as string).getTime())
+      : 0
+    const bTime = b.created_at
+      ? (typeof b.created_at === "number" ? b.created_at : new Date(b.created_at as string).getTime())
+      : 0
+    return bTime - aTime
+  })
 
-  if (loading) {
+  if (loading || !studentId) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
         <Skeleton className="h-8 w-64" />
@@ -365,20 +305,11 @@ export default function AdminStudentLifeMapOverviewPage({
       <div>
         <h1 className="text-2xl font-bold">Life Map Overview</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Review section progress and provide feedback.
+          View your progress across all sections.
         </p>
       </div>
 
       <hr className="border-border -mb-3" />
-
-      <div className="flex items-center justify-between">
-        <Button variant="outline" size="sm" className="gap-2" asChild>
-          <Link href="/admin/life-map">
-            <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
-            Back
-          </Link>
-        </Button>
-      </div>
 
       <div className="rounded-md border">
         <Table className="table-fixed">
@@ -398,7 +329,7 @@ export default function AdminStudentLifeMapOverviewPage({
                   row={row}
                   locked={locked}
                   getReviewForGroup={getReviewForGroup}
-                  onRowClick={(slug) => router.push(`/admin/life-map/${studentId}/${slug}`)}
+                  onRowClick={(slug) => router.push(`/life-map/${slug}`)}
                   onViewSummary={(groupId) => openSheet(row, groupId)}
                   templateQuestions={allTemplateQuestions}
                   responses={allResponses}
@@ -418,24 +349,25 @@ export default function AdminStudentLifeMapOverviewPage({
                 ? rows.flatMap((r) => r.groups).find((g) => g.id === sheetGroupId)?.group_name
                 : sheetRow?.section.section_title}
             </SheetTitle>
-            <SheetDescription className="sr-only">Review section details</SheetDescription>
+            <SheetDescription className="sr-only">Section details</SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto">
             <div className="border-b px-6 py-4">
               <Label className="text-muted-foreground mb-3 block text-xs font-medium uppercase tracking-wide">Comments</Label>
-              {sortedSheetComments.length === 0 && (
+              {sortedSheetComments.length === 0 ? (
                 <p className="text-muted-foreground py-4 text-center text-sm">No comments yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sortedSheetComments.map((c) => (
+                    <CommentCard
+                      key={c.id}
+                      comment={c}
+                      onMarkRead={handleMarkCommentRead}
+                    />
+                  ))}
+                </div>
               )}
-              <div className="space-y-2">
-                {sortedSheetComments.map((c) => (
-                  <InlineCommentCard
-                    key={c.id}
-                    comment={c}
-                    onDelete={() => c.id && handleDeleteComment(c.id)}
-                  />
-                ))}
-              </div>
             </div>
 
             <div className="flex items-center justify-between px-6 py-4">
@@ -445,7 +377,7 @@ export default function AdminStudentLifeMapOverviewPage({
                 size="sm"
                 onClick={() => {
                   if (!sheetRow) return
-                  router.push(`/admin/life-map/${studentId}/${sheetRow.slug}`)
+                  router.push(`/life-map/${sheetRow.slug}`)
                   setSheetRow(null)
                 }}
               >
@@ -500,38 +432,8 @@ export default function AdminStudentLifeMapOverviewPage({
               </div>
             )}
           </div>
-
-          <div className="shrink-0 border-t">
-            <div className="px-6 py-3">
-              <Textarea
-                ref={commentTextareaRef}
-                placeholder="Add a comment..."
-                value={commentNote}
-                onChange={(e) => setCommentNote(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && commentNote.trim() && !postingComment) {
-                    e.preventDefault()
-                    handlePostComment()
-                  }
-                }}
-                rows={3}
-                className="w-full"
-              />
-            </div>
-            <div className="flex items-center gap-2 border-t px-6 py-3">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={handlePostComment}
-                disabled={!commentNote.trim() || postingComment}
-              >
-                {postingComment ? "Posting..." : "Post Comment"}
-              </Button>
-            </div>
-          </div>
         </SheetContent>
       </Sheet>
-
     </div>
   )
 }
@@ -557,18 +459,19 @@ function SectionTableRows({
 }) {
   const [collapsed, setCollapsed] = useState(false)
 
-  const sectionComments = comments.filter(
-    (c) => c.field_name === "_section_comment" && Number(c.lifemap_sections_id) === row.section.id
-  )
-
   const bgClass = locked
     ? "bg-gray-50 hover:bg-gray-100 dark:bg-gray-900/30 dark:hover:bg-gray-900/50"
     : "hover:bg-muted/50"
+
+  const sectionComments = comments.filter(
+    (c) => c.field_name === "_section_comment" && Number(c.lifemap_sections_id) === row.section.id
+  )
 
   if (row.groups.length === 0) {
     const review = getReviewForGroup(row.section.id, null)
     const relTime = formatRelativeTime(review?.update)
     const statusLabel = reviewStatusLabel(review)
+    const unreadCount = sectionComments.filter((c) => !c.isOld && !c.lifemap_custom_group_id).length
     return (
       <TableRow
         className={`cursor-pointer [&>td]:py-3.5 ${bgClass}`}
@@ -585,7 +488,7 @@ function SectionTableRows({
         </TableCell>
         <TableCell>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{row.section.section_title}</span>
               {(relTime || statusLabel) && (
                 <span className="text-muted-foreground/50 text-xs">
@@ -593,6 +496,12 @@ function SectionTableRows({
                   {relTime && statusLabel && " "}
                   {statusLabel && <>· {statusLabel}</>}
                 </span>
+              )}
+              {unreadCount > 0 && (
+                <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${unreadCount} unread comment${unreadCount !== 1 ? "s" : ""}`}>
+                  <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-blue-500" />
+                  <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{unreadCount}</span>
+                </div>
               )}
             </div>
             {row.section.section_description && (
@@ -661,11 +570,9 @@ function SectionTableRows({
           return r?.readyReview && !r?.isComplete && !r?.revisionNeeded
         }).length
         const groupBlank = groupQs.length - groupCompleted - groupRevision - groupReady
-        const groupComments = sectionComments.filter(
-          (c) => Number(c.lifemap_custom_group_id) === group.id
-        )
-        const groupCommentCount = groupComments.length
-        const groupUnreadComments = groupComments.filter((c) => !c.isOld).length
+        const unreadGroupComments = sectionComments.filter(
+          (c) => !c.isOld && Number(c.lifemap_custom_group_id) === group.id
+        ).length
         const isGroupComplete = groupQs.length > 0 && groupCompleted === groupQs.length
         const lastCompletedTime = isGroupComplete
           ? groupQs.reduce<string | number | null | undefined>((latest, q) => {
@@ -697,12 +604,10 @@ function SectionTableRows({
             <TableCell>
               <div className="flex items-center gap-2 pl-4">
                 <span className={`text-sm ${isGroupComplete ? "text-muted-foreground" : "font-semibold text-foreground"}`}>{group.group_name}</span>
-                {groupCommentCount > 0 && (
-                  <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${groupCommentCount} comment${groupCommentCount !== 1 ? "s" : ""}`}>
-                    <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground/50" />
-                    {groupUnreadComments > 0 && (
-                      <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{groupUnreadComments}</span>
-                    )}
+                {unreadGroupComments > 0 && (
+                  <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${unreadGroupComments} unread comment${unreadGroupComments !== 1 ? "s" : ""}`}>
+                    <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-blue-500" />
+                    <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{unreadGroupComments}</span>
                   </div>
                 )}
               </div>
@@ -748,38 +653,39 @@ function SectionTableRows({
   )
 }
 
-function InlineCommentCard({
-  comment,
-  onDelete,
+function CommentCard({
+  comment: c,
+  onMarkRead,
 }: {
   comment: Comment
-  onDelete: () => void
+  onMarkRead: (commentId: number) => void
 }) {
-  const createdDate = comment.created_at ? new Date(parseTimestamp(comment.created_at)) : null
-  const readTime = comment.isRead ? formatRelativeTime(
-    typeof comment.isRead === "number" ? comment.isRead : new Date(comment.isRead as string).getTime()
+  const commentTime = c.created_at ? formatRelativeTime(
+    typeof c.created_at === "number" ? c.created_at : new Date(c.created_at as string).getTime()
   ) : null
+  const readTime = c.isRead ? formatRelativeTime(
+    typeof c.isRead === "number" ? c.isRead : new Date(c.isRead as string).getTime()
+  ) : null
+  const isRead = !!c.isRead || c.isOld
 
   return (
-    <div className="relative rounded-md border p-3 text-sm">
-      {comment.id && (
-        <div className="absolute right-2 top-2">
-          <button
-            type="button"
-            onClick={onDelete}
-            className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-500"
-            title="Delete"
-          >
-            <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-3.5" />
-          </button>
-        </div>
+    <div className={cn("relative rounded-md border p-3 text-sm", isRead && "bg-muted/50")}>
+      {!isRead && c.id != null && (
+        <button
+          type="button"
+          onClick={() => onMarkRead(c.id!)}
+          className="absolute right-2 top-2 inline-flex size-6 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:bg-accent hover:text-green-600"
+          title="Mark as read"
+        >
+          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
+        </button>
       )}
-      <p className="whitespace-pre-wrap pr-7">{comment.note}</p>
+      <p className={cn("whitespace-pre-wrap", !isRead && "pr-7")}>{c.note}</p>
       <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
-        {createdDate && <span>{formatRelativeTime(createdDate.getTime())}</span>}
-        {createdDate && comment.teacher_name && <span>&middot;</span>}
-        {comment.teacher_name && <span className="font-medium">{comment.teacher_name}</span>}
-        {comment.isRevisionFeedback && (
+        {commentTime && <span>{commentTime}</span>}
+        {commentTime && c.teacher_name && <span>&middot;</span>}
+        {c.teacher_name && <span className="font-medium">{c.teacher_name}</span>}
+        {c.isRevisionFeedback && (
           <>
             <span>&middot;</span>
             <span className="font-semibold text-red-500">Revision</span>
@@ -794,12 +700,4 @@ function InlineCommentCard({
       </div>
     </div>
   )
-}
-
-
-function parseTimestamp(ts: string | number | undefined): number {
-  if (!ts) return 0
-  if (typeof ts === "number") return ts
-  if (/^\d+$/.test(String(ts))) return Number(ts)
-  return new Date(String(ts)).getTime()
 }

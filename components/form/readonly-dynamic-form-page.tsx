@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  Robot01Icon,
   CheckmarkCircle02Icon,
   CircleIcon,
   SentIcon,
@@ -42,6 +41,7 @@ const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
 const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
+const RESPONSE_PATCH_BASE = `${XANO_BASE}/lifemap_responses`
 
 interface ReviewRecord {
   id: number
@@ -80,6 +80,7 @@ interface TemplateQuestion {
   lifemap_custom_group_id: number | null
   dropdownOptions: string[]
   sortOrder: number
+  teacher_guideline?: string
 }
 
 interface CustomGroup {
@@ -101,6 +102,9 @@ interface StudentResponse {
   students_id: string
   isArchived?: boolean
   last_edited?: string | number | null
+  readyReview?: boolean
+  revisionNeeded?: boolean
+  isComplete?: boolean
 }
 
 function formatRelativeTime(ts: string | number | null | undefined): string | null {
@@ -159,9 +163,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const [comments, setComments] = useState<Comment[]>([])
   const [loading, setLoading] = useState(true)
   const [plagiarismData, setPlagiarismData] = useState<Map<number, GptZeroResult>>(new Map())
-  const [checkingPlagiarism, setCheckingPlagiarism] = useState<Set<number>>(new Set())
   const [groupReviews, setGroupReviews] = useState<Map<number, ReviewRecord>>(new Map())
   const [reviewModal, setReviewModal] = useState<{ groupId: number; action: "resubmission" | "complete" } | null>(null)
+  const [revisionModal, setRevisionModal] = useState<{ responseId: number; templateId: number } | null>(null)
+  const [revisionComment, setRevisionComment] = useState("")
   const [reviewComment, setReviewComment] = useState("")
 
   useEffect(() => {
@@ -267,107 +272,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
 
     loadData()
   }, [studentId, sectionId])
-
-  const refreshLiveData = useCallback(async () => {
-    if (!studentId) return
-    try {
-      const [commentsRes, reviewRes, gptzeroRes] = await Promise.all([
-        fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
-        fetch(REVIEW_ENDPOINT),
-        fetch(`${GPTZERO_BY_SECTION_ENDPOINT}?lifemap_sections_id=${sectionId}&students_id=${studentId}`),
-      ])
-
-      if (commentsRes.ok) {
-        const data = await commentsRes.json()
-        if (Array.isArray(data)) {
-          const enriched = data
-            .filter((c: Record<string, unknown>) => Number(c.lifemap_sections_id) === sectionId)
-            .map((c: Record<string, unknown>) => {
-              const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
-              const teacher = teachers?.[0]
-              const teacherName = teacher
-                ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
-                : undefined
-              return { ...c, teacher_name: teacherName } as Comment
-            })
-          setComments(enriched)
-        }
-      }
-
-      if (reviewRes.ok) {
-        const allReviews = await reviewRes.json()
-        if (Array.isArray(allReviews)) {
-          const map = new Map<number, ReviewRecord>()
-          for (const r of allReviews) {
-            if (String(r.students_id) === String(studentId) && Number(r.lifemap_sections_id) === sectionId && r.lifemap_custom_group_id) {
-              map.set(r.lifemap_custom_group_id, r)
-            }
-          }
-          setGroupReviews(map)
-        }
-      }
-
-      if (gptzeroRes.ok) {
-        const data = await gptzeroRes.json()
-        if (Array.isArray(data)) {
-          const map = new Map<number, GptZeroResult>()
-          for (const r of data) {
-            if (!r.lifemap_responses_id) continue
-            const existing = map.get(r.lifemap_responses_id)
-            if (!existing || (r.id as number) > (existing.id as number)) {
-              map.set(r.lifemap_responses_id, r)
-            }
-          }
-          setPlagiarismData(map)
-        }
-      }
-    } catch { /* ignore */ }
-  }, [studentId, sectionId])
-
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") refreshLiveData()
-    }
-    document.addEventListener("visibilitychange", handleVisibility)
-    const interval = setInterval(refreshLiveData, 15000)
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility)
-      clearInterval(interval)
-    }
-  }, [refreshLiveData])
-
-  const handlePlagiarismCheck = useCallback(
-    async (responseId: number, text: string, templateId: number) => {
-      if (!text.trim()) return
-      setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
-      try {
-        const params = new URLSearchParams({
-          text,
-          lifemap_responses_id: String(responseId),
-          students_id: studentId,
-          lifemap_sections_id: String(sectionId),
-        })
-        const res = await fetch(`${PLAGIARISM_CHECK_ENDPOINT}?${params}`)
-        if (!res.ok) throw new Error()
-        const result: GptZeroResult = await res.json()
-        setPlagiarismData((prev) => {
-          const next = new Map(prev)
-          next.set(responseId, result)
-          return next
-        })
-        toast.success("Plagiarism check complete")
-      } catch {
-        toast.error("Plagiarism check failed")
-      } finally {
-        setCheckingPlagiarism((prev) => {
-          const next = new Set(prev)
-          next.delete(templateId)
-          return next
-        })
-      }
-    },
-    [studentId, sectionId]
-  )
 
   const handleReviewAction = useCallback(
     async () => {
@@ -476,6 +380,104 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     []
   )
 
+  const handleResponseReviewAction = useCallback(
+    async (responseId: number, templateId: number, action: "complete" | "revision" | "ready" | "clear", comment?: string) => {
+      const now = new Date().toISOString()
+      const patch =
+        action === "complete"
+          ? { isComplete: true, revisionNeeded: false, readyReview: false }
+          : action === "revision"
+            ? { revisionNeeded: true, isComplete: false, readyReview: false }
+            : action === "ready"
+              ? { readyReview: true, isComplete: false, revisionNeeded: false }
+              : { readyReview: false, isComplete: false, revisionNeeded: false }
+
+      try {
+        const res = await fetch(`${RESPONSE_PATCH_BASE}/${responseId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        })
+        if (res.ok) {
+          setResponses((prev) => {
+            const next = new Map(prev)
+            const existing = next.get(templateId)
+            if (existing) next.set(templateId, { ...existing, ...patch, last_edited: now })
+            return next
+          })
+
+          if (comment?.trim()) {
+            const teacherName = session?.user?.name ?? "Teacher"
+            const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
+            const q = questions.find((q) => q.id === templateId)
+            await fetch(COMMENTS_ENDPOINT, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                students_id: studentId,
+                teachers_id: teachersId,
+                field_name: q?.field_name ?? "",
+                lifemap_sections_id: sectionId,
+                note: comment.trim(),
+                isOld: false,
+                isComplete: false,
+                isRevisionFeedback: true,
+                teacher_name: teacherName,
+              }),
+            }).then(async (r) => {
+              if (r.ok) {
+                const newComment = await r.json()
+                setComments((prev) => [...prev, { ...newComment, teacher_name: newComment.teacher_name || teacherName }])
+              }
+            }).catch(() => {})
+          }
+
+          const labels: Record<string, string> = { complete: "Marked complete", revision: "Revision requested", ready: "Marked ready for review", clear: "Status cleared" }
+          toast.success(labels[action] ?? "Status updated")
+
+          if (action === "complete") {
+            const q = questions.find((qt) => qt.id === templateId)
+            if (q?.lifemap_custom_group_id) {
+              const groupId = q.lifemap_custom_group_id
+              const groupQuestions = questions.filter((gq) => gq.lifemap_custom_group_id === groupId)
+              setResponses((prev) => {
+                const allComplete = groupQuestions.every((gq) => {
+                  if (gq.id === templateId) return true
+                  const r = prev.get(gq.id)
+                  return r?.isComplete === true
+                })
+                if (allComplete) {
+                  const review = groupReviews.get(groupId)
+                  if (review && !review.isComplete) {
+                    const groupPatch = { isComplete: true, revisionNeeded: false, readyReview: false, update: new Date().toISOString() }
+                    fetch(`${REVIEW_ENDPOINT}/${review.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(groupPatch),
+                    }).then((r) => {
+                      if (r.ok) {
+                        setGroupReviews((gp) => {
+                          const next = new Map(gp)
+                          next.set(groupId, { ...review, ...groupPatch })
+                          return next
+                        })
+                        toast.success("Group automatically marked complete")
+                      }
+                    }).catch(() => {})
+                  }
+                }
+                return prev
+              })
+            }
+          }
+        }
+      } catch {
+        toast.error("Failed to update status")
+      }
+    },
+    [session, studentId, sectionId, questions, groupReviews]
+  )
+
   if (loading) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -518,8 +520,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const colSpan = isLong || isImage ? "md:col-span-6" : "md:col-span-3"
 
         const gptzero = response ? plagiarismData.get(response.id) : undefined
-        const isChecking = checkingPlagiarism.has(q.id)
         const aiIsHighest = gptzero ? isAiHighest(gptzero) : false
+        const qIsComplete = response?.isComplete === true
+        const qNeedsRevision = response?.revisionNeeded === true
+        const qIsDimmed = qIsComplete || qNeedsRevision
 
         let displayValue: React.ReactNode
         if (isImage) {
@@ -533,11 +537,11 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           )
         } else if (isCurrency) {
           const num = parseFloat(value) || 0
-          displayValue = <p className="text-sm font-semibold">${num.toLocaleString("en-US")}</p>
+          displayValue = <p className={`text-sm ${qIsDimmed ? "" : "font-semibold"}`}>${num.toLocaleString("en-US")}</p>
         } else {
           displayValue = (
             <div>
-              <p className={`text-sm font-semibold ${isLong ? "whitespace-pre-wrap" : ""}`}>
+              <p className={`text-sm ${qIsDimmed ? "" : "font-semibold"} ${isLong ? "whitespace-pre-wrap" : ""}`}>
                 {value || "—"}
               </p>
               {isLong && (q.min_words > 0 || gptzero) && (
@@ -557,7 +561,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         return (
           <div
             key={q.id}
-            className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan}`}
+            className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan} ${qIsDimmed ? "opacity-50" : ""}`}
           >
             <div className="mb-1.5 flex items-center justify-between">
               <Label className="text-muted-foreground text-xs font-medium">
@@ -566,22 +570,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               <div className="flex items-center gap-2">
                 {relativeTime && (
                   <span className="text-muted-foreground/60 text-[11px]">{relativeTime}</span>
-                )}
-                {isLong && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="size-6"
-                    disabled={isChecking || !response || getWordCount(value) < 15}
-                    onClick={() => response && handlePlagiarismCheck(response.id, value, q.id)}
-                    title="Check for plagiarism"
-                  >
-                    {isChecking ? (
-                      <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    ) : (
-                      <HugeiconsIcon icon={Robot01Icon} strokeWidth={2} className="size-3.5" />
-                    )}
-                  </Button>
                 )}
                 <TeacherComment
                   fieldName={q.field_name}
@@ -592,7 +580,49 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   onSubmit={handlePostComment}
                   onDelete={handleDelete}
                   plagiarism={isLong ? gptzero : undefined}
+                  teacherGuideline={q.teacher_guideline}
                 />
+                {response && (
+                  <>
+                    {!response.revisionNeeded && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-6"
+                        title="Request revision"
+                        onClick={() => { setRevisionModal({ responseId: response.id, templateId: q.id }); setRevisionComment("") }}
+                      >
+                        <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
+                      </Button>
+                    )}
+                    {!response.isComplete && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-6"
+                        title="Mark complete"
+                        onClick={() => handleResponseReviewAction(response.id, q.id, "complete")}
+                      >
+                        <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
+                      </Button>
+                    )}
+                    {response.isComplete && (
+                      <div title="Complete">
+                        <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
+                      </div>
+                    )}
+                    {response.revisionNeeded && (
+                      <div title="Needs revision">
+                        <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
+                      </div>
+                    )}
+                    {response.readyReview && !response.isComplete && !response.revisionNeeded && (
+                      <div title="Ready for review">
+                        <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
             {displayValue}
@@ -624,53 +654,43 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           )}
 
           {groupedSections.map(({ group, questions: gQuestions }) => {
-            const review = groupReviews.get(group.id)
-            const relTime = review?.update ? formatRelativeTime(review.update) : null
-            const statusDisplay = review?.isComplete
-              ? { icon: CheckmarkCircle02Icon, color: "text-green-600", label: "Complete" }
-              : review?.revisionNeeded
-                ? { icon: AlertCircleIcon, color: "text-red-500", label: "Needs Revision" }
-                : review?.readyReview
-                  ? { icon: SentIcon, color: "text-blue-500", label: "Ready for Review" }
-                  : { icon: CircleIcon, color: "text-muted-foreground/40", label: "No Status" }
+            const groupResponses = gQuestions.map((q) => responses.get(q.id)).filter(Boolean) as StudentResponse[]
+            const completedCount = groupResponses.filter((r) => r.isComplete).length
+            const revisionCount = groupResponses.filter((r) => r.revisionNeeded).length
+            const readyCount = groupResponses.filter((r) => r.readyReview && !r.isComplete && !r.revisionNeeded).length
+            const blankCount = gQuestions.length - completedCount - revisionCount - readyCount
 
             return (
               <Card key={group.id} className="overflow-hidden !pt-0 !gap-0">
                 <div className="border-b px-6 py-4">
                   <div className="flex items-center justify-between">
                     <CardTitle className="min-w-0 flex-1 truncate text-lg">{group.group_name}</CardTitle>
-                    {review && (
-                      <div className="flex shrink-0 items-center gap-2">
-                        {!review.revisionNeeded && (
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="size-7"
-                            title="Request resubmission"
-                            onClick={() => { setReviewModal({ groupId: group.id, action: "resubmission" }); setReviewComment("") }}
-                          >
-                            <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3.5" />
-                          </Button>
-                        )}
-                        {!review.isComplete && (
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="size-7"
-                            title="Mark complete"
-                            onClick={() => { setReviewModal({ groupId: group.id, action: "complete" }); setReviewComment("") }}
-                          >
-                            <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
-                          </Button>
-                        )}
-                        {relTime && (
-                          <span className="text-muted-foreground/60 text-[11px]">{relTime}</span>
-                        )}
-                        <div className="inline-flex size-7 items-center justify-center rounded-md border" title={statusDisplay.label}>
-                          <HugeiconsIcon icon={statusDisplay.icon} strokeWidth={statusDisplay.icon === CircleIcon ? 1.5 : 2} className={`size-4 ${statusDisplay.color}`} />
+                    <div className="flex shrink-0 items-center gap-2">
+                      {completedCount > 0 && (
+                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
+                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
+                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-green-600 text-[9px] font-bold text-white">{completedCount}</span>
                         </div>
-                      </div>
-                    )}
+                      )}
+                      {readyCount > 0 && (
+                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${readyCount} ready for review`}>
+                          <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
+                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{readyCount}</span>
+                        </div>
+                      )}
+                      {revisionCount > 0 && (
+                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${revisionCount} need revision`}>
+                          <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
+                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{revisionCount}</span>
+                        </div>
+                      )}
+                      {blankCount > 0 && (
+                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${blankCount} not started`}>
+                          <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
+                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {group.group_description && (
                     <p className="text-muted-foreground mt-1 text-sm">{group.group_description}</p>
@@ -712,6 +732,50 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             </Button>
             <Button onClick={handleReviewAction}>
               {reviewModal?.action === "complete" ? "Mark Complete" : "Request Resubmission"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={revisionModal !== null} onOpenChange={(open) => { if (!open) { setRevisionModal(null); setRevisionComment("") } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Request Revision</DialogTitle>
+            <DialogDescription>
+              Add a comment explaining what needs to be revised.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Comment</Label>
+            <Textarea
+              autoFocus
+              placeholder="Describe what needs to be revised..."
+              value={revisionComment}
+              onChange={(e) => setRevisionComment(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && revisionComment.trim() && revisionModal) {
+                  e.preventDefault()
+                  handleResponseReviewAction(revisionModal.responseId, revisionModal.templateId, "revision", revisionComment)
+                  setRevisionModal(null)
+                  setRevisionComment("")
+                }
+              }}
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRevisionModal(null); setRevisionComment("") }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!revisionModal) return
+                handleResponseReviewAction(revisionModal.responseId, revisionModal.templateId, "revision", revisionComment)
+                setRevisionModal(null)
+                setRevisionComment("")
+              }}
+            >
+              Request Revision
             </Button>
           </DialogFooter>
         </DialogContent>

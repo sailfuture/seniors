@@ -59,6 +59,7 @@ const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const GROUPS_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const TYPES_ENDPOINT = `${XANO_BASE}/question_types`
 const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
+const PUBLISH_QUESTIONS_ENDPOINT = `${XANO_BASE}/publish_questions`
 const SYNC_REVIEWS_ENDPOINT = `${XANO_BASE}/lifemap_review_add_all`
 
 interface TemplateQuestion {
@@ -184,18 +185,9 @@ export function TemplateOverview() {
 
     setPublishing(true)
     try {
-      await Promise.all(
-        drafts.map((q) =>
-          fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isDraft: false, isPublished: true }),
-          })
-        )
-      )
-
+      const res = await fetch(PUBLISH_QUESTIONS_ENDPOINT, { method: "POST" })
+      if (!res.ok) throw new Error("Publish failed")
       await fetch(SYNC_REVIEWS_ENDPOINT).catch(() => {})
-
       setAllQuestions((prev) =>
         prev.map((q) =>
           q.isDraft && !q.isArchived && (sectionId ? q.lifemap_sections_id === sectionId : true)

@@ -33,6 +33,8 @@ const XANO_BASE =
 const ALL_REVIEWS_BY_STUDENT_ENDPOINT = `${XANO_BASE}/all_reviews_by_student`
 const ALL_REVISIONS_BY_STUDENT_ENDPOINT = `${XANO_BASE}/all_revisions_by_student`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
+const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
+const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -146,30 +148,34 @@ function useSectionReviewCounts(studentId: string | null): SectionBadgeCounts {
     let cancelled = false
     const load = async () => {
       try {
-        const [reviewsRes, revisionsRes] = await Promise.all([
-          fetch(`${ALL_REVIEWS_BY_STUDENT_ENDPOINT}?students_id=${studentId}`),
-          fetch(`${ALL_REVISIONS_BY_STUDENT_ENDPOINT}?students_id=${studentId}`),
+        const [responsesRes, templateRes] = await Promise.all([
+          fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
+          fetch(TEMPLATE_ENDPOINT),
         ])
+
+        if (cancelled) return
 
         const ready = new Map<number, number>()
         const revision = new Map<number, number>()
 
-        if (reviewsRes.ok && !cancelled) {
-          const data = await reviewsRes.json()
-          if (Array.isArray(data)) {
-            for (const r of data) {
-              const sid = Number(r.lifemap_sections_id)
-              if (sid) ready.set(sid, (ready.get(sid) ?? 0) + 1)
-            }
-          }
-        }
+        if (responsesRes.ok && templateRes.ok) {
+          const responses: { lifemap_template_id: number; readyReview?: boolean; revisionNeeded?: boolean; isComplete?: boolean; isArchived?: boolean }[] = await responsesRes.json()
+          const templates: { id: number; lifemap_sections_id: number; isArchived?: boolean; isPublished?: boolean }[] = await templateRes.json()
 
-        if (revisionsRes.ok && !cancelled) {
-          const data = await revisionsRes.json()
-          if (Array.isArray(data)) {
-            for (const r of data) {
-              const sid = Number(r.lifemap_sections_id)
-              if (sid) revision.set(sid, (revision.get(sid) ?? 0) + 1)
+          const templateToSection = new Map<number, number>()
+          for (const t of templates) {
+            if (!t.isArchived && t.isPublished) templateToSection.set(t.id, t.lifemap_sections_id)
+          }
+
+          for (const r of responses) {
+            if (r.isArchived) continue
+            const sid = templateToSection.get(r.lifemap_template_id)
+            if (!sid) continue
+            if (r.readyReview && !r.isComplete && !r.revisionNeeded) {
+              ready.set(sid, (ready.get(sid) ?? 0) + 1)
+            }
+            if (r.revisionNeeded) {
+              revision.set(sid, (revision.get(sid) ?? 0) + 1)
             }
           }
         }
@@ -183,8 +189,16 @@ function useSectionReviewCounts(studentId: string | null): SectionBadgeCounts {
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const { sectionId, delta } = (e as CustomEvent).detail as { sectionId: number; delta: number }
+      const { sectionId, delta, type } = (e as CustomEvent).detail as { sectionId: number; delta: number; type?: string }
       setCounts((prev) => {
+        if (type === "revision") {
+          const next = new Map(prev.revisionNeeded)
+          const current = next.get(sectionId) ?? 0
+          const updated = Math.max(0, current + delta)
+          if (updated === 0) next.delete(sectionId)
+          else next.set(sectionId, updated)
+          return { ...prev, revisionNeeded: next }
+        }
         const next = new Map(prev.readyReview)
         const current = next.get(sectionId) ?? 0
         const updated = Math.max(0, current + delta)
@@ -286,7 +300,7 @@ function buildStudentNav(sections: LifeMapSection[], pathname: string, commentCo
   return [
     {
       title: "Life Map",
-      url: `/life-map/${firstSlug}`,
+      url: `/life-map`,
       icon: <HugeiconsIcon icon={MapsIcon} strokeWidth={2} />,
       isActive: onLifeMap,
       items: mapItems.map((s) => {

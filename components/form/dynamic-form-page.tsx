@@ -49,7 +49,6 @@ import {
   Comment01Icon,
   SentIcon,
   AlertCircleIcon,
-  Robot01Icon,
 } from "@hugeicons/core-free-icons"
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
@@ -129,6 +128,9 @@ interface StudentResponse {
   students_id: string
   isArchived?: boolean
   last_edited?: string | number | null
+  readyReview?: boolean
+  revisionNeeded?: boolean
+  isComplete?: boolean
 }
 
 const QUESTION_TYPE = {
@@ -278,75 +280,6 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     loadData()
   }, [loadData])
 
-  const refreshLiveData = useCallback(async () => {
-    if (!studentId) return
-    try {
-      const [commentsRes, reviewRes, gptzeroRes] = await Promise.all([
-        fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
-        fetch(REVIEW_ENDPOINT),
-        fetch(`${GPTZERO_BY_SECTION_ENDPOINT}?lifemap_sections_id=${sectionId}&students_id=${studentId}`),
-      ])
-
-      if (commentsRes.ok) {
-        const data = await commentsRes.json()
-        if (Array.isArray(data)) {
-          const enriched = data
-            .filter((c: Record<string, unknown>) => Number(c.lifemap_sections_id) === sectionId)
-            .map((c: Record<string, unknown>) => {
-              const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
-              const teacher = teachers?.[0]
-              const teacherName = teacher
-                ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
-                : (c.teacher_name as string | undefined)
-              return { ...c, teacher_name: teacherName } as Comment
-            })
-          setComments(enriched)
-        }
-      }
-
-      if (reviewRes.ok) {
-        const allReviews = await reviewRes.json()
-        if (Array.isArray(allReviews)) {
-          const sectionReviews = allReviews.filter(
-            (r: ReviewRecord) => r.lifemap_sections_id === sectionId && r.students_id === studentId
-          )
-          const map = new Map<number | null, ReviewRecord>()
-          for (const r of sectionReviews) {
-            map.set(r.lifemap_custom_group_id ?? null, r)
-          }
-          setGroupReviews(map)
-        }
-      }
-
-      if (gptzeroRes.ok) {
-        const data = await gptzeroRes.json()
-        if (Array.isArray(data)) {
-          const map = new Map<number, GptZeroResult>()
-          for (const r of data) {
-            if (!r.lifemap_responses_id) continue
-            const existing = map.get(r.lifemap_responses_id)
-            if (!existing || (r.id as number) > (existing.id as number)) {
-              map.set(r.lifemap_responses_id, r)
-            }
-          }
-          setPlagiarismData(map)
-        }
-      }
-    } catch { /* ignore */ }
-  }, [studentId, sectionId])
-
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") refreshLiveData()
-    }
-    document.addEventListener("visibilitychange", handleVisibility)
-    const interval = setInterval(refreshLiveData, 15000)
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility)
-      clearInterval(interval)
-    }
-  }, [refreshLiveData])
-
   const saveAll = useCallback(async () => {
     const dirty = dirtyRef.current
     if (dirty.size === 0) return
@@ -478,43 +411,6 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     } catch { /* ignore */ }
   }, [dispatchCommentRead])
 
-  const handlePlagiarismCheck = useCallback(
-    async (responseId: number, text: string, templateId: number) => {
-      if (!text.trim() || !studentId) return
-      setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
-      try {
-        const params = new URLSearchParams({
-          text,
-          lifemap_responses_id: String(responseId),
-          students_id: studentId,
-          lifemap_sections_id: String(sectionId),
-        })
-
-        const checkRes = await fetch(`${PLAGIARISM_CHECK_ENDPOINT}?${params}`)
-        if (!checkRes.ok) throw new Error()
-
-        const record = await checkRes.json() as GptZeroResult
-        if (record && record.lifemap_responses_id) {
-          setPlagiarismData((prev) => {
-            const next = new Map(prev)
-            next.set(responseId, record)
-            return next
-          })
-        }
-        toast.success("Plagiarism check complete")
-      } catch {
-        toast.error("Plagiarism check failed")
-      } finally {
-        setCheckingPlagiarism((prev) => {
-          const next = new Set(prev)
-          next.delete(templateId)
-          return next
-        })
-      }
-    },
-    [studentId, sectionId]
-  )
-
   const handleImageUpload = async (templateId: number, file: File) => {
     try {
       const { uploadImageToXano } = await import("@/lib/xano")
@@ -540,6 +436,82 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
       toast("Image upload failed", { duration: 3000 })
     }
   }
+
+  const handleResponseStatusChange = useCallback(
+    async (responseId: number, templateId: number, action: "ready" | "clear") => {
+      if (action === "ready" && studentId) {
+        const response = responses.get(templateId)
+        const text = localValues.get(templateId) ?? response?.student_response ?? ""
+        const textWordCount = text.trim().split(/\s+/).filter(Boolean).length
+
+        if (textWordCount >= 20) {
+          setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
+          try {
+            const params = new URLSearchParams({
+              text,
+              lifemap_responses_id: String(responseId),
+              students_id: studentId,
+              lifemap_sections_id: String(sectionId),
+            })
+            const checkRes = await fetch(`${PLAGIARISM_CHECK_ENDPOINT}?${params}`)
+            if (checkRes.ok) {
+              const record = await checkRes.json() as GptZeroResult
+              if (record?.lifemap_responses_id) {
+                setPlagiarismData((prev) => {
+                  const next = new Map(prev)
+                  next.set(responseId, record)
+                  return next
+                })
+              }
+              const aiPct = typeof record.class_probability_ai === "string"
+                ? parseFloat(record.class_probability_ai)
+                : typeof record.class_probability_ai === "number"
+                  ? record.class_probability_ai
+                  : 0
+              const normalizedAi = aiPct <= 1 ? aiPct * 100 : aiPct
+              if (normalizedAi > 50) {
+                toast.error("Submission rejected — AI-generated content detected. Please revise your response.", { duration: 5000 })
+                return
+              }
+            }
+          } catch {
+            // Allow submission if plagiarism check fails
+          } finally {
+            setCheckingPlagiarism((prev) => {
+              const next = new Set(prev)
+              next.delete(templateId)
+              return next
+            })
+          }
+        }
+      }
+
+      const now = new Date().toISOString()
+      const patch = action === "ready"
+        ? { readyReview: true, isComplete: false, revisionNeeded: false }
+        : { readyReview: false, isComplete: false, revisionNeeded: false }
+
+      try {
+        const res = await fetch(`${RESPONSE_PATCH_BASE}/${responseId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        })
+        if (res.ok) {
+          setResponses((prev) => {
+            const next = new Map(prev)
+            const existing = next.get(templateId)
+            if (existing) next.set(templateId, { ...existing, ...patch, last_edited: now })
+            return next
+          })
+          toast.success(action === "ready" ? "Sent for review" : "Reopened for editing")
+        }
+      } catch {
+        toast.error("Failed to update status")
+      }
+    },
+    [studentId, sectionId, responses, localValues, questions]
+  )
 
   if (loading) {
     return (
@@ -584,8 +556,6 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     }))
     .filter((gs) => gs.questions.length > 0)
 
-  const getWordCount = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
-
   const renderQuestionList = (qs: TemplateQuestion[]) => (
     <div className="space-y-8">
       {qs.map((q) => {
@@ -603,12 +573,11 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
             plagiarism={response ? plagiarismData.get(response.id) : undefined}
             onChange={(v) => handleChange(q.id, v)}
             onImageUpload={(file) => handleImageUpload(q.id, file)}
-            checkingPlagiarism={checkingPlagiarism.has(q.id)}
-            onPlagiarismCheck={
-              response && getWordCount(value) >= 15
-                ? () => handlePlagiarismCheck(response.id, value, q.id)
-                : undefined
-            }
+            submittingForReview={checkingPlagiarism.has(q.id)}
+            responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : undefined}
+            onSendForReview={response && q.question_types_id !== QUESTION_TYPE.IMAGE_UPLOAD ? () => handleResponseStatusChange(response.id, q.id, "ready") : undefined}
+            onEditSubmission={response?.readyReview ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
+            onRequestReopen={response?.isComplete ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
           />
         )
       })}
@@ -669,6 +638,8 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
           review={groupReviews.get(group.id)}
           groupComments={allGroupComments.filter((c) => Number(c.lifemap_custom_group_id) === group.id)}
           onMarkCommentRead={handleMarkCommentRead}
+          questionResponses={gQuestions.map((q) => responses.get(q.id)).filter(Boolean) as StudentResponse[]}
+          totalQuestions={gQuestions.length}
           onStatusChange={async (patch) => {
             const review = groupReviews.get(group.id)
             if (!review) return
@@ -707,6 +678,8 @@ function GroupSection({
   groupComments = [],
   onStatusChange,
   onMarkCommentRead,
+  questionResponses = [],
+  totalQuestions = 0,
 }: {
   group: CustomGroup
   children: React.ReactNode
@@ -714,24 +687,19 @@ function GroupSection({
   groupComments?: Comment[]
   onStatusChange?: (patch: Partial<ReviewRecord>) => void
   onMarkCommentRead?: (commentId: number) => void
+  questionResponses?: StudentResponse[]
+  totalQuestions?: number
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false)
   const [groupCommentsOpen, setGroupCommentsOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<"reopen" | "ready" | null>(null)
   const hasInstructions = group.instructions || group.resources?.length > 0
-  const isComplete = review?.isComplete ?? false
 
-  const statusIcon = review ? (
-    review.isComplete ? (
-      <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-    ) : review.revisionNeeded ? (
-      <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-    ) : review.readyReview ? (
-      <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
-    ) : (
-      <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-    )
-  ) : null
+  const completedCount = questionResponses.filter((r) => r.isComplete).length
+  const revisionCount = questionResponses.filter((r) => r.revisionNeeded).length
+  const readyCount = questionResponses.filter((r) => r.readyReview && !r.isComplete && !r.revisionNeeded).length
+  const blankCount = totalQuestions - completedCount - revisionCount - readyCount
+  const allComplete = completedCount === totalQuestions && totalQuestions > 0
 
   const handleStatusClick = () => {
     if (!review || !onStatusChange) return
@@ -752,13 +720,12 @@ function GroupSection({
   }
 
   const isClickable = review && (review.isComplete || review.revisionNeeded || (!review.readyReview && !review.isComplete && !review.revisionNeeded))
-  const relTime = formatRelativeTime(review?.update)
 
   return (
-    <Card className={`overflow-hidden !pt-0 !gap-0 ${isComplete ? "bg-muted/30" : ""}`}>
+    <Card className="overflow-hidden !pt-0 !gap-0">
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div className="flex items-center gap-2">
-          <CardTitle className={`text-lg ${isComplete ? "text-muted-foreground" : ""}`}>{group.group_name}</CardTitle>
+          <CardTitle className="text-lg">{group.group_name}</CardTitle>
           {hasInstructions && (
             <button
               type="button"
@@ -770,8 +737,29 @@ function GroupSection({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {relTime && (
-            <span className="text-muted-foreground/60 text-[11px]">{relTime}</span>
+          {completedCount > 0 && (
+            <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
+              <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-green-600 text-[9px] font-bold text-white">{completedCount}</span>
+            </div>
+          )}
+          {readyCount > 0 && (
+            <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${readyCount} ready for review`}>
+              <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
+              <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{readyCount}</span>
+            </div>
+          )}
+          {revisionCount > 0 && (
+            <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${revisionCount} need revision`}>
+              <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
+              <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{revisionCount}</span>
+            </div>
+          )}
+          {blankCount > 0 && (
+            <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${blankCount} not started`}>
+              <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
+              <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
+            </div>
           )}
           {groupComments.length > 0 && (() => {
             const unreadGroupCount = groupComments.filter((c) => !c.isOld).length
@@ -790,26 +778,6 @@ function GroupSection({
               </button>
             )
           })()}
-          {statusIcon && (
-            isClickable ? (
-              <button
-                type="button"
-                className="inline-flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-accent"
-                onClick={handleStatusClick}
-                title={
-                  review?.isComplete
-                    ? "Reopen for editing"
-                    : "Mark as ready for review"
-                }
-              >
-                {statusIcon}
-              </button>
-            ) : (
-              <div className="inline-flex size-7 items-center justify-center rounded-md border">
-                {statusIcon}
-              </div>
-            )
-          )}
         </div>
       </div>
       {group.group_description && (
@@ -999,8 +967,11 @@ function DynamicField({
   onMarkRead,
   lastEdited,
   plagiarism,
-  checkingPlagiarism,
-  onPlagiarismCheck,
+  submittingForReview,
+  responseStatus,
+  onSendForReview,
+  onRequestReopen,
+  onEditSubmission,
 }: {
   question: TemplateQuestion
   value: string
@@ -1011,11 +982,15 @@ function DynamicField({
   onMarkRead: (commentIds: number[]) => void
   lastEdited?: string | number | null
   plagiarism?: GptZeroResult
-  checkingPlagiarism?: boolean
-  onPlagiarismCheck?: () => void
+  submittingForReview?: boolean
+  responseStatus?: { isComplete?: boolean; revisionNeeded?: boolean; readyReview?: boolean }
+  onSendForReview?: () => void
+  onRequestReopen?: () => void
+  onEditSubmission?: () => void
 }) {
   const typeId = question.question_types_id
   const [detailedOpen, setDetailedOpen] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<"send" | "reopen" | "edit" | null>(null)
 
   const hasInstructions = question.detailed_instructions || question.resources?.length > 0 || question.examples?.length > 0 || question.sentence_starters?.length > 0 || question.min_words > 0
 
@@ -1029,9 +1004,15 @@ function DynamicField({
   })() : false
 
   const relativeTime = formatRelativeTime(lastEdited)
+  const isComplete = responseStatus?.isComplete === true
+  const isReadyForReview = responseStatus?.readyReview === true && !isComplete && !responseStatus?.revisionNeeded
+  const isDimmed = isComplete || isReadyForReview
+  const wordCount = value.trim().split(/\s+/).filter(Boolean).length
+  const meetsMinWords = !question.min_words || question.min_words <= 0 || wordCount >= question.min_words
+  const canSubmitForReview = value.trim().length > 0 && meetsMinWords
 
   return (
-    <div className="space-y-2">
+    <div className={`space-y-2 ${isDimmed ? "opacity-50" : ""}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Label className="text-muted-foreground text-xs font-medium">{question.field_label}</Label>
@@ -1045,21 +1026,6 @@ function DynamicField({
               onMarkRead={onMarkRead}
               plagiarism={plagiarism}
             />
-          )}
-          {typeId === QUESTION_TYPE.LONG_RESPONSE && (
-            <button
-              type="button"
-              className="inline-flex size-5 items-center justify-center rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground disabled:opacity-30"
-              disabled={checkingPlagiarism || !onPlagiarismCheck}
-              onClick={onPlagiarismCheck}
-              title="Check for plagiarism"
-            >
-              {checkingPlagiarism ? (
-                <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              ) : (
-                <HugeiconsIcon icon={Robot01Icon} strokeWidth={2} className="size-3.5" />
-              )}
-            </button>
           )}
           {hasInstructions && (
             <>
@@ -1138,16 +1104,87 @@ function DynamicField({
             </Sheet>
           </>
         )}
+          {responseStatus?.isComplete && (
+            <div title="Complete"><HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" /></div>
+          )}
+          {responseStatus?.revisionNeeded && (
+            <div title="Needs revision"><HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" /></div>
+          )}
+          {responseStatus?.readyReview && !responseStatus?.isComplete && !responseStatus?.revisionNeeded && (
+            <div title="Ready for review"><HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" /></div>
+          )}
+          {responseStatus && !responseStatus.isComplete && !responseStatus.readyReview && onSendForReview && (
+            <span className={!canSubmitForReview || submittingForReview ? "cursor-not-allowed" : ""}>
+              <Button
+                variant="outline"
+                size="sm"
+                className={`h-6 px-2 text-[10px] ${!canSubmitForReview || submittingForReview ? "pointer-events-none" : ""}`}
+                onClick={() => setConfirmAction("send")}
+                disabled={!canSubmitForReview || submittingForReview}
+                title={!canSubmitForReview ? (value.trim().length === 0 ? "Response is empty" : `Minimum ${question.min_words} words required`) : undefined}
+              >
+                {submittingForReview ? "Checking..." : "Send for Review"}
+              </Button>
+            </span>
+          )}
+          {responseStatus?.readyReview && !responseStatus?.isComplete && !responseStatus?.revisionNeeded && onEditSubmission && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-[10px]"
+              onClick={() => setConfirmAction("edit")}
+            >
+              Edit Submission
+            </Button>
+          )}
+          {responseStatus?.isComplete && onRequestReopen && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-[10px]"
+              onClick={() => setConfirmAction("reopen")}
+            >
+              Reopen
+            </Button>
+          )}
         </div>
         {relativeTime && (
           <span className="text-muted-foreground/60 shrink-0 text-[11px]">{relativeTime}</span>
         )}
       </div>
 
+      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "send" ? "Send for Review?" : confirmAction === "edit" ? "Edit Submission?" : "Reopen for Editing?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === "send"
+                ? "This will notify your teacher that this response is ready for review. Make sure you are satisfied with your answer."
+                : confirmAction === "edit"
+                  ? "This will withdraw your submission and allow you to make changes. You will need to resubmit for review when you are done."
+                  : "This will clear the completion status and allow you to make changes to this response."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (confirmAction === "send") onSendForReview?.()
+              else if (confirmAction === "edit") onEditSubmission?.()
+              else if (confirmAction === "reopen") onRequestReopen?.()
+              setConfirmAction(null)
+            }}>
+              {confirmAction === "send" ? "Send for Review" : confirmAction === "edit" ? "Edit Submission" : "Reopen"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {typeId === QUESTION_TYPE.SHORT_RESPONSE && (
         <InputGroup>
           <InputGroupInput
-            className="font-semibold"
+            className={isDimmed ? "" : "font-semibold"}
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -1159,7 +1196,7 @@ function DynamicField({
       {typeId === QUESTION_TYPE.LONG_RESPONSE && (
         <InputGroup>
           <InputGroupTextarea
-            className="font-semibold"
+            className={isDimmed ? "" : "font-semibold"}
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -1185,12 +1222,13 @@ function DynamicField({
         <ImageUpload
           imageValue={imageValue}
           onUpload={onImageUpload}
+          locked={!!responseStatus?.isComplete}
         />
       )}
 
       {typeId === QUESTION_TYPE.DROPDOWN && (
         <Select value={value} onValueChange={onChange}>
-          <SelectTrigger className="w-full font-semibold">
+          <SelectTrigger className={`w-full ${isDimmed ? "" : "font-semibold"}`}>
             <SelectValue placeholder={question.placeholder || "Select..."} />
           </SelectTrigger>
           <SelectContent>
@@ -1206,7 +1244,7 @@ function DynamicField({
       {typeId === QUESTION_TYPE.URL && (
         <InputGroup>
           <InputGroupInput
-            className="font-semibold"
+            className={isDimmed ? "" : "font-semibold"}
             type="url"
             placeholder={question.placeholder || "https://..."}
             value={value}
@@ -1218,7 +1256,7 @@ function DynamicField({
       {typeId === QUESTION_TYPE.DATE && (
         <InputGroup>
           <InputGroupInput
-            className="font-semibold"
+            className={isDimmed ? "" : "font-semibold"}
             type="date"
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -1319,9 +1357,11 @@ function getImageUrl(value: Record<string, unknown> | null): string | null {
 function ImageUpload({
   imageValue,
   onUpload,
+  locked = false,
 }: {
   imageValue: Record<string, unknown> | null
   onUpload: (file: File) => void
+  locked?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [localPreview, setLocalPreview] = useState<string | null>(null)
@@ -1366,7 +1406,7 @@ function ImageUpload({
               </div>
             </div>
           )}
-          {!uploading && (
+          {!uploading && !locked && (
             <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
               <button
                 type="button"

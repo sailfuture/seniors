@@ -68,6 +68,7 @@ const XANO_BASE =
 
 const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
+const PUBLISH_QUESTIONS_ENDPOINT = `${XANO_BASE}/publish_questions`
 const SYNC_REVIEWS_ENDPOINT = `${XANO_BASE}/lifemap_review_add_all`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
@@ -93,6 +94,7 @@ interface TemplateQuestion {
   lifemap_custom_group_id: number | null
   dropdownOptions: string[]
   sortOrder: number
+  teacher_guideline?: string
   _question_types?: QuestionType
 }
 
@@ -128,6 +130,7 @@ const emptyQuestion: Omit<TemplateQuestion, "id"> = {
   lifemap_custom_group_id: null,
   dropdownOptions: [],
   sortOrder: 0,
+  teacher_guideline: "",
 }
 
 const emptyGroup: Omit<CustomGroup, "id"> = {
@@ -238,8 +241,9 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       const url = isEdit ? `${TEMPLATE_ENDPOINT}/${data.id}` : TEMPLATE_ENDPOINT
       const method = isEdit ? "PATCH" : "POST"
 
+      const { _question_types, ...rest } = data as TemplateQuestion & { id?: number }
       const payload = {
-        ...data,
+        ...rest,
         lifemap_sections_id: sectionId,
         sortOrder: isEdit ? data.sortOrder : questions.length + 1,
         ...(!isEdit && { isDraft: true }),
@@ -252,6 +256,31 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       })
 
       if (res.ok) {
+        if (isEdit && data.id) {
+          try {
+            const respRes = await fetch(RESPONSES_ENDPOINT)
+            if (respRes.ok) {
+              const allResponses = await respRes.json()
+              if (Array.isArray(allResponses)) {
+                const related = allResponses.filter(
+                  (r: { lifemap_template_id?: number }) => r.lifemap_template_id === data.id
+                )
+                await Promise.all(
+                  related.map((r: { id: number }) =>
+                    fetch(`${RESPONSES_ENDPOINT}/${r.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        lifemap_custom_group_id: data.lifemap_custom_group_id,
+                        lifemap_sections_id: sectionId,
+                      }),
+                    })
+                  )
+                )
+              }
+            }
+          } catch { /* ignore response sync errors */ }
+        }
         toast(isEdit ? "Question updated" : "Question added", { duration: 2000 })
         setSheetOpen(false)
         await loadData()
@@ -444,15 +473,8 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     }
     setPublishing(true)
     try {
-      await Promise.all(
-        drafts.map((q) =>
-          fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isDraft: false, isPublished: true }),
-          })
-        )
-      )
+      const res = await fetch(PUBLISH_QUESTIONS_ENDPOINT, { method: "POST" })
+      if (!res.ok) throw new Error("Publish failed")
       await fetch(SYNC_REVIEWS_ENDPOINT).catch(() => {})
       setQuestions((prev) =>
         prev.map((q) => (q.isDraft && !q.isArchived ? { ...q, isDraft: false, isPublished: true } : q))
@@ -1336,6 +1358,16 @@ function QuestionSheet({
               value={form.detailed_instructions}
               onChange={(e) => updateField("detailed_instructions", e.target.value)}
               rows={6}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Teacher Guideline</Label>
+            <Textarea
+              placeholder="Internal guideline visible only to teachers when reviewing this question..."
+              value={form.teacher_guideline ?? ""}
+              onChange={(e) => updateField("teacher_guideline", e.target.value)}
+              rows={4}
             />
           </div>
 
