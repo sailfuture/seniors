@@ -649,7 +649,7 @@ function QuestionBlock({
       )
     }
     return (
-      <div className="rounded-lg border border-gray-200 p-4">
+      <div className="">
         {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
         {description && (
           <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
@@ -660,7 +660,7 @@ function QuestionBlock({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 p-4">
+    <div className="">
       {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
       {description && (
         <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
@@ -740,7 +740,7 @@ function ResponseDisplay({
 
   if (!text) return <p className="text-muted-foreground text-sm italic">—</p>
   return (
-    <p className="text-foreground whitespace-pre-wrap text-sm font-semibold leading-relaxed sm:text-base sm:leading-7">
+    <p className="text-foreground whitespace-pre-wrap text-base font-medium leading-snug">
       {text}
     </p>
   )
