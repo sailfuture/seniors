@@ -60,9 +60,7 @@ const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const GROUPS_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const TYPES_ENDPOINT = `${XANO_BASE}/question_types`
-const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
 const PUBLISH_QUESTIONS_ENDPOINT = `${XANO_BASE}/publish_questions`
-const SYNC_REVIEWS_ENDPOINT = `${XANO_BASE}/lifemap_review_add_all`
 
 interface TemplateQuestion {
   id: number
@@ -192,7 +190,6 @@ export function TemplateOverview() {
     try {
       const res = await fetch(PUBLISH_QUESTIONS_ENDPOINT, { method: "POST" })
       if (!res.ok) throw new Error("Publish failed")
-      await fetch(SYNC_REVIEWS_ENDPOINT).catch(() => {})
       setAllQuestions((prev) =>
         prev.map((q) =>
           q.isDraft && !q.isArchived && (sectionId ? q.lifemap_sections_id === sectionId : true)
@@ -270,21 +267,6 @@ export function TemplateOverview() {
       })
       if (!res.ok) throw new Error()
 
-      const reviewRes = await fetch(REVIEW_ENDPOINT)
-      if (reviewRes.ok) {
-        const allReviews: { id: number; lifemap_sections_id: number }[] = await reviewRes.json()
-        const sectionReviews = allReviews.filter((r) => r.lifemap_sections_id === s.section.id)
-        await Promise.all(
-          sectionReviews.map((r) =>
-            fetch(`${REVIEW_ENDPOINT}/${r.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ isLocked: newLocked }),
-            })
-          )
-        )
-      }
-
       toast.success(newLocked ? "Section locked" : "Section unlocked")
     } catch {
       setSummaries((prev) =>
@@ -308,23 +290,6 @@ export function TemplateOverview() {
         body: JSON.stringify({ section_description: editDescription, description: editDescription, isLocked: editLocked, photo: editPhoto }),
       })
       if (!res.ok) throw new Error()
-
-      if (editLocked !== sheetSection.section.isLocked) {
-        const reviewRes = await fetch(REVIEW_ENDPOINT)
-        if (reviewRes.ok) {
-          const allReviews: { id: number; lifemap_sections_id: number }[] = await reviewRes.json()
-          const sectionReviews = allReviews.filter((r) => r.lifemap_sections_id === sheetSection.section.id)
-          await Promise.all(
-            sectionReviews.map((r) =>
-              fetch(`${REVIEW_ENDPOINT}/${r.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ isLocked: editLocked }),
-              })
-            )
-          )
-        }
-      }
 
       setSummaries((prev) =>
         prev.map((item) =>

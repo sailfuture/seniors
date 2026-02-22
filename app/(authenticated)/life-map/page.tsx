@@ -42,24 +42,12 @@ const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
 
-const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
 const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
 const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
-
-interface ReviewRecord {
-  id: number
-  lifemap_sections_id: number
-  lifemap_custom_group_id: number | null
-  students_id: string
-  readyReview: boolean
-  revisionNeeded: boolean
-  isComplete: boolean
-  update?: string | number | null
-}
 
 interface CustomGroup {
   id: number
@@ -99,7 +87,6 @@ interface SectionRow {
   section: LifeMapSection
   slug: string
   groups: CustomGroup[]
-  reviews: ReviewRecord[]
 }
 
 function formatRelativeTime(ts: string | number | null | undefined): string | null {
@@ -118,14 +105,6 @@ function formatRelativeTime(ts: string | number | null | undefined): string | nu
   return date.toLocaleDateString()
 }
 
-function reviewStatusLabel(review: ReviewRecord | undefined): string {
-  if (!review) return ""
-  if (review.isComplete) return "Complete"
-  if (review.revisionNeeded) return "Needs Revision"
-  if (review.readyReview) return "Ready for Review"
-  return ""
-}
-
 export default function StudentLifeMapOverviewPage() {
   const router = useRouter()
   const { data: session } = useSession()
@@ -134,7 +113,6 @@ export default function StudentLifeMapOverviewPage() {
   const [rows, setRows] = useState<SectionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [comments, setComments] = useState<Comment[]>([])
-  const [allReviews, setAllReviews] = useState<ReviewRecord[]>([])
   const [questionTypes, setQuestionTypes] = useState<{ id: number; type: string }[]>([])
   const [allTemplateQuestions, setAllTemplateQuestions] = useState<TemplateQuestion[]>([])
   const [allResponses, setAllResponses] = useState<StudentResponse[]>([])
@@ -160,9 +138,8 @@ export default function StudentLifeMapOverviewPage() {
   const loadData = useCallback(async () => {
     if (!studentId) return
     try {
-      const [sectionsRes, reviewRes, groupsRes, qTypesRes, templateRes, responsesRes] = await Promise.all([
+      const [sectionsRes, groupsRes, qTypesRes, templateRes, responsesRes] = await Promise.all([
         fetch(SECTIONS_ENDPOINT),
-        fetch(REVIEW_ENDPOINT),
         fetch(CUSTOM_GROUP_ENDPOINT),
         fetch(QUESTION_TYPES_ENDPOINT),
         fetch(TEMPLATE_ENDPOINT),
@@ -170,7 +147,6 @@ export default function StudentLifeMapOverviewPage() {
       ])
 
       const sections: LifeMapSection[] = sectionsRes.ok ? await sectionsRes.json() : []
-      const reviews: ReviewRecord[] = reviewRes.ok ? await reviewRes.json() : []
       const groups: CustomGroup[] = groupsRes.ok ? await groupsRes.json() : []
       if (qTypesRes.ok) {
         const types = await qTypesRes.json()
@@ -185,16 +161,12 @@ export default function StudentLifeMapOverviewPage() {
         setAllResponses(resps.filter((r) => !r.isArchived))
       }
 
-      const studentReviews = reviews.filter((r) => r.students_id === studentId)
-      setAllReviews(studentReviews)
-
       const sorted = sections.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
       const result: SectionRow[] = sorted.map((s) => ({
         section: s,
         slug: titleToSlug(s.section_title),
         groups: groups.filter((g) => g.lifemap_sections_id === s.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-        reviews: studentReviews.filter((r) => r.lifemap_sections_id === s.id),
       }))
 
       setRows(result)
@@ -240,12 +212,6 @@ export default function StudentLifeMapOverviewPage() {
     } catch { /* ignore */ } finally {
       setLoadingSheet(false)
     }
-  }
-
-  const getReviewForGroup = (sectionId: number, groupId: number | null): ReviewRecord | undefined => {
-    return allReviews.find(
-      (r) => r.lifemap_sections_id === sectionId && r.lifemap_custom_group_id === (groupId ?? null)
-    )
   }
 
   const handleMarkCommentRead = useCallback(async (commentId: number) => {
@@ -328,7 +294,6 @@ export default function StudentLifeMapOverviewPage() {
                   key={row.section.id}
                   row={row}
                   locked={locked}
-                  getReviewForGroup={getReviewForGroup}
                   onRowClick={(slug) => router.push(`/life-map/${slug}`)}
                   onViewSummary={(groupId) => openSheet(row, groupId)}
                   templateQuestions={allTemplateQuestions}
@@ -441,7 +406,6 @@ export default function StudentLifeMapOverviewPage() {
 function SectionTableRows({
   row,
   locked,
-  getReviewForGroup,
   onRowClick,
   onViewSummary,
   templateQuestions,
@@ -450,7 +414,6 @@ function SectionTableRows({
 }: {
   row: SectionRow
   locked: boolean
-  getReviewForGroup: (sectionId: number, groupId: number | null) => ReviewRecord | undefined
   onRowClick: (slug: string) => void
   onViewSummary: (groupId: number | null) => void
   templateQuestions: TemplateQuestion[]
@@ -468,9 +431,6 @@ function SectionTableRows({
   )
 
   if (row.groups.length === 0) {
-    const review = getReviewForGroup(row.section.id, null)
-    const relTime = formatRelativeTime(review?.update)
-    const statusLabel = reviewStatusLabel(review)
     const unreadCount = sectionComments.filter((c) => !c.isOld && !c.lifemap_custom_group_id).length
     return (
       <TableRow
@@ -490,13 +450,6 @@ function SectionTableRows({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{row.section.section_title}</span>
-              {(relTime || statusLabel) && (
-                <span className="text-muted-foreground/50 text-xs">
-                  {relTime && <>· {relTime}</>}
-                  {relTime && statusLabel && " "}
-                  {statusLabel && <>· {statusLabel}</>}
-                </span>
-              )}
               {unreadCount > 0 && (
                 <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${unreadCount} unread comment${unreadCount !== 1 ? "s" : ""}`}>
                   <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-blue-500" />
@@ -601,7 +554,7 @@ function SectionTableRows({
             </TableCell>
             <TableCell>
               <div className="flex items-center gap-2 pl-4">
-                <span className={`text-sm ${isGroupComplete ? "text-muted-foreground" : "font-semibold text-foreground"}`}>{group.group_name}</span>
+                <span className="text-sm font-semibold text-foreground">{group.group_name}</span>
                 {unreadGroupComments > 0 && (
                   <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${unreadGroupComments} unread comment${unreadGroupComments !== 1 ? "s" : ""}`}>
                     <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-blue-500" />
@@ -614,18 +567,21 @@ function SectionTableRows({
                     <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{groupRevision}</span>
                   </div>
                 )}
+                <span className="text-muted-foreground text-xs">·</span>
+                <span className={`text-xs font-medium ${isGroupComplete ? "text-green-600" : "text-muted-foreground"}`}>
+                  {isGroupComplete ? "Completed" : `${Math.round((groupCompleted / groupQs.length) * 100)}%`}
+                </span>
               </div>
             </TableCell>
             <TableCell className="text-right">
               {isGroupComplete ? (
                 <span className="text-muted-foreground/60 text-xs">
-                  {formatRelativeTime(lastCompletedTime) ?? "Completed"}
+                  {formatRelativeTime(lastCompletedTime)}
                 </span>
               ) : (() => {
                 const remaining = groupQs.length - groupCompleted
                 return (
                   <div className="flex items-center justify-end gap-1.5">
-                    <span className="text-muted-foreground text-xs font-medium">{Math.round((groupCompleted / groupQs.length) * 100)}%</span>
                     <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-green-600" title={`${groupCompleted} completed`}>
                       {groupCompleted}
                     </div>

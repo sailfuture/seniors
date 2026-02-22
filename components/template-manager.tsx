@@ -71,10 +71,8 @@ const XANO_BASE =
 const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
 const PUBLISH_QUESTIONS_ENDPOINT = `${XANO_BASE}/publish_questions`
-const SYNC_REVIEWS_ENDPOINT = `${XANO_BASE}/lifemap_review_add_all`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
-const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
 const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
 const GROUP_DISPLAY_TYPES_ENDPOINT = `${XANO_BASE}/lifemap_group_display_types`
@@ -533,7 +531,6 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         body: JSON.stringify({ lifemap_sections_id: sectionId }),
       })
       if (!res.ok) throw new Error("Publish failed")
-      await fetch(SYNC_REVIEWS_ENDPOINT).catch(() => {})
       setQuestions((prev) =>
         prev.map((q) => (q.isDraft && !q.isArchived ? { ...q, isDraft: false, isPublished: true } : q))
       )
@@ -555,21 +552,6 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       })
       if (!res.ok) throw new Error()
 
-      const reviewRes = await fetch(REVIEW_ENDPOINT)
-      if (reviewRes.ok) {
-        const allReviews: { id: number; lifemap_sections_id: number }[] = await reviewRes.json()
-        const sectionReviews = allReviews.filter((r) => r.lifemap_sections_id === sectionId)
-        await Promise.all(
-          sectionReviews.map((r) =>
-            fetch(`${REVIEW_ENDPOINT}/${r.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ isLocked }),
-            })
-          )
-        )
-      }
-
       savedDescription.current = localDescription
       savedLocked.current = isLocked
       savedPhoto.current = localPhoto
@@ -586,10 +568,9 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const handleDeleteSection = async () => {
     setDeletingSection(true)
     try {
-      const [allTemplateRes, allGroupsRes, allReviewsRes, allCommentsRes, allResponsesRes] = await Promise.all([
+      const [allTemplateRes, allGroupsRes, allCommentsRes, allResponsesRes] = await Promise.all([
         fetch(TEMPLATE_ENDPOINT),
         fetch(CUSTOM_GROUP_ENDPOINT),
-        fetch(REVIEW_ENDPOINT),
         fetch(`${COMMENTS_ENDPOINT}?lifemap_sections_id=${sectionId}`),
         fetch(RESPONSES_ENDPOINT),
       ])
@@ -603,14 +584,6 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         if (Array.isArray(comments)) {
           const sectionComments = comments.filter((c: { lifemap_sections_id?: number }) => Number(c.lifemap_sections_id) === sectionId)
           await deleteAll(COMMENTS_ENDPOINT, sectionComments)
-        }
-      }
-
-      if (allReviewsRes.ok) {
-        const reviews = await allReviewsRes.json()
-        if (Array.isArray(reviews)) {
-          const sectionReviews = reviews.filter((r: { lifemap_sections_id?: number }) => Number(r.lifemap_sections_id) === sectionId)
-          await deleteAll(REVIEW_ENDPOINT, sectionReviews)
         }
       }
 
@@ -818,12 +791,12 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {(publishing || deletingGroupOverlay) && (
+      {(publishing || deletingGroupOverlay || saving || savingGroup) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3">
             <div className="size-8 animate-spin rounded-full border-4 border-muted-foreground/30 border-t-foreground" />
             <p className="text-sm font-medium">
-              {publishing ? "Publishing questions..." : "Deleting group..."}
+              {publishing ? "Publishing questions..." : deletingGroupOverlay ? "Deleting group..." : "Saving..."}
             </p>
           </div>
         </div>

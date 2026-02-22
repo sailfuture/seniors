@@ -69,7 +69,6 @@ const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
 const RESPONSE_PATCH_BASE = `${XANO_BASE}/lifemap_responses`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
-const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
 const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
 
 interface GptZeroResult {
@@ -113,17 +112,6 @@ interface CustomGroup {
   _lifemap_group_display_types?: { id: number; columns?: number }
 }
 
-interface ReviewRecord {
-  id: number
-  lifemap_sections_id: number
-  lifemap_custom_group_id: number | null
-  students_id: string
-  readyReview: boolean
-  revisionNeeded: boolean
-  isComplete: boolean
-  update?: string | number | null
-}
-
 interface StudentResponse {
   id: number
   lifemap_template_id: number
@@ -162,13 +150,13 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
   const [localValues, setLocalValues] = useState<Map<number, string>>(new Map())
   const [comments, setComments] = useState<Comment[]>([])
-  const [groupReviews, setGroupReviews] = useState<Map<number | null, ReviewRecord>>(new Map())
   const [sectionCommentsOpen, setSectionCommentsOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [plagiarismData, setPlagiarismData] = useState<Map<number, GptZeroResult>>(new Map())
   const [checkingPlagiarism, setCheckingPlagiarism] = useState<Set<number>>(new Set())
+  const [updatingStatus, setUpdatingStatus] = useState(false)
   const [hasDirty, setHasDirty] = useState(false)
   const dirtyRef = useRef(new Set<number>())
   const saveAllRef = useRef<() => Promise<void>>(() => Promise.resolve())
@@ -247,23 +235,6 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
           setComments(enriched)
         }
       }
-
-      try {
-        const reviewRes = await fetch(REVIEW_ENDPOINT)
-        if (reviewRes.ok) {
-          const allReviews = await reviewRes.json()
-          if (Array.isArray(allReviews)) {
-            const sectionReviews = allReviews.filter(
-              (r: ReviewRecord) => r.lifemap_sections_id === sectionId && r.students_id === studentId
-            )
-            const map = new Map<number | null, ReviewRecord>()
-            for (const r of sectionReviews) {
-              map.set(r.lifemap_custom_group_id ?? null, r)
-            }
-            setGroupReviews(map)
-          }
-        }
-      } catch { /* ignore */ }
 
       try {
         const gptzeroRes = await fetch(
@@ -468,6 +439,8 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
 
   const handleResponseStatusChange = useCallback(
     async (responseId: number, templateId: number, action: "ready" | "clear", silent = false) => {
+      if (!silent) setUpdatingStatus(true)
+      try {
       if (action === "ready" && studentId) {
         const response = responses.get(templateId)
         const text = localValues.get(templateId) ?? response?.student_response ?? ""
@@ -537,6 +510,9 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         }
       } catch {
         if (!silent) toast.error("Failed to update status")
+      }
+      } finally {
+        if (!silent) setUpdatingStatus(false)
       }
     },
     [studentId, sectionId, responses, localValues, questions]
@@ -624,6 +600,14 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      {updatingStatus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3">
+            <div className="size-8 animate-spin rounded-full border-4 border-muted-foreground/30 border-t-foreground" />
+            <p className="text-muted-foreground text-sm">Updating...</p>
+          </div>
+        </div>
+      )}
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold">{title}</h1>
@@ -682,7 +666,6 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         <GroupSection
           key={group.id}
           group={group}
-          review={groupReviews.get(group.id)}
           groupComments={allGroupComments.filter((c) => Number(c.lifemap_custom_group_id) === group.id)}
           onMarkCommentRead={handleMarkCommentRead}
           questionResponses={gQuestions.map((q) => responses.get(q.id)).filter(Boolean) as StudentResponse[]}
@@ -698,29 +681,6 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
               if (r) await handleResponseStatusChange(r.id, q.id, "ready", true)
             }
             toast.success(`${eligibleForReview.length} question${eligibleForReview.length > 1 ? "s" : ""} submitted for review`, { duration: 3000 })
-          }}
-          onStatusChange={async (patch) => {
-            const review = groupReviews.get(group.id)
-            if (!review) return
-            const now = new Date().toISOString()
-            const fullPatch = { ...patch, update: now }
-            try {
-              const res = await fetch(`${REVIEW_ENDPOINT}/${review.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(fullPatch),
-              })
-              if (!res.ok) throw new Error()
-              setGroupReviews((prev) => {
-                const next = new Map(prev)
-                next.set(group.id, { ...review, ...fullPatch })
-                return next
-              })
-              if (patch.readyReview) toast.success("Marked as ready for review")
-              else if (patch.isComplete === false && patch.readyReview === false && patch.revisionNeeded === false) toast.success("Status cleared")
-            } catch {
-              toast.error("Failed to update status")
-            }
           }}
         >
           {isGroupDisplayType(group.lifemap_group_display_types_id) ? (() => {
@@ -744,9 +704,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
 function GroupSection({
   group,
   children,
-  review,
   groupComments = [],
-  onStatusChange,
   onMarkCommentRead,
   questionResponses = [],
   totalQuestions = 0,
@@ -755,9 +713,7 @@ function GroupSection({
 }: {
   group: CustomGroup
   children: React.ReactNode
-  review?: ReviewRecord
   groupComments?: Comment[]
-  onStatusChange?: (patch: Partial<ReviewRecord>) => void
   onMarkCommentRead?: (commentId: number) => void
   questionResponses?: StudentResponse[]
   totalQuestions?: number
@@ -766,7 +722,6 @@ function GroupSection({
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false)
   const [groupCommentsOpen, setGroupCommentsOpen] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<"reopen" | "ready" | null>(null)
   const [submittingAll, setSubmittingAll] = useState(false)
   const [confirmSubmitAll, setConfirmSubmitAll] = useState(false)
   const hasInstructions = group.instructions || group.resources?.length > 0
@@ -776,26 +731,6 @@ function GroupSection({
   const readyCount = questionResponses.filter((r) => r.readyReview && !r.isComplete && !r.revisionNeeded).length
   const blankCount = totalQuestions - completedCount - revisionCount - readyCount
   const allComplete = completedCount === totalQuestions && totalQuestions > 0
-
-  const handleStatusClick = () => {
-    if (!review || !onStatusChange) return
-    if (review.isComplete) {
-      setConfirmAction("reopen")
-    } else if (review.revisionNeeded || (!review.readyReview && !review.isComplete && !review.revisionNeeded)) {
-      setConfirmAction("ready")
-    }
-  }
-
-  const handleConfirm = () => {
-    if (confirmAction === "reopen") {
-      onStatusChange?.({ isComplete: false, revisionNeeded: false, readyReview: false })
-    } else if (confirmAction === "ready") {
-      onStatusChange?.({ readyReview: true, isComplete: false, revisionNeeded: false })
-    }
-    setConfirmAction(null)
-  }
-
-  const isClickable = review && (review.isComplete || review.revisionNeeded || (!review.readyReview && !review.isComplete && !review.revisionNeeded))
 
   return (
     <Card className="overflow-hidden !pt-0 !gap-0">
@@ -953,26 +888,6 @@ function GroupSection({
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={!!confirmAction} onOpenChange={(open) => { if (!open) setConfirmAction(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {confirmAction === "reopen" ? "Reopen for Editing?" : "Submit for Review?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmAction === "reopen"
-                ? "This section has been marked as complete by your teacher. Reopening it will clear the completion status and allow you to make changes."
-                : "This will notify your teacher that this section is ready for review. Make sure you have completed all responses before submitting."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirm}>
-              {confirmAction === "reopen" ? "Reopen" : "Submit for Review"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Card>
   )
 }

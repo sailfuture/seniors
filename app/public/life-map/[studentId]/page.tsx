@@ -306,7 +306,7 @@ export default function PublicLifeMapPage({
           </Sidebar>
 
           {/* Main content */}
-          <SidebarInset>
+          <SidebarInset className="bg-gray-50">
             <div className="w-full p-4 md:p-6 lg:p-8">
               {sections.map((section) => {
                 const sectionTemplates = templates
@@ -649,10 +649,10 @@ function QuestionBlock({
       )
     }
     return (
-      <div>
-        {title && <h4 className={`${titleSize} text-muted-foreground font-normal`}>{title}</h4>}
+      <div className="rounded-lg border border-gray-200 p-4">
+        {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
         {description && (
-          <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed sm:text-sm">{description}</p>
+          <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
         )}
         <p className="text-muted-foreground/40 mt-2 text-sm italic">—</p>
       </div>
@@ -660,10 +660,10 @@ function QuestionBlock({
   }
 
   return (
-    <div>
-      {title && <h4 className={`${titleSize} text-muted-foreground font-normal`}>{title}</h4>}
+    <div className="rounded-lg border border-gray-200 p-4">
+      {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
       {description && (
-        <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed sm:text-sm">{description}</p>
+        <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
       )}
       <div className="mt-2">
         <ResponseDisplay typeId={typeId} response={response} />

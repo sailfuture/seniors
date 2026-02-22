@@ -56,25 +56,12 @@ const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
 
-const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
 const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
 const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
-
-interface ReviewRecord {
-  id: number
-  lifemap_sections_id: number
-  lifemap_custom_group_id: number | null
-  students_id: string
-  teachers_id: string | null
-  readyReview: boolean
-  revisionNeeded: boolean
-  isComplete: boolean
-  update?: string | number | null
-}
 
 interface CustomGroup {
   id: number
@@ -114,7 +101,6 @@ interface SectionRow {
   section: LifeMapSection
   slug: string
   groups: CustomGroup[]
-  reviews: ReviewRecord[]
 }
 
 function formatRelativeTime(ts: string | number | null | undefined): string | null {
@@ -133,22 +119,6 @@ function formatRelativeTime(ts: string | number | null | undefined): string | nu
   return date.toLocaleDateString()
 }
 
-function ReviewStatusIcon({ review }: { review: ReviewRecord | undefined }) {
-  if (!review) return <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-  if (review.isComplete) return <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-  if (review.revisionNeeded) return <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-  if (review.readyReview) return <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
-  return <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-}
-
-function reviewStatusLabel(review: ReviewRecord | undefined): string {
-  if (!review) return ""
-  if (review.isComplete) return "Complete"
-  if (review.revisionNeeded) return "Needs Revision"
-  if (review.readyReview) return "Ready for Review"
-  return ""
-}
-
 export default function AdminStudentLifeMapOverviewPage({
   params,
 }: {
@@ -161,7 +131,6 @@ export default function AdminStudentLifeMapOverviewPage({
   const [rows, setRows] = useState<SectionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [comments, setComments] = useState<Comment[]>([])
-  const [allReviews, setAllReviews] = useState<ReviewRecord[]>([])
   const [questionTypes, setQuestionTypes] = useState<{ id: number; type: string }[]>([])
   const [allTemplateQuestions, setAllTemplateQuestions] = useState<TemplateQuestion[]>([])
   const [allResponses, setAllResponses] = useState<StudentResponse[]>([])
@@ -196,9 +165,8 @@ export default function AdminStudentLifeMapOverviewPage({
 
   const loadData = useCallback(async () => {
     try {
-      const [sectionsRes, reviewRes, groupsRes, qTypesRes, templateRes, responsesRes] = await Promise.all([
+      const [sectionsRes, groupsRes, qTypesRes, templateRes, responsesRes] = await Promise.all([
         fetch(SECTIONS_ENDPOINT),
-        fetch(REVIEW_ENDPOINT),
         fetch(CUSTOM_GROUP_ENDPOINT),
         fetch(QUESTION_TYPES_ENDPOINT),
         fetch(TEMPLATE_ENDPOINT),
@@ -206,7 +174,6 @@ export default function AdminStudentLifeMapOverviewPage({
       ])
 
       const sections: LifeMapSection[] = sectionsRes.ok ? await sectionsRes.json() : []
-      const reviews: ReviewRecord[] = reviewRes.ok ? await reviewRes.json() : []
       const groups: CustomGroup[] = groupsRes.ok ? await groupsRes.json() : []
       if (qTypesRes.ok) {
         const types = await qTypesRes.json()
@@ -221,16 +188,12 @@ export default function AdminStudentLifeMapOverviewPage({
         setAllResponses(resps.filter((r) => !r.isArchived))
       }
 
-      const studentReviews = reviews.filter((r) => r.students_id === studentId)
-      setAllReviews(studentReviews)
-
       const sorted = sections.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
       const result: SectionRow[] = sorted.map((s) => ({
         section: s,
         slug: titleToSlug(s.section_title),
         groups: groups.filter((g) => g.lifemap_sections_id === s.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-        reviews: studentReviews.filter((r) => r.lifemap_sections_id === s.id),
       }))
 
       setRows(result)
@@ -279,12 +242,6 @@ export default function AdminStudentLifeMapOverviewPage({
     } catch { /* ignore */ } finally {
       setLoadingSheet(false)
     }
-  }
-
-  const getReviewForGroup = (sectionId: number, groupId: number | null): ReviewRecord | undefined => {
-    return allReviews.find(
-      (r) => r.lifemap_sections_id === sectionId && r.lifemap_custom_group_id === (groupId ?? null)
-    )
   }
 
   const handlePostComment = async () => {
@@ -404,7 +361,6 @@ export default function AdminStudentLifeMapOverviewPage({
                   key={row.section.id}
                   row={row}
                   locked={locked}
-                  getReviewForGroup={getReviewForGroup}
                   onRowClick={(slug) => router.push(`/admin/life-map/${studentId}/${slug}`)}
                   onViewSummary={(groupId) => openSheet(row, groupId)}
                   templateQuestions={allTemplateQuestions}
@@ -546,7 +502,6 @@ export default function AdminStudentLifeMapOverviewPage({
 function SectionTableRows({
   row,
   locked,
-  getReviewForGroup,
   onRowClick,
   onViewSummary,
   templateQuestions,
@@ -555,7 +510,6 @@ function SectionTableRows({
 }: {
   row: SectionRow
   locked: boolean
-  getReviewForGroup: (sectionId: number, groupId: number | null) => ReviewRecord | undefined
   onRowClick: (slug: string) => void
   onViewSummary: (groupId: number | null) => void
   templateQuestions: TemplateQuestion[]
@@ -573,9 +527,6 @@ function SectionTableRows({
     : "hover:bg-muted/50"
 
   if (row.groups.length === 0) {
-    const review = getReviewForGroup(row.section.id, null)
-    const relTime = formatRelativeTime(review?.update)
-    const statusLabel = reviewStatusLabel(review)
     return (
       <TableRow
         className={`cursor-pointer [&>td]:py-3.5 ${bgClass}`}
@@ -592,16 +543,7 @@ function SectionTableRows({
         </TableCell>
         <TableCell>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium">{row.section.section_title}</span>
-              {(relTime || statusLabel) && (
-                <span className="text-muted-foreground/50 text-xs">
-                  {relTime && <>· {relTime}</>}
-                  {relTime && statusLabel && " "}
-                  {statusLabel && <>· {statusLabel}</>}
-                </span>
-              )}
-            </div>
+            <span className="text-sm font-medium">{row.section.section_title}</span>
             {row.section.section_description && (
               <p className="text-muted-foreground mt-0.5 truncate text-xs">{row.section.section_description}</p>
             )}
@@ -701,7 +643,7 @@ function SectionTableRows({
             </TableCell>
             <TableCell>
               <div className="flex items-center gap-2 pl-4">
-                <span className={`text-sm ${isGroupComplete ? "text-muted-foreground" : "font-semibold text-foreground"}`}>{group.group_name}</span>
+                <span className="text-sm font-semibold text-foreground">{group.group_name}</span>
                 {groupCommentCount > 0 && (
                   <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${groupCommentCount} comment${groupCommentCount !== 1 ? "s" : ""}`}>
                     <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground/50" />
@@ -716,18 +658,21 @@ function SectionTableRows({
                     <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{groupRevision}</span>
                   </div>
                 )}
+                <span className="text-muted-foreground text-xs">·</span>
+                <span className={`text-xs font-medium ${isGroupComplete ? "text-green-600" : "text-muted-foreground"}`}>
+                  {isGroupComplete ? "Completed" : `${Math.round((groupCompleted / groupQs.length) * 100)}%`}
+                </span>
               </div>
             </TableCell>
             <TableCell className="text-right">
               {isGroupComplete ? (
                 <span className="text-muted-foreground/60 text-xs">
-                  {formatRelativeTime(lastCompletedTime) ?? "Completed"}
+                  {formatRelativeTime(lastCompletedTime)}
                 </span>
               ) : (() => {
                 const remaining = groupQs.length - groupCompleted
                 return (
                   <div className="flex items-center justify-end gap-1.5">
-                    <span className="text-muted-foreground text-xs font-medium">{Math.round((groupCompleted / groupQs.length) * 100)}%</span>
                     <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-green-600" title={`${groupCompleted} completed`}>
                       {groupCompleted}
                     </div>

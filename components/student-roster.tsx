@@ -16,8 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Link01Icon, RefreshIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
-import { toast } from "sonner"
+import { Link01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 
 interface Student {
   id: string
@@ -38,11 +37,8 @@ interface GroupedStudents {
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
 
-const ALL_REVIEWS_ENDPOINT =
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/all_reviews"
-
-const REVIEW_SYNC_ENDPOINT =
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/lifemap_review_add_all"
+const ALL_RESPONSES_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/lifemap_responses"
 
 function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
@@ -106,7 +102,6 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl }: S
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
-  const [syncing, setSyncing] = useState(false)
   const [reviewCounts, setReviewCounts] = useState<Map<string, number>>(new Map())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
@@ -115,7 +110,7 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl }: S
       try {
         const [studentsRes, reviewsRes] = await Promise.all([
           fetch(STUDENTS_ENDPOINT),
-          fetch(ALL_REVIEWS_ENDPOINT),
+          fetch(ALL_RESPONSES_ENDPOINT),
         ])
 
         if (studentsRes.ok) {
@@ -129,10 +124,10 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl }: S
         }
 
         if (reviewsRes.ok) {
-          const reviews = await reviewsRes.json()
-          if (Array.isArray(reviews)) {
+          const responses = await reviewsRes.json()
+          if (Array.isArray(responses)) {
             const counts = new Map<string, number>()
-            for (const r of reviews) {
+            for (const r of responses) {
               if (!r.readyReview || r.isComplete || r.revisionNeeded) continue
               const sid = String(r.students_id)
               counts.set(sid, (counts.get(sid) ?? 0) + 1)
@@ -149,19 +144,6 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl }: S
 
     fetchData()
   }, [])
-
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      const res = await fetch(REVIEW_SYNC_ENDPOINT)
-      if (!res.ok) throw new Error()
-      toast.success("Review records synced")
-    } catch {
-      toast.error("Failed to sync review records")
-    } finally {
-      setSyncing(false)
-    }
-  }
 
   const filtered = students.filter((s) => {
     const q = search.toLowerCase()
@@ -186,23 +168,12 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl }: S
         <TableSkeleton />
       ) : (
         <div className="space-y-8">
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Search by name, email, or crew..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
-            />
-            <Button
-              variant="outline"
-              onClick={handleSync}
-              disabled={syncing}
-              className="gap-2"
-            >
-              <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className={`size-4 ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "Syncing..." : "Sync Reviews"}
-            </Button>
-          </div>
+          <Input
+            placeholder="Search by name, email, or crew..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-sm"
+          />
 
           {groups.length === 0 && (
             <p className="text-muted-foreground py-8 text-center">No students found.</p>

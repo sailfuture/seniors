@@ -504,8 +504,8 @@ function TransportationBudgetDisplay({
               <TableBody>
                 {rows.map((row, rIdx) => (
                   <TableRow key={rIdx}>
-                    <TableCell className="text-muted-foreground w-1/2 text-sm">{row.label}</TableCell>
-                    <TableCell className="text-sm font-semibold">{formatUSD(row.value)}</TableCell>
+                    <TableCell className="text-muted-foreground w-1/2 py-2 text-sm">{row.label}</TableCell>
+                    <TableCell className="py-2 text-sm font-semibold">{formatUSD(row.value)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

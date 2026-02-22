@@ -52,20 +52,8 @@ const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
-const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
 const RESPONSE_PATCH_BASE = `${XANO_BASE}/lifemap_responses`
 const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
-
-interface ReviewRecord {
-  id: number
-  lifemap_sections_id: number
-  lifemap_custom_group_id: number | null
-  students_id: string
-  readyReview: boolean
-  revisionNeeded: boolean
-  isComplete: boolean
-  update: string | number | null
-}
 
 interface GptZeroResult {
   lifemap_responses_id: number
@@ -222,11 +210,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const [comments, setComments] = useState<Comment[]>([])
   const [loading, setLoading] = useState(true)
   const [plagiarismData, setPlagiarismData] = useState<Map<number, GptZeroResult>>(new Map())
-  const [groupReviews, setGroupReviews] = useState<Map<number, ReviewRecord>>(new Map())
-  const [reviewModal, setReviewModal] = useState<{ groupId: number; action: "resubmission" | "complete" } | null>(null)
   const [revisionModal, setRevisionModal] = useState<{ responseId: number; templateId: number } | null>(null)
   const [revisionComment, setRevisionComment] = useState("")
-  const [reviewComment, setReviewComment] = useState("")
 
   useEffect(() => {
     const loadData = async () => {
@@ -297,22 +282,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           }
         }
         try {
-          const reviewRes = await fetch(REVIEW_ENDPOINT)
-          if (reviewRes.ok) {
-            const allReviews = await reviewRes.json()
-            if (Array.isArray(allReviews)) {
-              const map = new Map<number, ReviewRecord>()
-              for (const r of allReviews) {
-                if (String(r.students_id) === String(studentId) && Number(r.lifemap_sections_id) === sectionId && r.lifemap_custom_group_id) {
-                  map.set(r.lifemap_custom_group_id, r)
-                }
-              }
-              setGroupReviews(map)
-            }
-          }
-        } catch { /* ignore */ }
-
-        try {
           const gptzeroRes = await fetch(
             `${GPTZERO_BY_SECTION_ENDPOINT}?lifemap_sections_id=${sectionId}&students_id=${studentId}`
           )
@@ -340,67 +309,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
 
     loadData()
   }, [studentId, sectionId])
-
-  const handleReviewAction = useCallback(
-    async () => {
-      if (!reviewModal) return
-      const { groupId, action } = reviewModal
-      const review = groupReviews.get(groupId)
-      if (!review) return
-
-      const patch: Partial<ReviewRecord> = action === "complete"
-        ? { isComplete: true, revisionNeeded: false, readyReview: false, update: new Date().toISOString() }
-        : { revisionNeeded: true, readyReview: false, isComplete: false, update: new Date().toISOString() }
-
-      try {
-        const res = await fetch(`${REVIEW_ENDPOINT}/${review.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(patch),
-        })
-        if (!res.ok) throw new Error()
-
-        setGroupReviews((prev) => {
-          const next = new Map(prev)
-          next.set(groupId, { ...review, ...patch })
-          return next
-        })
-
-        if (review.readyReview) {
-          window.dispatchEvent(new CustomEvent("review-update", { detail: { sectionId, delta: -1 } }))
-        }
-
-        if (reviewComment.trim()) {
-          const teacherName = session?.user?.name ?? "Teacher"
-          const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
-          await fetch(COMMENTS_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              students_id: studentId,
-              teachers_id: teachersId,
-              field_name: "_section_comment",
-              lifemap_sections_id: sectionId,
-              lifemap_custom_group_id: groupId,
-              note: reviewComment.trim(),
-              isOld: false,
-              isComplete: false,
-              isRevisionFeedback: action === "resubmission",
-              teacher_name: teacherName,
-            }),
-          })
-        }
-
-        toast.success(action === "complete" ? "Marked as complete" : "Resubmission requested")
-      } catch {
-        toast.error("Failed to update review status")
-      } finally {
-        setReviewModal(null)
-        setReviewComment("")
-      }
-    },
-    [reviewModal, groupReviews, reviewComment, session, studentId, sectionId, customGroups]
-  )
 
   const handlePostComment = useCallback(
     async (fieldName: string, note: string) => {
@@ -505,47 +413,12 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             toast.success(labels[action] ?? "Status updated")
           }
 
-          if (action === "complete") {
-            const q = questions.find((qt) => qt.id === templateId)
-            if (q?.lifemap_custom_group_id) {
-              const groupId = q.lifemap_custom_group_id
-              const groupQuestions = questions.filter((gq) => gq.lifemap_custom_group_id === groupId)
-              setResponses((prev) => {
-                const allComplete = groupQuestions.every((gq) => {
-                  if (gq.id === templateId) return true
-                  const r = prev.get(gq.id)
-                  return r?.isComplete === true
-                })
-                if (allComplete) {
-                  const review = groupReviews.get(groupId)
-                  if (review && !review.isComplete) {
-                    const groupPatch = { isComplete: true, revisionNeeded: false, readyReview: false, update: new Date().toISOString() }
-                    fetch(`${REVIEW_ENDPOINT}/${review.id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify(groupPatch),
-                    }).then((r) => {
-                      if (r.ok) {
-                        setGroupReviews((gp) => {
-                          const next = new Map(gp)
-                          next.set(groupId, { ...review, ...groupPatch })
-                          return next
-                        })
-                        if (!silent) toast.success("Group automatically marked complete")
-                      }
-                    }).catch(() => {})
-                  }
-                }
-                return prev
-              })
-            }
-          }
         }
       } catch {
         if (!silent) toast.error("Failed to update status")
       }
     },
-    [session, studentId, sectionId, questions, groupReviews]
+    [session, studentId, sectionId, questions]
   )
 
   if (loading) {
@@ -834,38 +707,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           })}
         </div>
       )}
-
-      <Dialog open={reviewModal !== null} onOpenChange={(open) => { if (!open) { setReviewModal(null); setReviewComment("") } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {reviewModal?.action === "complete" ? "Mark Group as Complete?" : "Request Resubmission?"}
-            </DialogTitle>
-            <DialogDescription>
-              {reviewModal?.action === "complete"
-                ? `This will mark "${customGroups.find((g) => g.id === reviewModal?.groupId)?.group_name ?? "this group"}" as complete.`
-                : `This will request a resubmission for "${customGroups.find((g) => g.id === reviewModal?.groupId)?.group_name ?? "this group"}".`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Comment (optional)</Label>
-            <Textarea
-              placeholder="Add a note for the student..."
-              value={reviewComment}
-              onChange={(e) => setReviewComment(e.target.value)}
-              rows={3}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setReviewModal(null); setReviewComment("") }}>
-              Cancel
-            </Button>
-            <Button onClick={handleReviewAction}>
-              {reviewModal?.action === "complete" ? "Mark Complete" : "Request Resubmission"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={revisionModal !== null} onOpenChange={(open) => { if (!open) { setRevisionModal(null); setRevisionComment("") } }}>
         <DialogContent>
