@@ -54,6 +54,7 @@ import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
 import { useSaveRegister } from "@/lib/save-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
+import { isGroupDisplayType } from "@/components/group-display-types"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -106,6 +107,7 @@ interface CustomGroup {
   resources: string[]
   lifemap_sections_id: number
   order?: number
+  lifemap_group_display_types_id?: number | null
 }
 
 interface ReviewRecord {
@@ -300,7 +302,10 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
           })
           setResponses((prev) => {
             const next = new Map(prev)
-            next.set(templateId, { ...response, student_response: value, last_edited: now })
+            const latest = next.get(templateId)
+            if (latest) {
+              next.set(templateId, { ...latest, student_response: value, last_edited: now })
+            }
             return next
           })
         }
@@ -556,33 +561,38 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     }))
     .filter((gs) => gs.questions.length > 0)
 
-  const renderQuestionList = (qs: TemplateQuestion[]) => (
-    <div className="space-y-8">
-      {qs.map((q) => {
-        const response = responses.get(q.id)
-        const value = localValues.get(q.id) ?? ""
-        return (
-          <DynamicField
-            key={q.id}
-            comments={comments}
-            onMarkRead={handleMarkRead}
-            question={q}
-            value={value}
-            imageValue={response?.image_response ?? null}
-            lastEdited={response?.last_edited}
-            plagiarism={response ? plagiarismData.get(response.id) : undefined}
-            onChange={(v) => handleChange(q.id, v)}
-            onImageUpload={(file) => handleImageUpload(q.id, file)}
-            submittingForReview={checkingPlagiarism.has(q.id)}
-            responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : undefined}
-            onSendForReview={response && q.question_types_id !== QUESTION_TYPE.IMAGE_UPLOAD ? () => handleResponseStatusChange(response.id, q.id, "ready") : undefined}
-            onEditSubmission={response?.readyReview ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
-            onRequestReopen={response?.isComplete ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
-          />
-        )
-      })}
-    </div>
-  )
+  const renderQuestionList = (qs: TemplateQuestion[], flat = false) => {
+    const items = qs.map((q) => {
+      const response = responses.get(q.id)
+      const value = localValues.get(q.id) ?? ""
+      return (
+        <DynamicField
+          key={q.id}
+          comments={comments}
+          onMarkRead={handleMarkRead}
+          question={q}
+          value={value}
+          imageValue={response?.image_response ?? null}
+          lastEdited={response?.last_edited}
+          plagiarism={response ? plagiarismData.get(response.id) : undefined}
+          onChange={(v) => handleChange(q.id, v)}
+          onImageUpload={(file) => handleImageUpload(q.id, file)}
+          submittingForReview={checkingPlagiarism.has(q.id)}
+          responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : undefined}
+          onSendForReview={response && q.question_types_id !== QUESTION_TYPE.IMAGE_UPLOAD ? () => handleResponseStatusChange(response.id, q.id, "ready") : undefined}
+          onEditSubmission={response?.readyReview ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
+          onRequestReopen={response?.isComplete ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
+        />
+      )
+    })
+
+    if (flat) return <>{items}</>
+    return (
+      <div className="space-y-8">
+        {items}
+      </div>
+    )
+  }
 
   const allSectionComments = comments.filter((c) => c.field_name === "_section_comment" && !c.isComplete && !c.lifemap_custom_group_id)
   const allGroupComments = comments.filter((c) => c.field_name === "_section_comment" && !c.isComplete && !!c.lifemap_custom_group_id)
@@ -631,7 +641,20 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         </Card>
       )}
 
-      {groupedSections.map(({ group, questions: gQuestions }) => (
+      {groupedSections.map(({ group, questions: gQuestions }) => {
+        const eligibleForReview = gQuestions.filter((q) => {
+          if (q.question_types_id === QUESTION_TYPE.IMAGE_UPLOAD) return false
+          const r = responses.get(q.id)
+          if (!r) return false
+          if (r.isComplete || r.readyReview) return false
+          const text = localValues.get(q.id) ?? r.student_response ?? ""
+          if (!text.trim()) return false
+          const wordCount = text.trim().split(/\s+/).filter(Boolean).length
+          if (q.min_words && q.min_words > 0 && wordCount < q.min_words) return false
+          return true
+        })
+
+        return (
         <GroupSection
           key={group.id}
           group={group}
@@ -640,6 +663,18 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
           onMarkCommentRead={handleMarkCommentRead}
           questionResponses={gQuestions.map((q) => responses.get(q.id)).filter(Boolean) as StudentResponse[]}
           totalQuestions={gQuestions.length}
+          submitAllCount={eligibleForReview.length}
+          onSubmitAllForReview={async () => {
+            if (eligibleForReview.length === 0) {
+              toast.info("No eligible questions to submit", { duration: 2000 })
+              return
+            }
+            for (const q of eligibleForReview) {
+              const r = responses.get(q.id)
+              if (r) await handleResponseStatusChange(r.id, q.id, "ready")
+            }
+            toast.success(`${eligibleForReview.length} question${eligibleForReview.length > 1 ? "s" : ""} submitted for review`, { duration: 3000 })
+          }}
           onStatusChange={async (patch) => {
             const review = groupReviews.get(group.id)
             if (!review) return
@@ -664,9 +699,16 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
             }
           }}
         >
-          {renderQuestionList(gQuestions)}
+          {isGroupDisplayType(group.lifemap_group_display_types_id) ? (
+            <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4">
+              {renderQuestionList(gQuestions, true)}
+            </div>
+          ) : (
+            renderQuestionList(gQuestions)
+          )}
         </GroupSection>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -680,6 +722,8 @@ function GroupSection({
   onMarkCommentRead,
   questionResponses = [],
   totalQuestions = 0,
+  onSubmitAllForReview,
+  submitAllCount = 0,
 }: {
   group: CustomGroup
   children: React.ReactNode
@@ -689,10 +733,13 @@ function GroupSection({
   onMarkCommentRead?: (commentId: number) => void
   questionResponses?: StudentResponse[]
   totalQuestions?: number
+  onSubmitAllForReview?: () => Promise<void>
+  submitAllCount?: number
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false)
   const [groupCommentsOpen, setGroupCommentsOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<"reopen" | "ready" | null>(null)
+  const [submittingAll, setSubmittingAll] = useState(false)
   const hasInstructions = group.instructions || group.resources?.length > 0
 
   const completedCount = questionResponses.filter((r) => r.isComplete).length
@@ -778,6 +825,28 @@ function GroupSection({
               </button>
             )
           })()}
+          {onSubmitAllForReview && !allComplete && (
+            <>
+              <div className="mx-1 h-6 w-px bg-gray-200" />
+              <Button
+                variant="outline"
+                size="sm"
+                className={`h-7 gap-1.5 text-xs ${submitAllCount === 0 ? "cursor-not-allowed" : ""}`}
+                disabled={submittingAll || submitAllCount === 0}
+                onClick={async () => {
+                  setSubmittingAll(true)
+                  try {
+                    await onSubmitAllForReview()
+                  } finally {
+                    setSubmittingAll(false)
+                  }
+                }}
+              >
+                <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-3.5" />
+                {submittingAll ? "Submitting..." : `Submit All (${submitAllCount})`}
+              </Button>
+            </>
+          )}
         </div>
       </div>
       {group.group_description && (

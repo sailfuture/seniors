@@ -32,6 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { useRef } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -49,6 +50,7 @@ import {
   invalidateSectionsCache,
   type LifeMapSection,
 } from "@/lib/lifemap-sections"
+import { uploadImageToXano, type XanoImageResponse } from "@/lib/xano"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -113,8 +115,11 @@ export function TemplateOverview() {
   const [addingSection, setAddingSection] = useState(false)
   const [editDescription, setEditDescription] = useState("")
   const [editLocked, setEditLocked] = useState(false)
+  const [editPhoto, setEditPhoto] = useState<XanoImageResponse | null>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
   const [sheetLockConfirm, setSheetLockConfirm] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -300,7 +305,7 @@ export function TemplateOverview() {
       const res = await fetch(`${SECTIONS_ENDPOINT}/${sheetSection.section.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ section_description: editDescription, description: editDescription, isLocked: editLocked }),
+        body: JSON.stringify({ section_description: editDescription, description: editDescription, isLocked: editLocked, photo: editPhoto }),
       })
       if (!res.ok) throw new Error()
 
@@ -497,6 +502,7 @@ export function TemplateOverview() {
                 onClick={() => {
                   setEditDescription(s.section.section_description ?? "")
                   setEditLocked(s.section.isLocked ?? false)
+                  setEditPhoto((s.section as LifeMapSection & { photo?: XanoImageResponse | null }).photo ?? null)
                   setSheetSection(s)
                 }}
               >
@@ -567,6 +573,53 @@ export function TemplateOverview() {
                   placeholder="Add a description for this section..."
                   rows={3}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Section Photo</Label>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    setUploadingPhoto(true)
+                    try {
+                      const uploaded = await uploadImageToXano(file)
+                      setEditPhoto(uploaded)
+                      toast.success("Photo uploaded")
+                    } catch {
+                      toast.error("Failed to upload photo")
+                    } finally {
+                      setUploadingPhoto(false)
+                      if (photoInputRef.current) photoInputRef.current.value = ""
+                    }
+                  }}
+                />
+                {editPhoto?.path ? (
+                  <div className="space-y-2">
+                    <div className="overflow-hidden rounded-md border">
+                      <img
+                        src={editPhoto.path.startsWith("http") ? editPhoto.path : `https://xsc3-mvx7-r86m.n7e.xano.io${editPhoto.path}`}
+                        alt="Section photo"
+                        className="h-36 w-full object-cover"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="outline" size="sm" disabled={uploadingPhoto} onClick={() => photoInputRef.current?.click()}>
+                        {uploadingPhoto ? "Uploading..." : "Replace"}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setEditPhoto(null)}>
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" className="w-full" disabled={uploadingPhoto} onClick={() => photoInputRef.current?.click()}>
+                    {uploadingPhoto ? "Uploading..." : "Upload Photo"}
+                  </Button>
+                )}
               </div>
             </div>
 

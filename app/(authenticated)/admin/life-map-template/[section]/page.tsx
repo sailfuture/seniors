@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react"
 import { TemplateManager } from "@/components/template-manager"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fetchSections, findSectionBySlug, slugToTitle } from "@/lib/lifemap-sections"
+import type { XanoImageResponse } from "@/lib/xano"
 
 export default function LifeMapTemplateSectionPage({
   params,
@@ -16,6 +17,7 @@ export default function LifeMapTemplateSectionPage({
   const [sectionLabel, setSectionLabel] = useState(slugToTitle(section))
   const [sectionDescription, setSectionDescription] = useState("")
   const [sectionLocked, setSectionLocked] = useState(false)
+  const [sectionPhoto, setSectionPhoto] = useState<XanoImageResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -31,6 +33,7 @@ export default function LifeMapTemplateSectionPage({
           setSectionLabel(match.section_title)
           setSectionDescription(match.section_description ?? "")
           setSectionLocked(match.isLocked ?? false)
+          setSectionPhoto(match.photo ?? null)
         }
       } catch {
         // Silently fail
@@ -70,6 +73,7 @@ export default function LifeMapTemplateSectionPage({
       sectionLabel={sectionLabel}
       sectionDescription={sectionDescription}
       sectionLocked={sectionLocked}
+      sectionPhoto={sectionPhoto}
     />
   )
 }

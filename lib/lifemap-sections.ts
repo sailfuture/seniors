@@ -11,6 +11,7 @@ export interface LifeMapSection {
   description?: string
   isLocked?: boolean
   order?: number
+  photo?: { path: string; name: string; type: string; size: number; mime: string; meta?: Record<string, unknown> } | null
 }
 
 const KNOWN_SLUGS: Record<string, string> = {

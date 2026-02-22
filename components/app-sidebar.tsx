@@ -452,7 +452,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const isLifeMap = pathname.startsWith("/admin/life-map/") && adminStudentId
   const isBusiness = pathname.startsWith("/admin/business-thesis/") && adminStudentId
   const publicUrl = isLifeMap
-    ? `https://lifemap.sailfutureacademy.org/dashboard?student=${adminStudentId}`
+    ? `/public/life-map/${adminStudentId}`
     : isBusiness
       ? `https://thesis.sailfutureacademy.org/dashboard?id=${adminStudentId}`
       : null

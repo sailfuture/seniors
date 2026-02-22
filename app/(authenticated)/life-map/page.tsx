@@ -474,8 +474,8 @@ function SectionTableRows({
     const unreadCount = sectionComments.filter((c) => !c.isOld && !c.lifemap_custom_group_id).length
     return (
       <TableRow
-        className={`cursor-pointer [&>td]:py-3.5 ${bgClass}`}
-        onClick={() => onViewSummary(null)}
+        className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} [&>td]:py-3.5 ${bgClass}`}
+        onClick={() => { if (!locked) onViewSummary(null) }}
       >
         <TableCell>
           <div className="inline-flex size-7 items-center justify-center rounded-md border">
@@ -527,8 +527,8 @@ function SectionTableRows({
   return (
     <>
       <TableRow
-        className={`cursor-pointer [&>td]:py-3.5 ${bgClass}`}
-        onClick={() => onRowClick(row.slug)}
+        className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} [&>td]:py-3.5 ${bgClass}`}
+        onClick={() => { if (!locked) onRowClick(row.slug) }}
       >
         <TableCell>
           <div className="inline-flex size-7 items-center justify-center rounded-md border">
@@ -587,8 +587,8 @@ function SectionTableRows({
         return (
           <TableRow
             key={group.id}
-            className={`cursor-pointer [&>td]:py-2.5 ${groupRowBg}`}
-            onClick={() => onViewSummary(group.id)}
+            className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} [&>td]:py-2.5 ${groupRowBg}`}
+            onClick={() => { if (!locked) onViewSummary(group.id) }}
           >
             <TableCell>
               {isGroupComplete ? (

@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner"
 import { TeacherComment } from "./teacher-comment"
 import type { Comment } from "@/lib/form-types"
+import { isGroupDisplayType } from "@/components/group-display-types"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -91,6 +92,7 @@ interface CustomGroup {
   resources: string[]
   lifemap_sections_id: number
   order?: number
+  lifemap_group_display_types_id?: number | null
 }
 
 interface StudentResponse {
@@ -507,9 +509,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     }))
     .filter((gs) => gs.questions.length > 0)
 
-  const renderQuestionList = (qs: TemplateQuestion[]) => (
-    <div className="grid gap-3 md:grid-cols-6">
-      {qs.map((q) => {
+  const renderQuestionList = (qs: TemplateQuestion[], flat = false) => {
+    const items = qs.map((q) => {
         const response = responses.get(q.id)
         const value = response?.student_response ?? ""
         const imageValue = response?.image_response ?? null
@@ -517,7 +518,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const isLong = typeId === QUESTION_TYPE.LONG_RESPONSE
         const isImage = typeId === QUESTION_TYPE.IMAGE_UPLOAD
         const isCurrency = typeId === QUESTION_TYPE.CURRENCY
-        const colSpan = isLong || isImage ? "md:col-span-6" : "md:col-span-3"
+        const colSpan = flat ? "" : (isLong || isImage ? "md:col-span-6" : "md:col-span-3")
 
         const gptzero = response ? plagiarismData.get(response.id) : undefined
         const aiIsHighest = gptzero ? isAiHighest(gptzero) : false
@@ -628,9 +629,15 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             {displayValue}
           </div>
         )
-      })}
-    </div>
-  )
+      })
+
+    if (flat) return <>{items}</>
+    return (
+      <div className="grid gap-3 md:grid-cols-6">
+        {items}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -659,6 +666,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             const revisionCount = groupResponses.filter((r) => r.revisionNeeded).length
             const readyCount = groupResponses.filter((r) => r.readyReview && !r.isComplete && !r.revisionNeeded).length
             const blankCount = gQuestions.length - completedCount - revisionCount - readyCount
+
+            const hasDisplayType = isGroupDisplayType(group.lifemap_group_display_types_id)
 
             return (
               <Card key={group.id} className="overflow-hidden !pt-0 !gap-0">
@@ -697,7 +706,13 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   )}
                 </div>
                 <CardContent className="p-6">
-                  {renderQuestionList(gQuestions)}
+                  {hasDisplayType ? (
+                    <div className="grid gap-3 md:grid-cols-4">
+                      {renderQuestionList(gQuestions, true)}
+                    </div>
+                  ) : (
+                    renderQuestionList(gQuestions)
+                  )}
                 </CardContent>
               </Card>
             )

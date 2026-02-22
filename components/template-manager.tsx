@@ -41,6 +41,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
@@ -61,6 +62,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
 import { invalidateSectionsCache } from "@/lib/lifemap-sections"
+import { uploadImageToXano, type XanoImageResponse } from "@/lib/xano"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -75,6 +77,8 @@ const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const REVIEW_ENDPOINT = `${XANO_BASE}/lifemap_review`
 const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses`
 const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
+const GROUP_DISPLAY_TYPES_ENDPOINT = `${XANO_BASE}/lifemap_group_display_types`
+const ADD_GROUP_DISPLAY_TEMPLATE_ENDPOINT = `${XANO_BASE}/add_group_display_template`
 
 interface TemplateQuestion {
   id?: number
@@ -95,6 +99,8 @@ interface TemplateQuestion {
   dropdownOptions: string[]
   sortOrder: number
   teacher_guideline?: string
+  public_display_title?: string
+  public_display_description?: string
   _question_types?: QuestionType
 }
 
@@ -111,6 +117,12 @@ interface CustomGroup {
   resources: string[]
   lifemap_sections_id: number
   order?: number
+  lifemap_group_display_types_id?: number | null
+}
+
+interface GroupDisplayType {
+  id: number
+  display_type: string
 }
 
 const emptyQuestion: Omit<TemplateQuestion, "id"> = {
@@ -131,6 +143,8 @@ const emptyQuestion: Omit<TemplateQuestion, "id"> = {
   dropdownOptions: [],
   sortOrder: 0,
   teacher_guideline: "",
+  public_display_title: "",
+  public_display_description: "",
 }
 
 const emptyGroup: Omit<CustomGroup, "id"> = {
@@ -139,6 +153,7 @@ const emptyGroup: Omit<CustomGroup, "id"> = {
   instructions: "",
   resources: [],
   lifemap_sections_id: 0,
+  lifemap_group_display_types_id: null,
 }
 
 function getTypeName(q: TemplateQuestion, types: QuestionType[]): string {
@@ -156,13 +171,15 @@ interface TemplateManagerProps {
   sectionLabel: string
   sectionDescription?: string
   sectionLocked?: boolean
+  sectionPhoto?: XanoImageResponse | null
 }
 
-export function TemplateManager({ section, sectionId, sectionLabel, sectionDescription: initialDescription, sectionLocked: initialLocked }: TemplateManagerProps) {
+export function TemplateManager({ section, sectionId, sectionLabel, sectionDescription: initialDescription, sectionLocked: initialLocked, sectionPhoto: initialPhoto }: TemplateManagerProps) {
   const router = useRouter()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
+  const [groupDisplayTypes, setGroupDisplayTypes] = useState<GroupDisplayType[]>([])
   const [loading, setLoading] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingQuestion, setEditingQuestion] = useState<TemplateQuestion | null>(null)
@@ -185,15 +202,20 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const [isLocked, setIsLocked] = useState(initialLocked ?? false)
   const [savingSection, setSavingSection] = useState(false)
   const [sectionSettingsOpen, setSectionSettingsOpen] = useState(false)
+  const [localPhoto, setLocalPhoto] = useState<XanoImageResponse | null>(initialPhoto ?? null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const savedDescription = useRef(initialDescription ?? "")
   const savedLocked = useRef(initialLocked ?? false)
+  const savedPhoto = useRef<XanoImageResponse | null>(initialPhoto ?? null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const loadData = useCallback(async () => {
     try {
-      const [templateRes, typesRes, groupsRes] = await Promise.all([
+      const [templateRes, typesRes, groupsRes, displayTypesRes] = await Promise.all([
         fetch(TEMPLATE_ENDPOINT),
         fetch(QUESTION_TYPES_ENDPOINT),
         fetch(CUSTOM_GROUP_ENDPOINT),
+        fetch(GROUP_DISPLAY_TYPES_ENDPOINT),
       ])
 
       if (templateRes.ok) {
@@ -209,6 +231,10 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       if (groupsRes.ok) {
         const allGroups = (await groupsRes.json()) as CustomGroup[]
         setCustomGroups(allGroups.filter((g) => g.lifemap_sections_id === sectionId))
+      }
+
+      if (displayTypesRes.ok) {
+        setGroupDisplayTypes(await displayTypesRes.json())
       }
     } catch {
       // Silently fail
@@ -414,6 +440,18 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       })
 
       if (res.ok) {
+        if (!isEdit && data.lifemap_group_display_types_id) {
+          const created = await res.json()
+          const newGroupId = created?.id
+          if (newGroupId) {
+            const params = new URLSearchParams({
+              lifemap_group_display_types_id: data.lifemap_group_display_types_id.toString(),
+              lifemap_sections_id: sectionId.toString(),
+              lifemap_custom_group_id: newGroupId.toString(),
+            })
+            await fetch(`${ADD_GROUP_DISPLAY_TEMPLATE_ENDPOINT}?${params.toString()}`)
+          }
+        }
         toast(isEdit ? "Group updated" : "Group created", { duration: 2000 })
         setGroupSheetOpen(false)
         await loadData()
@@ -446,6 +484,17 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         }
       }
 
+      const groupQuestions = questions.filter(
+        (q) => q.lifemap_custom_group_id === editingGroup.id
+      )
+      if (groupQuestions.length > 0) {
+        await Promise.all(
+          groupQuestions.map((q) =>
+            fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, { method: "DELETE" })
+          )
+        )
+      }
+
       const res = await fetch(`${CUSTOM_GROUP_ENDPOINT}/${editingGroup.id}`, {
         method: "DELETE",
       })
@@ -453,11 +502,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         toast("Group deleted", { duration: 2000 })
         setCustomGroups((prev) => prev.filter((g) => g.id !== editingGroup.id))
         setQuestions((prev) =>
-          prev.map((q) =>
-            q.lifemap_custom_group_id === editingGroup.id
-              ? { ...q, lifemap_custom_group_id: null }
-              : q
-          )
+          prev.filter((q) => q.lifemap_custom_group_id !== editingGroup.id)
         )
       }
     } catch {
@@ -493,7 +538,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       const res = await fetch(`${SECTIONS_ENDPOINT}/${sectionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ section_description: localDescription, description: localDescription, isLocked }),
+        body: JSON.stringify({ section_description: localDescription, description: localDescription, isLocked, photo: localPhoto }),
       })
       if (!res.ok) throw new Error()
 
@@ -514,6 +559,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
 
       savedDescription.current = localDescription
       savedLocked.current = isLocked
+      savedPhoto.current = localPhoto
       invalidateSectionsCache()
       toast.success("Section settings saved")
       setSectionSettingsOpen(false)
@@ -870,16 +916,27 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
                                         <HugeiconsIcon icon={DragDropIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-3.5 shrink-0" />
                                       </div>
                                       <span className="text-xs font-semibold uppercase tracking-wide">{item.g.group_name}</span>
+                                      {!!item.g.lifemap_group_display_types_id && (() => {
+                                        const dt = groupDisplayTypes.find((t) => t.id === item.g.lifemap_group_display_types_id)
+                                        return dt ? (
+                                          <Badge variant="outline" className="gap-1 text-[10px] font-medium">
+                                            <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={2} className="size-3" />
+                                            {dt.display_type}
+                                          </Badge>
+                                        ) : null
+                                      })()}
                                       <div className="ml-auto flex items-center gap-1">
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="size-7"
-                                          onClick={() => handleAdd(item.g.id)}
-                                          title="Add question to group"
-                                        >
-                                          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-3.5" />
-                                        </Button>
+                                        {!item.g.lifemap_group_display_types_id && (
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="size-7"
+                                            onClick={() => handleAdd(item.g.id)}
+                                            title="Add question to group"
+                                          >
+                                            <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-3.5" />
+                                          </Button>
+                                        )}
                                         <Button
                                           variant="ghost"
                                           size="icon"
@@ -995,6 +1052,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         saving={savingGroup}
         onSave={handleSaveGroup}
         onDelete={handleDeleteGroup}
+        groupDisplayTypes={groupDisplayTypes}
       />
 
       <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
@@ -1046,6 +1104,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         if (!open) {
           setLocalDescription(savedDescription.current)
           setIsLocked(savedLocked.current)
+          setLocalPhoto(savedPhoto.current)
         }
         setSectionSettingsOpen(open)
       }}>
@@ -1065,6 +1124,72 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
                 placeholder="Add a description for this section..."
                 rows={4}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Section Photo</Label>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  setUploadingPhoto(true)
+                  try {
+                    const uploaded = await uploadImageToXano(file)
+                    setLocalPhoto(uploaded)
+                    toast.success("Photo uploaded")
+                  } catch {
+                    toast.error("Failed to upload photo")
+                  } finally {
+                    setUploadingPhoto(false)
+                    if (photoInputRef.current) photoInputRef.current.value = ""
+                  }
+                }}
+              />
+              {localPhoto?.path ? (
+                <div className="space-y-2">
+                  <div className="relative overflow-hidden rounded-md border">
+                    <img
+                      src={localPhoto.path.startsWith("http") ? localPhoto.path : `https://xsc3-mvx7-r86m.n7e.xano.io${localPhoto.path}`}
+                      alt="Section photo"
+                      className="h-40 w-full object-cover"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingPhoto}
+                      onClick={() => photoInputRef.current?.click()}
+                    >
+                      {uploadingPhoto ? "Uploading..." : "Replace"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLocalPhoto(null)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={uploadingPhoto}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {uploadingPhoto ? "Uploading..." : "Upload Photo"}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1270,7 +1395,7 @@ function QuestionSheet({
             />
           </div>
 
-          {customGroups.length > 0 && (
+          {customGroups.filter((g) => !g.lifemap_group_display_types_id).length > 0 && (
             <div className="space-y-2">
               <Label>Group</Label>
               <Select
@@ -1284,7 +1409,7 @@ function QuestionSheet({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No group</SelectItem>
-                  {customGroups.map((g) => (
+                  {customGroups.filter((g) => !g.lifemap_group_display_types_id).map((g) => (
                     <SelectItem key={g.id} value={g.id!.toString()}>
                       {g.group_name}
                     </SelectItem>
@@ -1368,6 +1493,25 @@ function QuestionSheet({
               value={form.teacher_guideline ?? ""}
               onChange={(e) => updateField("teacher_guideline", e.target.value)}
               rows={4}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Public Display Title</Label>
+            <Input
+              placeholder="Title shown on the public Life Map page..."
+              value={form.public_display_title ?? ""}
+              onChange={(e) => updateField("public_display_title", e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Public Display Description</Label>
+            <Textarea
+              placeholder="Description shown on the public Life Map page..."
+              value={form.public_display_description ?? ""}
+              onChange={(e) => updateField("public_display_description", e.target.value)}
+              rows={3}
             />
           </div>
 
@@ -1548,6 +1692,7 @@ function GroupSheet({
   saving,
   onSave,
   onDelete,
+  groupDisplayTypes,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1555,6 +1700,7 @@ function GroupSheet({
   saving: boolean
   onSave: (data: Omit<CustomGroup, "id"> & { id?: number }) => Promise<void>
   onDelete: () => Promise<void>
+  groupDisplayTypes: GroupDisplayType[]
 }) {
   const isEdit = !!group
   const [form, setForm] = useState<Omit<CustomGroup, "id"> & { id?: number }>(
@@ -1603,6 +1749,49 @@ function GroupSheet({
               onChange={(e) => setForm((prev) => ({ ...prev, group_name: e.target.value }))}
             />
           </div>
+
+          {!isEdit && groupDisplayTypes.length > 0 && (
+            <div className="space-y-2">
+              <Label>Group Template</Label>
+              <Select
+                value={form.lifemap_group_display_types_id?.toString() ?? "none"}
+                onValueChange={(v) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    lifemap_group_display_types_id: v === "none" ? null : parseInt(v),
+                  }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="No template" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No template</SelectItem>
+                  {groupDisplayTypes.map((dt) => (
+                    <SelectItem key={dt.id} value={dt.id.toString()}>
+                      {dt.display_type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">
+                Selecting a template will auto-populate questions for this group.
+              </p>
+            </div>
+          )}
+
+          {isEdit && group?.lifemap_group_display_types_id && (() => {
+            const dt = groupDisplayTypes.find((t) => t.id === group.lifemap_group_display_types_id)
+            return dt ? (
+              <div className="space-y-2">
+                <Label>Group Template</Label>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={2} className="size-3.5" />
+                  {dt.display_type}
+                </div>
+              </div>
+            ) : null
+          })()}
 
           <div className="space-y-2">
             <Label>Description</Label>
