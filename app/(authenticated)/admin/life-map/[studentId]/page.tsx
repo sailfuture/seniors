@@ -640,9 +640,7 @@ function SectionTableRows({
         <TableCell>
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-medium">{row.section.section_title}</span>
-            <span className={`text-xs font-medium ${completedGroups === totalGroups && totalGroups > 0 ? "text-green-600" : "text-muted-foreground"}`}>
-              {completedGroups}/{totalGroups}
-            </span>
+            <span className="text-muted-foreground text-sm">({totalGroups})</span>
           </div>
           {row.section.section_description && (
             <p className="text-muted-foreground mt-0.5 truncate text-xs">{row.section.section_description}</p>
@@ -712,6 +710,12 @@ function SectionTableRows({
                     )}
                   </div>
                 )}
+                {!isGroupComplete && groupRevision > 0 && (
+                  <div className="relative inline-flex size-7 items-center justify-center rounded-lg border" title={`${groupRevision} need revision`}>
+                    <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5 text-red-500" />
+                    <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{groupRevision}</span>
+                  </div>
+                )}
               </div>
             </TableCell>
             <TableCell className="text-right">
@@ -719,34 +723,20 @@ function SectionTableRows({
                 <span className="text-muted-foreground/60 text-xs">
                   {formatRelativeTime(lastCompletedTime) ?? "Completed"}
                 </span>
-              ) : (
-                <div className="flex items-center justify-end gap-2">
-                  {groupCompleted > 0 && (
-                    <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${groupCompleted} complete`}>
-                      <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-                      <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-green-600 text-[9px] font-bold text-white">{groupCompleted}</span>
+              ) : (() => {
+                const remaining = groupQs.length - groupCompleted
+                return (
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span className="text-muted-foreground text-xs font-medium">{Math.round((groupCompleted / groupQs.length) * 100)}%</span>
+                    <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-green-600" title={`${groupCompleted} completed`}>
+                      {groupCompleted}
                     </div>
-                  )}
-                  {groupReady > 0 && (
-                    <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${groupReady} ready for review`}>
-                      <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
-                      <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{groupReady}</span>
+                    <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-muted-foreground" title={`${remaining} remaining`}>
+                      {remaining}
                     </div>
-                  )}
-                  {groupRevision > 0 && (
-                    <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${groupRevision} need revision`}>
-                      <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-                      <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{groupRevision}</span>
-                    </div>
-                  )}
-                  {groupBlank > 0 && (
-                    <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${groupBlank} not started`}>
-                      <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-                      <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{groupBlank}</span>
-                    </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )
+              })()}
             </TableCell>
           </TableRow>
         )

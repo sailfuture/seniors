@@ -768,6 +768,7 @@ function GroupSection({
   const [groupCommentsOpen, setGroupCommentsOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<"reopen" | "ready" | null>(null)
   const [submittingAll, setSubmittingAll] = useState(false)
+  const [confirmSubmitAll, setConfirmSubmitAll] = useState(false)
   const hasInstructions = group.instructions || group.resources?.length > 0
 
   const completedCount = questionResponses.filter((r) => r.isComplete).length
@@ -861,18 +862,38 @@ function GroupSection({
                 size="sm"
                 className={`h-7 gap-1.5 text-xs ${submitAllCount === 0 ? "cursor-not-allowed" : ""}`}
                 disabled={submittingAll || submitAllCount === 0}
-                onClick={async () => {
-                  setSubmittingAll(true)
-                  try {
-                    await onSubmitAllForReview()
-                  } finally {
-                    setSubmittingAll(false)
-                  }
-                }}
+                onClick={() => setConfirmSubmitAll(true)}
               >
                 <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-3.5" />
                 {submittingAll ? "Submitting..." : `Submit All (${submitAllCount})`}
               </Button>
+              <AlertDialog open={confirmSubmitAll} onOpenChange={setConfirmSubmitAll}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Submit all for review?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will submit {submitAllCount} {submitAllCount === 1 ? "question" : "questions"} for teacher review. You won&apos;t be able to edit them until your teacher responds.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async (e) => {
+                        e.preventDefault()
+                        setConfirmSubmitAll(false)
+                        setSubmittingAll(true)
+                        try {
+                          await onSubmitAllForReview()
+                        } finally {
+                          setSubmittingAll(false)
+                        }
+                      }}
+                    >
+                      Submit All
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </>
           )}
         </div>

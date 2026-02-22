@@ -133,6 +133,7 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl }: S
           if (Array.isArray(reviews)) {
             const counts = new Map<string, number>()
             for (const r of reviews) {
+              if (!r.readyReview || r.isComplete || r.revisionNeeded) continue
               const sid = String(r.students_id)
               counts.set(sid, (counts.get(sid) ?? 0) + 1)
             }
