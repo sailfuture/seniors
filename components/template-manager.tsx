@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useCallback, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd"
@@ -791,15 +792,16 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {(publishing || deletingGroupOverlay || saving || savingGroup) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      {(publishing || deletingGroupOverlay || saving || savingGroup) && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3">
             <div className="size-8 animate-spin rounded-full border-4 border-muted-foreground/30 border-t-foreground" />
             <p className="text-sm font-medium">
               {publishing ? "Publishing questions..." : deletingGroupOverlay ? "Deleting group..." : "Saving..."}
             </p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       <div>
         <div className="flex items-center gap-2">

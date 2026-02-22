@@ -1,5 +1,6 @@
 "use client"
 
+import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
@@ -156,7 +157,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [plagiarismData, setPlagiarismData] = useState<Map<number, GptZeroResult>>(new Map())
   const [checkingPlagiarism, setCheckingPlagiarism] = useState<Set<number>>(new Set())
-  const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [updatingStatus, setUpdatingStatus] = useState<Set<number>>(new Set())
   const [hasDirty, setHasDirty] = useState(false)
   const dirtyRef = useRef(new Set<number>())
   const saveAllRef = useRef<() => Promise<void>>(() => Promise.resolve())
@@ -439,7 +440,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
 
   const handleResponseStatusChange = useCallback(
     async (responseId: number, templateId: number, action: "ready" | "clear", silent = false) => {
-      if (!silent) setUpdatingStatus(true)
+      if (!silent) setUpdatingStatus((prev) => new Set(prev).add(templateId))
       try {
       if (action === "ready" && studentId) {
         const response = responses.get(templateId)
@@ -512,7 +513,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         if (!silent) toast.error("Failed to update status")
       }
       } finally {
-        if (!silent) setUpdatingStatus(false)
+        if (!silent) setUpdatingStatus((prev) => { const next = new Set(prev); next.delete(templateId); return next })
       }
     },
     [studentId, sectionId, responses, localValues, questions]
@@ -578,6 +579,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
           onChange={(v) => handleChange(q.id, v)}
           onImageUpload={(file) => handleImageUpload(q.id, file)}
           submittingForReview={checkingPlagiarism.has(q.id)}
+          updatingStatus={updatingStatus.has(q.id)}
           responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : undefined}
           onSendForReview={response && q.question_types_id !== QUESTION_TYPE.IMAGE_UPLOAD ? () => handleResponseStatusChange(response.id, q.id, "ready") : undefined}
           onEditSubmission={response?.readyReview ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
@@ -600,14 +602,6 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {updatingStatus && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-3">
-            <div className="size-8 animate-spin rounded-full border-4 border-muted-foreground/30 border-t-foreground" />
-            <p className="text-muted-foreground text-sm">Updating...</p>
-          </div>
-        </div>
-      )}
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold">{title}</h1>
@@ -799,7 +793,7 @@ function GroupSection({
                 disabled={submittingAll || submitAllCount === 0}
                 onClick={() => setConfirmSubmitAll(true)}
               >
-                <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-3.5" />
+                {submittingAll ? <Loader2 className="size-3.5 animate-spin" /> : <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-3.5" />}
                 {submittingAll ? "Submitting..." : `Submit All (${submitAllCount})`}
               </Button>
               <AlertDialog open={confirmSubmitAll} onOpenChange={setConfirmSubmitAll}>
@@ -1001,6 +995,7 @@ function DynamicField({
   lastEdited,
   plagiarism,
   submittingForReview,
+  updatingStatus,
   responseStatus,
   onSendForReview,
   onRequestReopen,
@@ -1016,6 +1011,7 @@ function DynamicField({
   lastEdited?: string | number | null
   plagiarism?: GptZeroResult
   submittingForReview?: boolean
+  updatingStatus?: boolean
   responseStatus?: { isComplete?: boolean; revisionNeeded?: boolean; readyReview?: boolean }
   onSendForReview?: () => void
   onRequestReopen?: () => void
@@ -1147,16 +1143,16 @@ function DynamicField({
             <div title="Ready for review"><HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" /></div>
           )}
           {responseStatus && !responseStatus.isComplete && !responseStatus.readyReview && onSendForReview && (
-            <span className={!canSubmitForReview || submittingForReview ? "cursor-not-allowed" : ""}>
+            <span className={!canSubmitForReview || submittingForReview || updatingStatus ? "cursor-not-allowed" : ""}>
               <Button
                 variant="outline"
                 size="sm"
-                className={`h-6 px-2 text-[10px] ${!canSubmitForReview || submittingForReview ? "pointer-events-none" : ""}`}
+                className={`h-6 px-2 text-[10px] ${!canSubmitForReview || submittingForReview || updatingStatus ? "pointer-events-none" : ""}`}
                 onClick={() => setConfirmAction("send")}
-                disabled={!canSubmitForReview || submittingForReview}
+                disabled={!canSubmitForReview || submittingForReview || updatingStatus}
                 title={!canSubmitForReview ? (value.trim().length === 0 ? "Response is empty" : `Minimum ${question.min_words} words required`) : undefined}
               >
-                {submittingForReview ? "Checking..." : "Send for Review"}
+                {updatingStatus ? <><Loader2 className="size-3 animate-spin" /> Sending...</> : submittingForReview ? "Checking..." : "Send for Review"}
               </Button>
             </span>
           )}
@@ -1166,8 +1162,9 @@ function DynamicField({
               size="sm"
               className="h-6 px-2 text-[10px]"
               onClick={() => setConfirmAction("edit")}
+              disabled={updatingStatus}
             >
-              Edit Submission
+              {updatingStatus ? <><Loader2 className="size-3 animate-spin" /> Updating...</> : "Edit Submission"}
             </Button>
           )}
           {responseStatus?.isComplete && onRequestReopen && (
@@ -1176,8 +1173,9 @@ function DynamicField({
               size="sm"
               className="h-6 px-2 text-[10px]"
               onClick={() => setConfirmAction("reopen")}
+              disabled={updatingStatus}
             >
-              Reopen
+              {updatingStatus ? <><Loader2 className="size-3 animate-spin" /> Reopening...</> : "Reopen"}
             </Button>
           )}
         </div>

@@ -24,6 +24,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { GroupDisplayRenderer, isGroupDisplayType, DISPLAY_TYPE, getGoogleSheetUrl, GoogleSheetOpenButton } from "@/components/group-display-types"
+import { icons as lucideIcons } from "lucide-react"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -83,6 +84,7 @@ interface CustomGroup {
   lifemap_sections_id: number
   order?: number
   lifemap_group_display_types_id?: number | null
+  icon_name?: string | null
 }
 
 const QUESTION_TYPE = {
@@ -125,6 +127,20 @@ function getInitials(name: string): string {
     .map((n) => n[0])
     .join("")
     .toUpperCase()
+}
+
+function GroupIcon({ name }: { name: string }) {
+  const pascalName = name
+    .split(/[-_ ]+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join("") as keyof typeof lucideIcons
+  const Icon = lucideIcons[pascalName]
+  if (!Icon) return null
+  return (
+    <div className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-gray-100 bg-white">
+      <Icon className="size-4 text-gray-600" strokeWidth={1.5} />
+    </div>
+  )
 }
 
 function isShortType(typeId: number | null): boolean {
@@ -373,7 +389,10 @@ export default function PublicLifeMapPage({
                                     <CardHeader className="border-b">
                                       <div className="flex items-center justify-between">
                                         <CardTitle>{group.group_name}</CardTitle>
-                                        {isGoogleBudget && sheetUrl && <GoogleSheetOpenButton url={sheetUrl} />}
+                                        <div className="flex items-center gap-2">
+                                          {isGoogleBudget && sheetUrl && <GoogleSheetOpenButton url={sheetUrl} />}
+                                          {group.icon_name && <GroupIcon name={group.icon_name} />}
+                                        </div>
                                       </div>
                                       {group.group_description && (
                                         <CardDescription>{group.group_description}</CardDescription>
@@ -556,7 +575,10 @@ function GroupCard({
   return (
     <Card className="border-gray-200 shadow-none">
       <CardHeader className="border-b">
-        <CardTitle>{group.group_name}</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>{group.group_name}</CardTitle>
+          {group.icon_name && <GroupIcon name={group.icon_name} />}
+        </div>
         {group.group_description && (
           <CardDescription>{group.group_description}</CardDescription>
         )}
