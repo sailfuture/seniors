@@ -99,10 +99,9 @@ interface StudentRosterProps {
   description: string
   basePath: string
   publicBaseUrl?: string
-  publicIdParam?: string
 }
 
-export function StudentRoster({ title, description, basePath, publicBaseUrl, publicIdParam = "id" }: StudentRosterProps) {
+export function StudentRoster({ title, description, basePath, publicBaseUrl }: StudentRosterProps) {
   const router = useRouter()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
@@ -291,7 +290,7 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, pub
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <a
-                                  href={`${publicBaseUrl}?${publicIdParam}=${student.id}`}
+                                  href={`${publicBaseUrl}/${student.id}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   title="Open public page"

@@ -27,7 +27,7 @@ import {
 import { toast } from "sonner"
 import { TeacherComment } from "./teacher-comment"
 import type { Comment } from "@/lib/form-types"
-import { isGroupDisplayType } from "@/components/group-display-types"
+import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -539,10 +539,18 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         } else if (isCurrency) {
           const num = parseFloat(value) || 0
           displayValue = <p className={`text-sm ${qIsDimmed ? "" : "font-semibold"}`}>${num.toLocaleString("en-US")}</p>
+        } else if (typeId === QUESTION_TYPE.URL) {
+          displayValue = value ? (
+            <a href={value} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-blue-600 underline break-all hover:text-blue-800 dark:text-blue-400">
+              {value}
+            </a>
+          ) : (
+            <p className="text-muted-foreground text-sm">—</p>
+          )
         } else {
           displayValue = (
             <div>
-              <p className={`text-sm ${qIsDimmed ? "" : "font-semibold"} ${isLong ? "whitespace-pre-wrap" : ""}`}>
+              <p className={`whitespace-pre-wrap text-sm ${qIsDimmed ? "" : "font-semibold"}`}>
                 {value || "—"}
               </p>
               {isLong && (q.min_words > 0 || gptzero) && (
@@ -706,7 +714,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   )}
                 </div>
                 <CardContent className="p-6">
-                  {hasDisplayType ? (
+                  {hasDisplayType && group.lifemap_group_display_types_id !== DISPLAY_TYPE.GOOGLE_BUDGET ? (
                     <div className="grid gap-3 md:grid-cols-4">
                       {renderQuestionList(gQuestions, true)}
                     </div>

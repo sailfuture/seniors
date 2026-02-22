@@ -22,8 +22,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { GroupDisplayRenderer, isGroupDisplayType } from "@/components/group-display-types"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { GroupDisplayRenderer, isGroupDisplayType, DISPLAY_TYPE, getGoogleSheetUrl, GoogleSheetOpenButton } from "@/components/group-display-types"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -147,6 +147,7 @@ export default function PublicLifeMapPage({
   const [responses, setResponses] = useState<StudentResponse[]>([])
   const [groups, setGroups] = useState<CustomGroup[]>([])
   const [studentName, setStudentName] = useState("")
+  const [studentImage, setStudentImage] = useState("")
   const [loading, setLoading] = useState(true)
   const [activeSection, setActiveSection] = useState<string>("")
   const sectionRefs = useRef<Map<number, HTMLElement>>(new Map())
@@ -179,10 +180,13 @@ export default function PublicLifeMapPage({
         setGroups(data)
       }
       if (studentsRes.ok) {
-        const students: { id: string; firstName: string; lastName: string }[] =
+        const students: { id: string; firstName: string; lastName: string; profileImage?: string }[] =
           await studentsRes.json()
         const match = students.find((s) => s.id === studentId)
-        if (match) setStudentName(`${match.firstName} ${match.lastName}`)
+        if (match) {
+          setStudentName(`${match.firstName} ${match.lastName}`)
+          if (match.profileImage) setStudentImage(match.profileImage)
+        }
       }
     } catch {
       /* silently fail */
@@ -248,6 +252,7 @@ export default function PublicLifeMapPage({
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{studentName}</span>
                   <Avatar className="size-7">
+                    {studentImage && <AvatarImage src={studentImage} alt={studentName} />}
                     <AvatarFallback className="text-xs">{getInitials(studentName)}</AvatarFallback>
                   </Avatar>
                 </div>
@@ -264,6 +269,7 @@ export default function PublicLifeMapPage({
                 <>
                   <div className="flex items-center gap-3 px-4 py-4">
                     <Avatar className="size-9">
+                      {studentImage && <AvatarImage src={studentImage} alt={studentName} />}
                       <AvatarFallback className="text-xs">{getInitials(studentName)}</AvatarFallback>
                     </Avatar>
                     <div className="flex min-w-0 flex-col">
@@ -340,6 +346,7 @@ export default function PublicLifeMapPage({
                       title={section.section_title}
                       description={desc}
                       photoUrl={photoUrl}
+                      sectionNumber={section.order ?? 0}
                     />
 
                     <div className="mt-6 space-y-6">
@@ -357,11 +364,16 @@ export default function PublicLifeMapPage({
                             if (groupQuestions.length === 0) return null
 
                             if (isGroupDisplayType(group.lifemap_group_display_types_id)) {
+                              const isGoogleBudget = group.lifemap_group_display_types_id === DISPLAY_TYPE.GOOGLE_BUDGET
+                              const sheetUrl = isGoogleBudget ? getGoogleSheetUrl(groupQuestions, responseMap) : ""
                               return (
                                 <div key={group.id} className="md:col-span-2">
                                   <Card className="border-gray-200 shadow-none">
                                     <CardHeader className="border-b">
-                                      <CardTitle>{group.group_name}</CardTitle>
+                                      <div className="flex items-center justify-between">
+                                        <CardTitle>{group.group_name}</CardTitle>
+                                        {isGoogleBudget && sheetUrl && <GoogleSheetOpenButton url={sheetUrl} />}
+                                      </div>
                                       {group.group_description && (
                                         <CardDescription>{group.group_description}</CardDescription>
                                       )}
@@ -420,11 +432,19 @@ function SectionHero({
   title,
   description,
   photoUrl,
+  sectionNumber,
 }: {
   title: string
   description: string
   photoUrl: string | null
+  sectionNumber: number
 }) {
+  const badge = (
+    <span className="mb-3 inline-block rounded bg-white/20 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-white">
+      Section {sectionNumber}
+    </span>
+  )
+
   if (photoUrl) {
     return (
       <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-xl sm:min-h-[340px]">
@@ -435,6 +455,7 @@ function SectionHero({
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/65 to-black/35" />
         <div className="relative z-10 px-6 py-8 text-center md:px-12 lg:px-16">
+          {badge}
           <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
             {title}
           </h2>
@@ -451,6 +472,7 @@ function SectionHero({
   return (
     <div className="flex min-h-[200px] items-center justify-center rounded-xl bg-slate-900 px-6 py-8 sm:min-h-[240px] md:px-12 lg:px-16">
       <div className="text-center">
+        {badge}
         <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
           {title}
         </h2>

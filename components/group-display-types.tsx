@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { Card, CardContent, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 
 interface TemplateQuestion {
   id: number
@@ -63,6 +63,7 @@ export const DISPLAY_TYPE = {
   TABLE: 2,
   GALLERY: 3,
   COMPETITOR_MAP: 4,
+  GOOGLE_BUDGET: 6,
 } as const
 
 export function isGroupDisplayType(typeId: number | null | undefined): boolean {
@@ -86,6 +87,8 @@ export function GroupDisplayRenderer({
       return <GalleryDisplay questions={questions} responseMap={responseMap} mode={mode} />
     case DISPLAY_TYPE.COMPETITOR_MAP:
       return <CompetitorMapDisplay questions={questions} responseMap={responseMap} mode={mode} />
+    case DISPLAY_TYPE.GOOGLE_BUDGET:
+      return <GoogleBudgetDisplay questions={questions} responseMap={responseMap} />
     default:
       return null
   }
@@ -298,7 +301,7 @@ function CompetitorMapDisplay({
                   </div>
                 </div>
                 {positioning && (
-                  <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+                  <p className="text-muted-foreground mt-2 whitespace-pre-wrap text-xs leading-relaxed">
                     {positioning}
                   </p>
                 )}
@@ -307,6 +310,72 @@ function CompetitorMapDisplay({
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ── Google Budget Sheet (type 6) ──
+
+function toGoogleEmbedUrl(url: string): string {
+  if (!url) return ""
+  const trimmed = url.trim()
+  const match = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/)
+  if (match) return `https://docs.google.com/spreadsheets/d/${match[1]}/preview`
+  return trimmed
+}
+
+export function getGoogleSheetUrl(
+  questions: TemplateQuestion[],
+  responseMap: Map<number, StudentResponse>
+): string {
+  return getTextValue("google_sheet_url", questions, responseMap)
+}
+
+export function GoogleSheetOpenButton({ url }: { url: string }) {
+  if (!url) return null
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
+    >
+      Open Spreadsheet
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+    </a>
+  )
+}
+
+function GoogleBudgetDisplay({
+  questions,
+  responseMap,
+}: {
+  questions: TemplateQuestion[]
+  responseMap: Map<number, StudentResponse>
+}) {
+  const sheetUrl = getTextValue("google_sheet_url", questions, responseMap)
+  const summary = getTextValue("google_sheet_summary", questions, responseMap)
+  const embedUrl = toGoogleEmbedUrl(sheetUrl)
+
+  return (
+    <div className="space-y-0">
+      {embedUrl ? (
+        <iframe
+          src={embedUrl}
+          title="Google Budget Sheet"
+          className="h-[500px] w-full border-0"
+          allowFullScreen
+        />
+      ) : (
+        <div className="flex h-[300px] items-center justify-center bg-gray-50 text-sm text-muted-foreground">
+          No budget sheet linked
+        </div>
+      )}
+      {summary && (
+        <div className="border-t px-5 py-4">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">{summary}</p>
+        </div>
+      )}
     </div>
   )
 }

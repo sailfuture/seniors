@@ -54,7 +54,7 @@ import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
 import { useSaveRegister } from "@/lib/save-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
-import { isGroupDisplayType } from "@/components/group-display-types"
+import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -168,6 +168,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
   const [checkingPlagiarism, setCheckingPlagiarism] = useState<Set<number>>(new Set())
   const [hasDirty, setHasDirty] = useState(false)
   const dirtyRef = useRef(new Set<number>())
+  const saveAllRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
   const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
 
@@ -321,6 +322,8 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     }
   }, [responses, localValues])
 
+  saveAllRef.current = saveAll
+
   const saveNow = useCallback(() => {
     saveAll().then(() => {
       if (dirtyRef.current.size === 0) {
@@ -366,9 +369,18 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     setHasDirty(true)
     setSaveStatus("idle")
 
+    const response = responses.get(templateId)
+    if (response && plagiarismData.has(response.id)) {
+      setPlagiarismData((prev) => {
+        const next = new Map(prev)
+        next.delete(response.id)
+        return next
+      })
+    }
+
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
     autosaveTimerRef.current = setTimeout(() => {
-      if (dirtyRef.current.size > 0) saveAll()
+      if (dirtyRef.current.size > 0) saveAllRef.current()
     }, 3000)
   }
 
@@ -699,7 +711,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
             }
           }}
         >
-          {isGroupDisplayType(group.lifemap_group_display_types_id) ? (
+          {isGroupDisplayType(group.lifemap_group_display_types_id) && group.lifemap_group_display_types_id !== DISPLAY_TYPE.GOOGLE_BUDGET ? (
             <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4">
               {renderQuestionList(gQuestions, true)}
             </div>

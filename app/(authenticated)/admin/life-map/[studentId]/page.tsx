@@ -47,6 +47,7 @@ import {
   ArrowDown01Icon,
   ArrowUp01Icon,
   Comment01Icon,
+  Link01Icon,
 } from "@hugeicons/core-free-icons"
 import { titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import type { Comment } from "@/lib/form-types"
@@ -377,6 +378,12 @@ export default function AdminStudentLifeMapOverviewPage({
             <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
             Back
           </Link>
+        </Button>
+        <Button variant="outline" size="sm" className="gap-2" asChild>
+          <a href={`/public/life-map/${studentId}`} target="_blank" rel="noopener noreferrer">
+            <HugeiconsIcon icon={Link01Icon} strokeWidth={2} className="size-4" />
+            View Life Map
+          </a>
         </Button>
       </div>
 

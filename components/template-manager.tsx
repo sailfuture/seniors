@@ -136,7 +136,7 @@ const emptyQuestion: Omit<TemplateQuestion, "id"> = {
   sentence_starters: [],
   lifemap_sections_id: null,
   isArchived: false,
-  isPublished: true,
+  isPublished: false,
   isDraft: true,
   question_types_id: null,
   lifemap_custom_group_id: null,
@@ -184,12 +184,14 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingQuestion, setEditingQuestion] = useState<TemplateQuestion | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TemplateQuestion | null>(null)
+  const [deletingQuestion, setDeletingQuestion] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<TemplateQuestion | null>(null)
   const [saving, setSaving] = useState(false)
 
   const [groupSheetOpen, setGroupSheetOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<CustomGroup | null>(null)
   const [savingGroup, setSavingGroup] = useState(false)
+  const [deletingGroupOverlay, setDeletingGroupOverlay] = useState(false)
   
   const [hideArchived, setHideArchived] = useState(true)
   const [publishing, setPublishing] = useState(false)
@@ -272,7 +274,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         ...rest,
         lifemap_sections_id: sectionId,
         sortOrder: isEdit ? data.sortOrder : questions.length + 1,
-        ...(!isEdit && { isDraft: true }),
+        ...(!isEdit && { isDraft: true, isPublished: false }),
       }
 
       const res = await fetch(url, {
@@ -322,6 +324,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
 
   const handleDelete = async () => {
     if (!deleteTarget?.id) return
+    setDeletingQuestion(true)
     try {
       const [responsesRes, commentsRes] = await Promise.all([
         fetch(RESPONSES_ENDPOINT),
@@ -364,6 +367,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     } catch {
       toast("Failed to delete question", { duration: 3000 })
     } finally {
+      setDeletingQuestion(false)
       setDeleteTarget(null)
     }
   }
@@ -467,6 +471,8 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
 
   const handleDeleteGroup = async () => {
     if (!editingGroup?.id) return
+    setGroupSheetOpen(false)
+    setDeletingGroupOverlay(true)
     try {
       const commentsRes = await fetch(COMMENTS_ENDPOINT)
       if (commentsRes.ok) {
@@ -507,6 +513,8 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       }
     } catch {
       toast("Failed to delete group", { duration: 3000 })
+    } finally {
+      setDeletingGroupOverlay(false)
     }
   }
 
@@ -518,7 +526,11 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     }
     setPublishing(true)
     try {
-      const res = await fetch(PUBLISH_QUESTIONS_ENDPOINT, { method: "POST" })
+      const res = await fetch(PUBLISH_QUESTIONS_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lifemap_sections_id: sectionId }),
+      })
       if (!res.ok) throw new Error("Publish failed")
       await fetch(SYNC_REVIEWS_ENDPOINT).catch(() => {})
       setQuestions((prev) =>
@@ -805,6 +817,16 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      {(publishing || deletingGroupOverlay) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3">
+            <div className="size-8 animate-spin rounded-full border-4 border-muted-foreground/30 border-t-foreground" />
+            <p className="text-sm font-medium">
+              {publishing ? "Publishing questions..." : "Deleting group..."}
+            </p>
+          </div>
+        </div>
+      )}
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold">{sectionLabel}</h1>
@@ -1076,7 +1098,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!deletingQuestion && !open) setDeleteTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -1089,12 +1111,16 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deletingQuestion}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deletingQuestion}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
             >
-              Delete
+              {deletingQuestion && (
+                <div className="size-4 animate-spin rounded-full border-2 border-destructive-foreground/30 border-t-destructive-foreground" />
+              )}
+              {deletingQuestion ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1254,8 +1280,11 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
             <AlertDialogAction
               onClick={handleDeleteSection}
               disabled={deletingSection}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
             >
+              {deletingSection && (
+                <div className="size-4 animate-spin rounded-full border-2 border-destructive-foreground/30 border-t-destructive-foreground" />
+              )}
               {deletingSection ? "Deleting..." : "Delete Section"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1707,12 +1736,14 @@ function GroupSheet({
     group ?? { ...emptyGroup }
   )
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deletingGroup, setDeletingGroup] = useState(false)
   const [groupResourceInput, setGroupResourceInput] = useState("")
 
   useEffect(() => {
     if (open) {
       setForm(group ?? { ...emptyGroup })
       setConfirmingDelete(false)
+      setDeletingGroup(false)
       setGroupResourceInput("")
     }
   }, [open, group])
@@ -1726,8 +1757,13 @@ function GroupSheet({
   }
 
   const handleDelete = async () => {
-    await onDelete()
-    onOpenChange(false)
+    setDeletingGroup(true)
+    try {
+      await onDelete()
+      onOpenChange(false)
+    } finally {
+      setDeletingGroup(false)
+    }
   }
 
   return (
@@ -1780,7 +1816,7 @@ function GroupSheet({
             </div>
           )}
 
-          {isEdit && group?.lifemap_group_display_types_id && (() => {
+          {isEdit && !!group?.lifemap_group_display_types_id && (() => {
             const dt = groupDisplayTypes.find((t) => t.id === group.lifemap_group_display_types_id)
             return dt ? (
               <div className="space-y-2">
@@ -1903,21 +1939,25 @@ function GroupSheet({
           </div>
         </div>
 
-        <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <AlertDialog open={confirmingDelete} onOpenChange={(v) => { if (!deletingGroup) setConfirmingDelete(v) }}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete group?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently delete this group. Questions in this group will become ungrouped.
+                This will permanently delete this group and all questions within it.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel disabled={deletingGroup}>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDelete}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={deletingGroup}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
               >
-                Delete
+                {deletingGroup && (
+                  <div className="size-4 animate-spin rounded-full border-2 border-destructive-foreground/30 border-t-destructive-foreground" />
+                )}
+                {deletingGroup ? "Deleting..." : "Delete"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

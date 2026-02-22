@@ -90,7 +90,7 @@ function ReadOnlyField({
 
   return (
     <div>
-      <p className={`text-sm font-semibold ${isLong ? "whitespace-pre-wrap" : ""}`}>
+      <p className="whitespace-pre-wrap text-sm font-semibold">
         {displayValue}
       </p>
       {wordCount !== null && minWords && (
