@@ -606,6 +606,18 @@ export function TemplateOverview({
                 return (
                   <div className="px-6 py-8 text-center">
                     <p className="text-muted-foreground text-sm">No questions added yet.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 gap-2"
+                      onClick={() => {
+                        router.push(`${templateBasePath}/${sheetSection.slug}`)
+                        setSheetSection(null)
+                      }}
+                    >
+                      <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4" />
+                      Create Question
+                    </Button>
                   </div>
                 )
               }
