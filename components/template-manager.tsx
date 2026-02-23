@@ -86,6 +86,7 @@ interface TemplateQuestion {
   teacher_guideline?: string
   public_display_title?: string
   public_display_description?: string
+  width?: number | null
   _question_types?: QuestionType
 }
 
@@ -139,6 +140,7 @@ function makeEmptyQuestion(F: FormApiConfig["fields"]): Omit<TemplateQuestion, "
     teacher_guideline: "",
     public_display_title: "",
     public_display_description: "",
+    width: null,
   }
 }
 
@@ -1572,6 +1574,24 @@ function QuestionSheet({
               onChange={(e) => updateField("public_display_description", e.target.value)}
               rows={3}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Display Width</Label>
+            <Select
+              value={form.width != null ? String(form.width) : "default"}
+              onValueChange={(v) => updateField("width", v === "default" ? null : Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default</SelectItem>
+                <SelectItem value="6">Full width</SelectItem>
+                <SelectItem value="3">Half width</SelectItem>
+                <SelectItem value="2">Third width</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
