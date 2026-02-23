@@ -33,6 +33,9 @@ export interface Comment {
   lifemap_sections_id?: number | null
   lifemap_custom_group_id?: number | null
   lifemap_template_id?: number | null
+  businessthesis_sections_id?: number | null
+  businessthesis_custom_group_id?: number | null
+  businessthesis_template_id?: number | null
   isOld: boolean
   isComplete?: boolean
   isRevisionFeedback?: boolean
@@ -40,6 +43,7 @@ export interface Comment {
   note: string
   teacher_name?: string
   created_at?: string
+  [key: string]: unknown
 }
 
 export type SectionStatus = "empty" | "in-progress" | "complete"

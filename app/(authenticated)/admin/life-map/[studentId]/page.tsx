@@ -442,7 +442,16 @@ export default function AdminStudentLifeMapOverviewPage({
                         : <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
 
                   return (
-                    <div key={q.id} className="flex items-start gap-3 border-b px-6 py-3">
+                    <button
+                      key={q.id}
+                      type="button"
+                      className="flex w-full items-start gap-3 border-b px-6 py-3 text-left transition-colors hover:bg-muted/50"
+                      onClick={() => {
+                        if (!sheetRow) return
+                        router.push(`/admin/life-map/${studentId}/${sheetRow.slug}?focus=${encodeURIComponent(q.field_name)}`)
+                        setSheetRow(null)
+                      }}
+                    >
                       <div className="mt-0.5 shrink-0">{statusIcon}</div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between">
@@ -457,7 +466,8 @@ export default function AdminStudentLifeMapOverviewPage({
                           </div>
                         )}
                       </div>
-                    </div>
+                      <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="mt-0.5 size-4 shrink-0 text-muted-foreground/40" />
+                    </button>
                   )
                 })}
               </div>

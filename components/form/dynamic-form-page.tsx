@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -56,24 +57,9 @@ import { CommentBadge } from "./comment-badge"
 import { useSaveRegister } from "@/lib/save-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
-
-const XANO_BASE =
-  process.env.NEXT_PUBLIC_XANO_API_BASE ??
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
-
-const PLAGIARISM_BASE = "https://xsc3-mvx7-r86m.n7e.xano.io/api:-S1CSX2N"
-const PLAGIARISM_CHECK_ENDPOINT = `${PLAGIARISM_BASE}/plagiarism_checker`
-const GPTZERO_BY_SECTION_ENDPOINT = `${PLAGIARISM_BASE}/gptzero_document_by_section`
-
-const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
-const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
-const RESPONSE_PATCH_BASE = `${XANO_BASE}/lifemap_responses`
-const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
-const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
-const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
+import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 
 interface GptZeroResult {
-  lifemap_responses_id: number
   class_probability_ai?: number
   class_probability_human?: number
   mixed?: number
@@ -90,15 +76,14 @@ interface TemplateQuestion {
   resources: string[]
   examples: string[]
   sentence_starters: string[]
-  lifemap_sections_id: number
   isPublished: boolean
   isArchived: boolean
   isDraft?: boolean
   question_types_id: number
   _question_types?: { id: number; type: string; noInput?: boolean }
-  lifemap_custom_group_id: number | null
   dropdownOptions: string[]
   sortOrder: number
+  [key: string]: unknown
 }
 
 interface CustomGroup {
@@ -107,15 +92,12 @@ interface CustomGroup {
   group_description: string
   instructions: string
   resources: string[]
-  lifemap_sections_id: number
   order?: number
-  lifemap_group_display_types_id?: number | null
-  _lifemap_group_display_types?: { id: number; columns?: number }
+  [key: string]: unknown
 }
 
 interface StudentResponse {
   id: number
-  lifemap_template_id: number
   student_response: string
   date_response: string | null
   image_response: Record<string, unknown> | null
@@ -125,6 +107,7 @@ interface StudentResponse {
   readyReview?: boolean
   revisionNeeded?: boolean
   isComplete?: boolean
+  [key: string]: unknown
 }
 
 const QUESTION_TYPE = {
@@ -141,9 +124,14 @@ interface DynamicFormPageProps {
   title: string
   subtitle?: string
   sectionId: number
+  apiConfig?: FormApiConfig
 }
 
-export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageProps) {
+export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMAP_API_CONFIG }: DynamicFormPageProps) {
+  const cfg = apiConfig
+  const F = cfg.fields
+  const searchParams = useSearchParams()
+  const focusField = searchParams.get("focus")
   const { data: session } = useSession()
   const { register: registerSave, unregister: unregisterSave } = useSaveRegister()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
@@ -156,6 +144,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [plagiarismData, setPlagiarismData] = useState<Map<number, GptZeroResult>>(new Map())
+  const focusApplied = useRef(false)
   const [checkingPlagiarism, setCheckingPlagiarism] = useState<Set<number>>(new Set())
   const [updatingStatus, setUpdatingStatus] = useState<Set<number>>(new Set())
   const [hasDirty, setHasDirty] = useState(false)
@@ -169,11 +158,11 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
 
     try {
       const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
-        fetch(TEMPLATE_ENDPOINT),
-        fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
-        fetch(CUSTOM_GROUP_ENDPOINT),
-        fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
-        fetch(QUESTION_TYPES_ENDPOINT),
+        fetch(cfg.templateEndpoint),
+        fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
+        fetch(cfg.customGroupEndpoint),
+        fetch(`${cfg.commentsEndpoint}?students_id=${studentId}&${F.sectionId}=${sectionId}`),
+        fetch(cfg.questionTypesEndpoint),
       ])
 
       const noInputTypeIds = new Set<number>()
@@ -188,7 +177,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
       if (templateRes.ok) {
         allTemplateQuestions = (await templateRes.json()) as TemplateQuestion[]
         const filtered = allTemplateQuestions
-          .filter((q) => q.lifemap_sections_id === sectionId && q.isPublished && !q.isArchived && !noInputTypeIds.has(q.question_types_id))
+          .filter((q) => Number(q[F.sectionId]) === sectionId && q.isPublished && !q.isArchived && !noInputTypeIds.has(q.question_types_id))
           .sort((a, b) => a.sortOrder - b.sortOrder)
         setQuestions(filtered)
       }
@@ -203,8 +192,9 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         const values = new Map<number, string>()
         for (const r of data) {
           if (r.isArchived) continue
-          map.set(r.lifemap_template_id, r)
-          values.set(r.lifemap_template_id, r.student_response ?? "")
+          const tid = Number(r[F.templateId])
+          map.set(tid, r)
+          values.set(tid, r.student_response ?? "")
         }
         setResponses(map)
         setLocalValues(values)
@@ -212,7 +202,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
 
       if (groupsRes.ok) {
         const allGroups = (await groupsRes.json()) as CustomGroup[]
-        setCustomGroups(allGroups.filter((g) => g.lifemap_sections_id === sectionId))
+        setCustomGroups(allGroups.filter((g) => Number(g[F.sectionId]) === sectionId))
       }
 
       if (commentsRes.ok) {
@@ -220,8 +210,8 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         if (Array.isArray(data)) {
           const enriched = data
             .filter((c: Record<string, unknown>) => {
-              if (Number(c.lifemap_sections_id) !== sectionId) return false
-              const tid = c.lifemap_template_id as number | null | undefined
+              if (Number(c[F.sectionId]) !== sectionId) return false
+              const tid = c[F.templateId] as number | null | undefined
               if (tid && excludedTemplateIds.has(tid)) return false
               return true
             })
@@ -237,35 +227,52 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         }
       }
 
-      try {
-        const gptzeroRes = await fetch(
-          `${GPTZERO_BY_SECTION_ENDPOINT}?lifemap_sections_id=${sectionId}&students_id=${studentId}`
-        )
-        if (gptzeroRes.ok) {
-          const gptzeroData = await gptzeroRes.json()
-          if (Array.isArray(gptzeroData)) {
-            const map = new Map<number, GptZeroResult>()
-            for (const r of gptzeroData) {
-              if (!r.lifemap_responses_id) continue
-              const existing = map.get(r.lifemap_responses_id)
-              if (!existing || (r.id as number) > (existing.id as number)) {
-                map.set(r.lifemap_responses_id, r)
+      if (cfg.gptzeroEndpoint) {
+        try {
+          const gptzeroRes = await fetch(
+            `${cfg.gptzeroEndpoint}?${F.sectionId}=${sectionId}&students_id=${studentId}`
+          )
+          if (gptzeroRes.ok) {
+            const gptzeroData = await gptzeroRes.json()
+            if (Array.isArray(gptzeroData)) {
+              const map = new Map<number, GptZeroResult>()
+              for (const r of gptzeroData) {
+                const respId = r.lifemap_responses_id ?? r.businessthesis_responses_id
+                if (!respId) continue
+                const existing = map.get(respId)
+                if (!existing || (r.id as number) > (existing.id as number)) {
+                  map.set(respId, r)
+                }
               }
+              setPlagiarismData(map)
             }
-            setPlagiarismData(map)
           }
-        }
-      } catch { /* ignore */ }
+        } catch { /* ignore */ }
+      }
     } catch {
       // Silently fail
     } finally {
       setLoading(false)
     }
-  }, [studentId, sectionId])
+  }, [studentId, sectionId, cfg, F])
 
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  useEffect(() => {
+    if (!focusField || loading || focusApplied.current) return
+    focusApplied.current = true
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-field-name="${CSS.escape(focusField)}"]`) as HTMLElement | null
+      if (!el) return
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+      setTimeout(() => {
+        const input = el.querySelector("input, textarea, select") as HTMLElement | null
+        input?.focus()
+      }, 400)
+    })
+  }, [focusField, loading])
 
   const saveAll = useCallback(async () => {
     const dirty = dirtyRef.current
@@ -280,7 +287,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
 
         if (response) {
           const now = new Date().toISOString()
-          await fetch(`${RESPONSE_PATCH_BASE}/${response.id}`, {
+          await fetch(`${cfg.responsePatchBase}/${response.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ student_response: value, wordCount, last_edited: now }),
@@ -368,9 +375,10 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     }, 3000)
   }
 
+  const eventPrefix = cfg.eventPrefix ?? ""
   const dispatchCommentRead = useCallback((count: number) => {
-    window.dispatchEvent(new CustomEvent("comment-read", { detail: { sectionId, count } }))
-  }, [sectionId])
+    window.dispatchEvent(new CustomEvent(`${eventPrefix}comment-read`, { detail: { sectionId, count } }))
+  }, [sectionId, eventPrefix])
 
   const handleMarkRead = useCallback(async (commentIds: number[]) => {
     const now = new Date().toISOString()
@@ -384,14 +392,14 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     if (readCount > 0) dispatchCommentRead(readCount)
     for (const id of commentIds) {
       try {
-        await fetch(`${COMMENTS_ENDPOINT}/${id}`, {
+        await fetch(`${cfg.commentsEndpoint}/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ isOld: true, isRead: now }),
         })
       } catch { /* ignore */ }
     }
-  }, [dispatchCommentRead])
+  }, [dispatchCommentRead, cfg.commentsEndpoint])
 
   const handleMarkCommentRead = useCallback(async (commentId: number) => {
     const now = new Date().toISOString()
@@ -404,24 +412,27 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     )
     if (wasUnread) dispatchCommentRead(1)
     try {
-      await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
+      await fetch(`${cfg.commentsEndpoint}/${commentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isOld: true, isRead: now }),
       })
     } catch { /* ignore */ }
-  }, [dispatchCommentRead])
+  }, [dispatchCommentRead, cfg.commentsEndpoint])
 
   const handleImageUpload = async (templateId: number, file: File) => {
     try {
-      const { uploadImageToXano } = await import("@/lib/xano")
-      const result = await uploadImageToXano(file)
+      const formData = new FormData()
+      formData.append("content", file)
+      const uploadRes = await fetch(cfg.uploadEndpoint, { method: "POST", body: formData })
+      if (!uploadRes.ok) throw new Error("Upload failed")
+      const result = await uploadRes.json()
       const imageData = { ...result, meta: result.meta ?? {} }
 
       const response = responses.get(templateId)
       if (response) {
         const now = new Date().toISOString()
-        await fetch(`${RESPONSE_PATCH_BASE}/${response.id}`, {
+        await fetch(`${cfg.responsePatchBase}/${response.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ image_response: imageData, last_edited: now }),
@@ -447,19 +458,19 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         const text = localValues.get(templateId) ?? response?.student_response ?? ""
         const textWordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-        if (textWordCount >= 20) {
+        if (textWordCount >= 20 && cfg.plagiarismCheckEndpoint) {
           setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
           try {
             const params = new URLSearchParams({
               text,
-              lifemap_responses_id: String(responseId),
+              [`${F.sectionId.replace('_id', '')}_responses_id`]: String(responseId),
               students_id: studentId,
-              lifemap_sections_id: String(sectionId),
+              [F.sectionId]: String(sectionId),
             })
-            const checkRes = await fetch(`${PLAGIARISM_CHECK_ENDPOINT}?${params}`)
+            const checkRes = await fetch(`${cfg.plagiarismCheckEndpoint}?${params}`)
             if (checkRes.ok) {
               const record = await checkRes.json() as GptZeroResult
-              if (record?.lifemap_responses_id) {
+              if (record) {
                 setPlagiarismData((prev) => {
                   const next = new Map(prev)
                   next.set(responseId, record)
@@ -495,7 +506,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         : { readyReview: false, isComplete: false, revisionNeeded: false }
 
       try {
-        const res = await fetch(`${RESPONSE_PATCH_BASE}/${responseId}`, {
+        const res = await fetch(`${cfg.responsePatchBase}/${responseId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
@@ -516,7 +527,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         if (!silent) setUpdatingStatus((prev) => { const next = new Set(prev); next.delete(templateId); return next })
       }
     },
-    [studentId, sectionId, responses, localValues, questions]
+    [studentId, sectionId, responses, localValues, questions, cfg, F]
   )
 
   if (loading) {
@@ -550,14 +561,14 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     )
   }
 
-  const ungroupedQuestions = questions.filter((q) => !q.lifemap_custom_group_id)
+  const ungroupedQuestions = questions.filter((q) => !q[F.customGroupId])
   const groupedSections = [...customGroups]
     .filter((g) => g.id)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .map((g) => ({
       group: g,
       questions: questions
-        .filter((q) => q.lifemap_custom_group_id === g.id)
+        .filter((q) => Number(q[F.customGroupId]) === g.id)
         .sort((a, b) => a.sortOrder - b.sortOrder),
     }))
     .filter((gs) => gs.questions.length > 0)
@@ -596,8 +607,8 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
     )
   }
 
-  const allSectionComments = comments.filter((c) => c.field_name === "_section_comment" && !c.isComplete && !c.lifemap_custom_group_id)
-  const allGroupComments = comments.filter((c) => c.field_name === "_section_comment" && !c.isComplete && !!c.lifemap_custom_group_id)
+  const allSectionComments = comments.filter((c) => c.field_name === "_section_comment" && !c.isComplete && !c[F.customGroupId])
+  const allGroupComments = comments.filter((c) => c.field_name === "_section_comment" && !c.isComplete && !!c[F.customGroupId])
   const unreadSectionCount = allSectionComments.filter((c) => !c.isOld).length
 
   return (
@@ -660,7 +671,7 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
         <GroupSection
           key={group.id}
           group={group}
-          groupComments={allGroupComments.filter((c) => Number(c.lifemap_custom_group_id) === group.id)}
+          groupComments={allGroupComments.filter((c) => Number(c[F.customGroupId]) === group.id)}
           onMarkCommentRead={handleMarkCommentRead}
           questionResponses={gQuestions.map((q) => responses.get(q.id)).filter(Boolean) as StudentResponse[]}
           totalQuestions={gQuestions.length}
@@ -677,8 +688,9 @@ export function DynamicFormPage({ title, subtitle, sectionId }: DynamicFormPageP
             toast.success(`${eligibleForReview.length} question${eligibleForReview.length > 1 ? "s" : ""} submitted for review`, { duration: 3000 })
           }}
         >
-          {isGroupDisplayType(group.lifemap_group_display_types_id) ? (() => {
-            const cols = group._lifemap_group_display_types?.columns ?? 3
+          {isGroupDisplayType(group[F.displayTypesId] as number | null | undefined) ? (() => {
+            const displayExpansion = group[F.displayTypesExpansion] as { id: number; columns?: number } | undefined
+            const cols = displayExpansion?.columns ?? 3
             const colClass = cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : cols === 4 ? "md:grid-cols-3 lg:grid-cols-4" : "md:grid-cols-3"
             return cols === 1 ? renderQuestionList(gQuestions) : (
               <div className={`grid gap-6 ${colClass}`}>
@@ -1041,10 +1053,12 @@ function DynamicField({
   const canSubmitForReview = value.trim().length > 0 && meetsMinWords
 
   return (
-    <div className={`space-y-2 ${isDimmed ? "opacity-50" : ""}`}>
+    <div className="space-y-2" data-field-name={question.field_name}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <Label className="text-muted-foreground text-xs font-medium">{question.field_label}</Label>
+          <span className={isDimmed ? "opacity-50" : ""}>
+            <Label className="text-muted-foreground text-xs font-medium">{question.field_label}</Label>
+          </span>
           {hasComments && (
             <CommentBadge
               fieldName={question.field_name}
@@ -1134,13 +1148,13 @@ function DynamicField({
           </>
         )}
           {responseStatus?.isComplete && (
-            <div title="Complete"><HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" /></div>
+            <div title="Complete" className={isDimmed ? "opacity-50" : ""}><HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" /></div>
           )}
           {responseStatus?.revisionNeeded && (
             <div title="Needs revision"><HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" /></div>
           )}
           {responseStatus?.readyReview && !responseStatus?.isComplete && !responseStatus?.revisionNeeded && (
-            <div title="Ready for review"><HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" /></div>
+            <div title="Ready for review" className={isDimmed ? "opacity-50" : ""}><HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" /></div>
           )}
           {responseStatus && !responseStatus.isComplete && !responseStatus.readyReview && onSendForReview && (
             <span className={!canSubmitForReview || submittingForReview || updatingStatus ? "cursor-not-allowed" : ""}>
@@ -1180,10 +1194,11 @@ function DynamicField({
           )}
         </div>
         {relativeTime && (
-          <span className="text-muted-foreground/60 shrink-0 text-[11px]">{relativeTime}</span>
+          <span className={`text-muted-foreground/60 shrink-0 text-[11px] ${isDimmed ? "opacity-50" : ""}`}>{relativeTime}</span>
         )}
       </div>
 
+      <div className={isDimmed ? "opacity-50" : ""}>
       <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1219,6 +1234,7 @@ function DynamicField({
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            disabled={isDimmed}
             spellCheck
           />
         </InputGroup>
@@ -1231,6 +1247,7 @@ function DynamicField({
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            disabled={isDimmed}
             rows={4}
             spellCheck
           />
@@ -1246,19 +1263,19 @@ function DynamicField({
       )}
 
       {typeId === QUESTION_TYPE.CURRENCY && (
-        <CurrencyInput value={value} onChange={onChange} />
+        <CurrencyInput value={value} onChange={onChange} disabled={isDimmed} />
       )}
 
       {typeId === QUESTION_TYPE.IMAGE_UPLOAD && (
         <ImageUpload
           imageValue={imageValue}
           onUpload={onImageUpload}
-          locked={!!responseStatus?.isComplete}
+          locked={isDimmed}
         />
       )}
 
       {typeId === QUESTION_TYPE.DROPDOWN && (
-        <Select value={value} onValueChange={onChange}>
+        <Select value={value} onValueChange={onChange} disabled={isDimmed}>
           <SelectTrigger className={`w-full ${isDimmed ? "" : "font-semibold"}`}>
             <SelectValue placeholder={question.placeholder || "Select..."} />
           </SelectTrigger>
@@ -1280,6 +1297,7 @@ function DynamicField({
             placeholder={question.placeholder || "https://..."}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            disabled={isDimmed}
           />
         </InputGroup>
       )}
@@ -1291,10 +1309,12 @@ function DynamicField({
             type="date"
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            disabled={isDimmed}
           />
         </InputGroup>
       )}
 
+      </div>
     </div>
   )
 }
@@ -1341,7 +1361,7 @@ function PlagiarismScores({ data }: { data: GptZeroResult }) {
   )
 }
 
-function CurrencyInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function CurrencyInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
   const numValue = parseInt(value.replace(/[^0-9]/g, ""), 10) || 0
   const display = numValue > 0 ? numValue.toLocaleString("en-US") : ""
 
@@ -1369,6 +1389,7 @@ function CurrencyInput({ value, onChange }: { value: string; onChange: (v: strin
         inputMode="numeric"
         placeholder="0"
         value={display}
+        disabled={disabled}
         onChange={handleChange}
         onFocus={handleFocus}
       />

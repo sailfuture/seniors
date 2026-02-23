@@ -13,11 +13,11 @@ export interface XanoImageResponse {
   meta?: Record<string, unknown>
 }
 
-export async function uploadImageToXano(file: File): Promise<XanoImageResponse> {
+export async function uploadImageToXano(file: File, endpoint?: string): Promise<XanoImageResponse> {
   const formData = new FormData()
   formData.append("content", file)
 
-  const res = await fetch(UPLOAD_ENDPOINT, {
+  const res = await fetch(endpoint ?? UPLOAD_ENDPOINT, {
     method: "POST",
     body: formData,
   })

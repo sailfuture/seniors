@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
@@ -39,24 +40,9 @@ import { toast } from "sonner"
 import { TeacherComment } from "./teacher-comment"
 import type { Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
-
-const XANO_BASE =
-  process.env.NEXT_PUBLIC_XANO_API_BASE ??
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
-
-const PLAGIARISM_BASE = "https://xsc3-mvx7-r86m.n7e.xano.io/api:-S1CSX2N"
-const PLAGIARISM_CHECK_ENDPOINT = `${PLAGIARISM_BASE}/plagiarism_checker`
-const GPTZERO_BY_SECTION_ENDPOINT = `${PLAGIARISM_BASE}/gptzero_document_by_section`
-
-const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
-const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
-const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
-const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
-const RESPONSE_PATCH_BASE = `${XANO_BASE}/lifemap_responses`
-const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
+import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 
 interface GptZeroResult {
-  lifemap_responses_id: number
   class_probability_ai?: number
   class_probability_human?: number
   mixed?: number
@@ -73,16 +59,15 @@ interface TemplateQuestion {
   resources: string[]
   examples: string[]
   sentence_starters: string[]
-  lifemap_sections_id: number
   isPublished: boolean
   isArchived: boolean
   isDraft?: boolean
   question_types_id: number
   _question_types?: { id: number; type: string; noInput?: boolean }
-  lifemap_custom_group_id: number | null
   dropdownOptions: string[]
   sortOrder: number
   teacher_guideline?: string
+  [key: string]: unknown
 }
 
 interface CustomGroup {
@@ -91,15 +76,12 @@ interface CustomGroup {
   group_description: string
   instructions: string
   resources: string[]
-  lifemap_sections_id: number
   order?: number
-  lifemap_group_display_types_id?: number | null
-  _lifemap_group_display_types?: { id: number; columns?: number }
+  [key: string]: unknown
 }
 
 interface StudentResponse {
   id: number
-  lifemap_template_id: number
   student_response: string
   date_response: string | null
   image_response: Record<string, unknown> | null
@@ -109,6 +91,7 @@ interface StudentResponse {
   readyReview?: boolean
   revisionNeeded?: boolean
   isComplete?: boolean
+  [key: string]: unknown
 }
 
 function formatRelativeTime(ts: string | number | null | undefined): string | null {
@@ -143,6 +126,7 @@ interface ReadOnlyDynamicFormPageProps {
   sectionId: number
   studentId: string
   headerContent?: React.ReactNode
+  apiConfig?: FormApiConfig
 }
 
 function getImageUrl(value: unknown): string | null {
@@ -202,7 +186,12 @@ function ConfirmAllButton({ readyCount, onConfirmAll }: { readyCount: number; on
   )
 }
 
-export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId, headerContent }: ReadOnlyDynamicFormPageProps) {
+export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId, headerContent, apiConfig = LIFEMAP_API_CONFIG }: ReadOnlyDynamicFormPageProps) {
+  const cfg = apiConfig
+  const F = cfg.fields
+  const searchParams = useSearchParams()
+  const focusField = searchParams.get("focus")
+  const focusApplied = useRef(false)
   const { data: session } = useSession()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
@@ -217,11 +206,11 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     const loadData = async () => {
       try {
         const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
-          fetch(TEMPLATE_ENDPOINT),
-          fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
-          fetch(CUSTOM_GROUP_ENDPOINT),
-          fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${sectionId}`),
-          fetch(QUESTION_TYPES_ENDPOINT),
+          fetch(cfg.templateEndpoint),
+          fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
+          fetch(cfg.customGroupEndpoint),
+          fetch(`${cfg.commentsEndpoint}?students_id=${studentId}&${F.sectionId}=${sectionId}`),
+          fetch(cfg.questionTypesEndpoint),
         ])
 
         const noInputTypeIds = new Set<number>()
@@ -236,7 +225,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         if (templateRes.ok) {
           allTemplateQuestions = (await templateRes.json()) as TemplateQuestion[]
           const filtered = allTemplateQuestions
-            .filter((q) => q.lifemap_sections_id === sectionId && q.isPublished && !q.isArchived && !noInputTypeIds.has(q.question_types_id))
+            .filter((q) => Number(q[F.sectionId]) === sectionId && q.isPublished && !q.isArchived && !noInputTypeIds.has(q.question_types_id))
             .sort((a, b) => a.sortOrder - b.sortOrder)
           setQuestions(filtered)
         }
@@ -250,14 +239,14 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           const map = new Map<number, StudentResponse>()
           for (const r of data) {
             if (r.isArchived) continue
-            map.set(r.lifemap_template_id, r)
+            map.set(Number(r[F.templateId]), r)
           }
           setResponses(map)
         }
 
         if (groupsRes.ok) {
           const allGroups = (await groupsRes.json()) as CustomGroup[]
-          setCustomGroups(allGroups.filter((g) => g.lifemap_sections_id === sectionId))
+          setCustomGroups(allGroups.filter((g) => Number(g[F.sectionId]) === sectionId))
         }
 
         if (commentsRes.ok) {
@@ -265,8 +254,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           if (Array.isArray(data)) {
             const enriched = data
               .filter((c: Record<string, unknown>) => {
-                if (Number(c.lifemap_sections_id) !== sectionId) return false
-                const tid = c.lifemap_template_id as number | null | undefined
+                if (Number(c[F.sectionId]) !== sectionId) return false
+                const tid = c[F.templateId] as number | null | undefined
                 if (tid && excludedTemplateIds.has(tid)) return false
                 return true
               })
@@ -281,25 +270,28 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             setComments(enriched)
           }
         }
-        try {
-          const gptzeroRes = await fetch(
-            `${GPTZERO_BY_SECTION_ENDPOINT}?lifemap_sections_id=${sectionId}&students_id=${studentId}`
-          )
-          if (gptzeroRes.ok) {
-            const gptzeroData = await gptzeroRes.json()
-            if (Array.isArray(gptzeroData)) {
-              const map = new Map<number, GptZeroResult>()
-              for (const r of gptzeroData) {
-                if (!r.lifemap_responses_id) continue
-                const existing = map.get(r.lifemap_responses_id)
-                if (!existing || (r.id as number) > (existing.id as number)) {
-                  map.set(r.lifemap_responses_id, r)
+        if (cfg.gptzeroEndpoint) {
+          try {
+            const gptzeroRes = await fetch(
+              `${cfg.gptzeroEndpoint}?${F.sectionId}=${sectionId}&students_id=${studentId}`
+            )
+            if (gptzeroRes.ok) {
+              const gptzeroData = await gptzeroRes.json()
+              if (Array.isArray(gptzeroData)) {
+                const map = new Map<number, GptZeroResult>()
+                for (const r of gptzeroData) {
+                  const respId = r.lifemap_responses_id ?? r.businessthesis_responses_id
+                  if (!respId) continue
+                  const existing = map.get(respId)
+                  if (!existing || (r.id as number) > (existing.id as number)) {
+                    map.set(respId, r)
+                  }
                 }
+                setPlagiarismData(map)
               }
-              setPlagiarismData(map)
             }
-          }
-        } catch { /* ignore */ }
+          } catch { /* ignore */ }
+        }
       } catch {
         // Silently fail
       } finally {
@@ -310,23 +302,37 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     loadData()
   }, [studentId, sectionId])
 
+  useEffect(() => {
+    if (!focusField || loading || focusApplied.current) return
+    focusApplied.current = true
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-field-name="${CSS.escape(focusField)}"]`) as HTMLElement | null
+      if (!el) return
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+      setTimeout(() => {
+        const input = el.querySelector("input, textarea, select") as HTMLElement | null
+        input?.focus()
+      }, 400)
+    })
+  }, [focusField, loading])
+
   const handlePostComment = useCallback(
     async (fieldName: string, note: string) => {
       const teacherName = session?.user?.name ?? "Teacher"
       const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         students_id: studentId,
         teachers_id: teachersId,
         field_name: fieldName,
-        lifemap_sections_id: sectionId,
+        [F.sectionId]: sectionId,
         note,
         isOld: false,
         isComplete: false,
         teacher_name: teacherName,
       }
 
-      const res = await fetch(COMMENTS_ENDPOINT, {
+      const res = await fetch(cfg.commentsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -340,12 +346,12 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         ])
       }
     },
-    [studentId, session, sectionId]
+    [studentId, session, sectionId, cfg, F]
   )
 
   const handleDelete = useCallback(
     async (commentId: number) => {
-      const res = await fetch(`${COMMENTS_ENDPOINT}/${commentId}`, {
+      const res = await fetch(`${cfg.commentsEndpoint}/${commentId}`, {
         method: "DELETE",
       })
 
@@ -369,7 +375,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               : { readyReview: false, isComplete: false, revisionNeeded: false }
 
       try {
-        const res = await fetch(`${RESPONSE_PATCH_BASE}/${responseId}`, {
+        const res = await fetch(`${cfg.responsePatchBase}/${responseId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
@@ -386,14 +392,14 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             const teacherName = session?.user?.name ?? "Teacher"
             const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
             const q = questions.find((q) => q.id === templateId)
-            await fetch(COMMENTS_ENDPOINT, {
+            await fetch(cfg.commentsEndpoint, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 students_id: studentId,
                 teachers_id: teachersId,
                 field_name: q?.field_name ?? "",
-                lifemap_sections_id: sectionId,
+                [F.sectionId]: sectionId,
                 note: comment.trim(),
                 isOld: false,
                 isComplete: false,
@@ -418,7 +424,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         if (!silent) toast.error("Failed to update status")
       }
     },
-    [session, studentId, sectionId, questions]
+    [session, studentId, sectionId, questions, cfg, F]
   )
 
   if (loading) {
@@ -439,13 +445,13 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     )
   }
 
-  const ungroupedQuestions = questions.filter((q) => !q.lifemap_custom_group_id)
+  const ungroupedQuestions = questions.filter((q) => !q[F.customGroupId])
   const groupedSections = [...customGroups]
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .map((group) => ({
       group,
       questions: questions
-        .filter((q) => q.lifemap_custom_group_id === group.id)
+        .filter((q) => Number(q[F.customGroupId]) === group.id)
         .sort((a, b) => a.sortOrder - b.sortOrder),
     }))
     .filter((gs) => gs.questions.length > 0)
@@ -511,6 +517,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         return (
           <div
             key={q.id}
+            data-field-name={q.field_name}
             className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan} ${qIsDimmed ? "opacity-50" : ""}`}
           >
             <div className="mb-1.5 flex items-center justify-between">
@@ -635,7 +642,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             const readyCount = groupResponses.filter((r) => r.readyReview && !r.isComplete && !r.revisionNeeded).length
             const blankCount = gQuestions.length - completedCount - revisionCount - readyCount
 
-            const hasDisplayType = isGroupDisplayType(group.lifemap_group_display_types_id)
+            const hasDisplayType = isGroupDisplayType(group[F.displayTypesId] as number | null | undefined)
 
             return (
               <Card key={group.id} className="overflow-hidden !pt-0 !gap-0">
@@ -691,7 +698,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 </div>
                 <CardContent className="p-6">
                   {hasDisplayType ? (() => {
-                    const cols = group._lifemap_group_display_types?.columns ?? 4
+                    const displayExpansion = group[F.displayTypesExpansion] as { id: number; columns?: number } | undefined
+                    const cols = displayExpansion?.columns ?? 4
                     const colClass = cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : cols === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
                     return cols === 1 ? renderQuestionList(gQuestions) : (
                       <div className={`grid gap-3 ${colClass}`}>

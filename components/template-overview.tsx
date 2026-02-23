@@ -51,23 +51,12 @@ import {
   type LifeMapSection,
 } from "@/lib/lifemap-sections"
 import { uploadImageToXano, type XanoImageResponse } from "@/lib/xano"
-
-const XANO_BASE =
-  process.env.NEXT_PUBLIC_XANO_API_BASE ??
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
-
-const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
-const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
-const GROUPS_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
-const TYPES_ENDPOINT = `${XANO_BASE}/question_types`
-const PUBLISH_QUESTIONS_ENDPOINT = `${XANO_BASE}/publish_questions`
+import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 
 interface TemplateQuestion {
   id: number
   field_label: string
   field_name: string
-  lifemap_sections_id: number
-  lifemap_custom_group_id: number | null
   question_types_id: number | null
   isArchived: boolean
   isPublished: boolean
@@ -79,7 +68,14 @@ interface CustomGroup {
   id: number
   group_name: string
   group_description: string
-  lifemap_sections_id: number
+}
+
+function field<T>(obj: T, key: string): unknown {
+  return (obj as unknown as Record<string, unknown>)[key]
+}
+
+function numField<T>(obj: T, key: string): number {
+  return Number((obj as unknown as Record<string, unknown>)[key])
 }
 
 interface QuestionType {
@@ -95,7 +91,23 @@ interface SectionSummary {
   archived: number
 }
 
-export function TemplateOverview() {
+interface TemplateOverviewProps {
+  apiConfig?: FormApiConfig
+  title?: string
+  templateBasePath?: string
+  slugFn?: (title: string) => string
+  onSectionsInvalidated?: () => void
+}
+
+export function TemplateOverview({
+  apiConfig = LIFEMAP_API_CONFIG,
+  title: pageTitle = "Life Map Template",
+  templateBasePath = "/admin/life-map-template",
+  slugFn = titleToSlug,
+  onSectionsInvalidated = invalidateSectionsCache,
+}: TemplateOverviewProps) {
+  const cfg = apiConfig
+  const F = cfg.fields
   const router = useRouter()
   const [summaries, setSummaries] = useState<SectionSummary[]>([])
   const [allQuestions, setAllQuestions] = useState<TemplateQuestion[]>([])
@@ -123,10 +135,10 @@ export function TemplateOverview() {
     const load = async () => {
       try {
         const [sectionsRes, templateRes, groupsRes, typesRes] = await Promise.all([
-          fetch(SECTIONS_ENDPOINT),
-          fetch(TEMPLATE_ENDPOINT),
-          fetch(GROUPS_ENDPOINT),
-          fetch(TYPES_ENDPOINT),
+          fetch(cfg.sectionsEndpoint),
+          fetch(cfg.templateEndpoint),
+          fetch(cfg.customGroupEndpoint),
+          fetch(cfg.questionTypesEndpoint),
         ])
 
         const rawSections: LifeMapSection[] = sectionsRes.ok ? await sectionsRes.json() : []
@@ -140,10 +152,10 @@ export function TemplateOverview() {
         setQuestionTypes(types)
 
         const result: SectionSummary[] = sections.map((s) => {
-          const allSectionQs = questions.filter((q) => q.lifemap_sections_id === s.id)
+          const allSectionQs = questions.filter((q) => numField(q, F.sectionId) === s.id)
           return {
             section: s,
-            slug: titleToSlug(s.section_title),
+            slug: slugFn(s.section_title),
             total: allSectionQs.filter((q) => !q.isArchived).length,
             drafts: allSectionQs.filter((q) => q.isDraft && !q.isArchived).length,
             archived: allSectionQs.filter((q) => q.isArchived).length,
@@ -164,7 +176,7 @@ export function TemplateOverview() {
   useEffect(() => {
     setSummaries((prev) =>
       prev.map((s) => {
-        const allSectionQs = allQuestions.filter((q) => q.lifemap_sections_id === s.section.id)
+        const allSectionQs = allQuestions.filter((q) => numField(q, F.sectionId) === s.section.id)
         return {
           ...s,
           total: allSectionQs.filter((q) => !q.isArchived).length,
@@ -179,7 +191,7 @@ export function TemplateOverview() {
 
   const handlePublishDrafts = async (sectionId?: number) => {
     const drafts = allQuestions.filter(
-      (q) => q.isDraft && !q.isArchived && (sectionId ? q.lifemap_sections_id === sectionId : true)
+      (q) => q.isDraft && !q.isArchived && (sectionId ? numField(q, F.sectionId) === sectionId : true)
     )
     if (drafts.length === 0) {
       toast("No drafts to publish", { duration: 2000 })
@@ -188,11 +200,11 @@ export function TemplateOverview() {
 
     setPublishing(true)
     try {
-      const res = await fetch(PUBLISH_QUESTIONS_ENDPOINT, { method: "POST" })
+      const res = await fetch(cfg.publishQuestionsEndpoint, { method: "POST" })
       if (!res.ok) throw new Error("Publish failed")
       setAllQuestions((prev) =>
         prev.map((q) =>
-          q.isDraft && !q.isArchived && (sectionId ? q.lifemap_sections_id === sectionId : true)
+          q.isDraft && !q.isArchived && (sectionId ? numField(q, F.sectionId) === sectionId : true)
             ? { ...q, isDraft: false, isPublished: true }
             : q
         )
@@ -228,14 +240,14 @@ export function TemplateOverview() {
     try {
       await Promise.all(
         newSummaries.map((s, i) =>
-          fetch(`${SECTIONS_ENDPOINT}/${s.section.id}`, {
+          fetch(`${cfg.sectionsEndpoint}/${s.section.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ order: i + 1 }),
           })
         )
       )
-      invalidateSectionsCache()
+      onSectionsInvalidated()
     } catch {
       toast.error("Failed to reorder sections")
     }
@@ -260,7 +272,7 @@ export function TemplateOverview() {
     )
 
     try {
-      const res = await fetch(`${SECTIONS_ENDPOINT}/${s.section.id}`, {
+      const res = await fetch(`${cfg.sectionsEndpoint}/${s.section.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isLocked: newLocked }),
@@ -284,7 +296,7 @@ export function TemplateOverview() {
     if (!sheetSection) return
     setSavingSettings(true)
     try {
-      const res = await fetch(`${SECTIONS_ENDPOINT}/${sheetSection.section.id}`, {
+      const res = await fetch(`${cfg.sectionsEndpoint}/${sheetSection.section.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ section_description: editDescription, description: editDescription, isLocked: editLocked, photo: editPhoto }),
@@ -317,7 +329,7 @@ export function TemplateOverview() {
             }
           : null
       )
-      invalidateSectionsCache()
+      onSectionsInvalidated()
       toast.success("Section settings saved")
     } catch {
       toast.error("Failed to save section settings")
@@ -334,7 +346,7 @@ export function TemplateOverview() {
     setAddingSection(true)
     try {
       const order = summaries.length + 1
-      const res = await fetch(SECTIONS_ENDPOINT, {
+      const res = await fetch(cfg.sectionsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -347,12 +359,12 @@ export function TemplateOverview() {
       })
       if (!res.ok) throw new Error()
       const created: LifeMapSection = await res.json()
-      invalidateSectionsCache()
+      onSectionsInvalidated()
       setSummaries((prev) => [
         ...prev,
         {
           section: created,
-          slug: titleToSlug(created.section_title),
+          slug: slugFn(created.section_title),
           total: 0,
           drafts: 0,
           archived: 0,
@@ -374,9 +386,9 @@ export function TemplateOverview() {
 
   const getSectionQuestions = (sectionId: number) => {
     const qs = allQuestions
-      .filter((q) => q.lifemap_sections_id === sectionId && !q.isArchived)
+      .filter((q) => numField(q, F.sectionId) === sectionId && !q.isArchived)
       .sort((a, b) => a.sortOrder - b.sortOrder)
-    const groups = allGroups.filter((g) => g.lifemap_sections_id === sectionId)
+    const groups = allGroups.filter((g) => numField(g, F.sectionId) === sectionId)
 
     type FlatItem =
       | { kind: "group"; g: CustomGroup }
@@ -385,11 +397,11 @@ export function TemplateOverview() {
     const flat: FlatItem[] = []
     const usedGroupIds = new Set<number>()
 
-    const ungrouped = qs.filter((q) => !q.lifemap_custom_group_id || q.lifemap_custom_group_id === 0)
+    const ungrouped = qs.filter((q) => !field(q, F.customGroupId) || numField(q, F.customGroupId) === 0)
     ungrouped.forEach((q) => flat.push({ kind: "question", q }))
 
     for (const group of groups) {
-      const groupQs = qs.filter((q) => q.lifemap_custom_group_id === group.id)
+      const groupQs = qs.filter((q) => numField(q, F.customGroupId) === group.id)
       if (groupQs.length > 0 || true) {
         flat.push({ kind: "group", g: group })
         usedGroupIds.add(group.id)
@@ -417,7 +429,7 @@ export function TemplateOverview() {
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Life Map Template</h1>
+          <h1 className="text-2xl font-bold">{pageTitle}</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             Configure the questions students must complete for each section.
           </p>
@@ -529,6 +541,19 @@ export function TemplateOverview() {
 
           <div className="flex-1 overflow-y-auto">
             <div className="space-y-4 border-b px-6 py-5">
+              {sheetSection && (
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={() => {
+                    router.push(`${templateBasePath}/${sheetSection.slug}`)
+                    setSheetSection(null)
+                  }}
+                >
+                  <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="size-4" />
+                  Edit Questions
+                </Button>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="sheet-section-description">Description</Label>
                 <Textarea
@@ -551,7 +576,7 @@ export function TemplateOverview() {
                     if (!file) return
                     setUploadingPhoto(true)
                     try {
-                      const uploaded = await uploadImageToXano(file)
+                      const uploaded = await uploadImageToXano(file, cfg.uploadEndpoint)
                       setEditPhoto(uploaded)
                       toast.success("Photo uploaded")
                     } catch {
@@ -632,7 +657,7 @@ export function TemplateOverview() {
 
           {sheetSection && (() => {
             const sectionDrafts = allQuestions.filter(
-              (q) => q.lifemap_sections_id === sheetSection.section.id && q.isDraft && !q.isArchived
+              (q) => numField(q, F.sectionId) === sheetSection.section.id && q.isDraft && !q.isArchived
             ).length
             return (
               <div className="flex shrink-0 items-center gap-2 border-t px-6 py-4">
@@ -653,17 +678,6 @@ export function TemplateOverview() {
                     title={editLocked ? "Section is locked — click to unlock" : "Section is unlocked — click to lock"}
                   >
                     <HugeiconsIcon icon={editLocked ? SquareLock02Icon : SquareUnlock02Icon} strokeWidth={2} className="size-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      router.push(`/admin/life-map-template/${sheetSection.slug}`)
-                      setSheetSection(null)
-                    }}
-                    title="Manage Questions"
-                  >
-                    <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="size-4" />
                   </Button>
                   <Button className="flex-1" onClick={handleSaveSheetSettings} disabled={savingSettings}>
                     {savingSettings ? "Saving..." : "Save Settings"}
@@ -726,7 +740,7 @@ export function TemplateOverview() {
         <SheetContent className="flex flex-col gap-0 p-0">
           <SheetHeader className="border-b px-6 py-4">
             <SheetTitle>Add Section</SheetTitle>
-            <SheetDescription className="sr-only">Create a new life map section</SheetDescription>
+            <SheetDescription className="sr-only">Create a new section</SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">

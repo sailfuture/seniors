@@ -64,20 +64,7 @@ import {
 import { toast } from "sonner"
 import { invalidateSectionsCache } from "@/lib/lifemap-sections"
 import { uploadImageToXano, type XanoImageResponse } from "@/lib/xano"
-
-const XANO_BASE =
-  process.env.NEXT_PUBLIC_XANO_API_BASE ??
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
-
-const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
-const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
-const PUBLISH_QUESTIONS_ENDPOINT = `${XANO_BASE}/publish_questions`
-const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
-const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
-const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses`
-const COMMENTS_ENDPOINT = `${XANO_BASE}/lifemap_comments`
-const GROUP_DISPLAY_TYPES_ENDPOINT = `${XANO_BASE}/lifemap_group_display_types`
-const ADD_GROUP_DISPLAY_TEMPLATE_ENDPOINT = `${XANO_BASE}/add_group_display_template`
+import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 
 interface TemplateQuestion {
   id?: number
@@ -89,12 +76,10 @@ interface TemplateQuestion {
   resources: string[]
   examples: string[]
   sentence_starters: string[]
-  lifemap_sections_id: number | null
   isArchived: boolean
   isPublished: boolean
   isDraft: boolean
   question_types_id: number | null
-  lifemap_custom_group_id: number | null
   dropdownOptions: string[]
   sortOrder: number
   teacher_guideline?: string
@@ -114,9 +99,15 @@ interface CustomGroup {
   group_description: string
   instructions: string
   resources: string[]
-  lifemap_sections_id: number
   order?: number
-  lifemap_group_display_types_id?: number | null
+}
+
+function field<T>(obj: T, key: string): unknown {
+  return (obj as unknown as Record<string, unknown>)[key]
+}
+
+function numField<T>(obj: T, key: string): number {
+  return Number((obj as unknown as Record<string, unknown>)[key])
 }
 
 interface GroupDisplayType {
@@ -125,35 +116,39 @@ interface GroupDisplayType {
   columns?: number
 }
 
-const emptyQuestion: Omit<TemplateQuestion, "id"> = {
-  field_name: "",
-  field_label: "",
-  min_words: 0,
-  placeholder: "",
-  detailed_instructions: "",
-  resources: [],
-  examples: [],
-  sentence_starters: [],
-  lifemap_sections_id: null,
-  isArchived: false,
-  isPublished: false,
-  isDraft: true,
-  question_types_id: null,
-  lifemap_custom_group_id: null,
-  dropdownOptions: [],
-  sortOrder: 0,
-  teacher_guideline: "",
-  public_display_title: "",
-  public_display_description: "",
+function makeEmptyQuestion(F: FormApiConfig["fields"]): Omit<TemplateQuestion, "id"> {
+  return {
+    field_name: "",
+    field_label: "",
+    min_words: 0,
+    placeholder: "",
+    detailed_instructions: "",
+    resources: [],
+    examples: [],
+    sentence_starters: [],
+    [F.sectionId]: null,
+    isArchived: false,
+    isPublished: false,
+    isDraft: true,
+    question_types_id: null,
+    [F.customGroupId]: null,
+    dropdownOptions: [],
+    sortOrder: 0,
+    teacher_guideline: "",
+    public_display_title: "",
+    public_display_description: "",
+  }
 }
 
-const emptyGroup: Omit<CustomGroup, "id"> = {
-  group_name: "",
-  group_description: "",
-  instructions: "",
-  resources: [],
-  lifemap_sections_id: 0,
-  lifemap_group_display_types_id: null,
+function makeEmptyGroup(F: FormApiConfig["fields"]): Omit<CustomGroup, "id"> {
+  return {
+    group_name: "",
+    group_description: "",
+    instructions: "",
+    resources: [],
+    [F.sectionId]: 0,
+    [F.displayTypesId]: null,
+  }
 }
 
 function getTypeName(q: TemplateQuestion, types: QuestionType[]): string {
@@ -172,9 +167,24 @@ interface TemplateManagerProps {
   sectionDescription?: string
   sectionLocked?: boolean
   sectionPhoto?: XanoImageResponse | null
+  apiConfig?: FormApiConfig
+  templateBasePath?: string
+  onSectionsInvalidated?: () => void
 }
 
-export function TemplateManager({ section, sectionId, sectionLabel, sectionDescription: initialDescription, sectionLocked: initialLocked, sectionPhoto: initialPhoto }: TemplateManagerProps) {
+export function TemplateManager({
+  section,
+  sectionId,
+  sectionLabel,
+  sectionDescription: initialDescription,
+  sectionLocked: initialLocked,
+  sectionPhoto: initialPhoto,
+  apiConfig = LIFEMAP_API_CONFIG,
+  templateBasePath = "/admin/life-map-template",
+  onSectionsInvalidated = invalidateSectionsCache,
+}: TemplateManagerProps) {
+  const cfg = apiConfig
+  const F = cfg.fields
   const router = useRouter()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([])
@@ -214,15 +224,15 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const loadData = useCallback(async () => {
     try {
       const [templateRes, typesRes, groupsRes, displayTypesRes] = await Promise.all([
-        fetch(TEMPLATE_ENDPOINT),
-        fetch(QUESTION_TYPES_ENDPOINT),
-        fetch(CUSTOM_GROUP_ENDPOINT),
-        fetch(GROUP_DISPLAY_TYPES_ENDPOINT),
+        fetch(cfg.templateEndpoint),
+        fetch(cfg.questionTypesEndpoint),
+        fetch(cfg.customGroupEndpoint),
+        fetch(cfg.groupDisplayTypesEndpoint),
       ])
 
       if (templateRes.ok) {
         const all = (await templateRes.json()) as TemplateQuestion[]
-        const sectionQuestions = all.filter((q) => q.lifemap_sections_id === sectionId)
+        const sectionQuestions = all.filter((q) => numField(q, F.sectionId) === sectionId)
         setQuestions(sectionQuestions.sort((a, b) => a.sortOrder - b.sortOrder))
       }
 
@@ -232,7 +242,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
 
       if (groupsRes.ok) {
         const allGroups = (await groupsRes.json()) as CustomGroup[]
-        setCustomGroups(allGroups.filter((g) => g.lifemap_sections_id === sectionId))
+        setCustomGroups(allGroups.filter((g) => numField(g, F.sectionId) === sectionId))
       }
 
       if (displayTypesRes.ok) {
@@ -243,7 +253,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     } finally {
       setLoading(false)
     }
-  }, [sectionId])
+  }, [sectionId, cfg, F])
 
   useEffect(() => {
     loadData()
@@ -266,13 +276,13 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     setSaving(true)
     try {
       const isEdit = !!data.id
-      const url = isEdit ? `${TEMPLATE_ENDPOINT}/${data.id}` : TEMPLATE_ENDPOINT
+      const url = isEdit ? `${cfg.templateEndpoint}/${data.id}` : cfg.templateEndpoint
       const method = isEdit ? "PATCH" : "POST"
 
       const { _question_types, ...rest } = data as TemplateQuestion & { id?: number }
       const payload = {
         ...rest,
-        lifemap_sections_id: sectionId,
+        [F.sectionId]: sectionId,
         sortOrder: isEdit ? data.sortOrder : questions.length + 1,
         ...(!isEdit && { isDraft: true, isPublished: false }),
       }
@@ -286,21 +296,21 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       if (res.ok) {
         if (isEdit && data.id) {
           try {
-            const respRes = await fetch(RESPONSES_ENDPOINT)
+            const respRes = await fetch(cfg.responsePatchBase)
             if (respRes.ok) {
               const allResponses = await respRes.json()
               if (Array.isArray(allResponses)) {
                 const related = allResponses.filter(
-                  (r: { lifemap_template_id?: number }) => r.lifemap_template_id === data.id
+                  (r: Record<string, unknown>) => Number(r[F.templateId]) === data.id
                 )
                 await Promise.all(
                   related.map((r: { id: number }) =>
-                    fetch(`${RESPONSES_ENDPOINT}/${r.id}`, {
+                    fetch(`${cfg.responsePatchBase}/${r.id}`, {
                       method: "PATCH",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
-                        lifemap_custom_group_id: data.lifemap_custom_group_id,
-                        lifemap_sections_id: sectionId,
+                        [F.customGroupId]: (field(data, F.customGroupId) as number | null) ?? 0,
+                        [F.sectionId]: sectionId,
                       }),
                     })
                   )
@@ -327,19 +337,19 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     setDeletingQuestion(true)
     try {
       const [responsesRes, commentsRes] = await Promise.all([
-        fetch(RESPONSES_ENDPOINT),
-        fetch(COMMENTS_ENDPOINT),
+        fetch(cfg.responsePatchBase),
+        fetch(cfg.commentsEndpoint),
       ])
 
       if (commentsRes.ok) {
         const allComments = await commentsRes.json()
         if (Array.isArray(allComments)) {
           const related = allComments.filter(
-            (c: { lifemap_template_id?: number }) => c.lifemap_template_id === deleteTarget.id
+            (c: Record<string, unknown>) => Number(c[F.templateId]) === deleteTarget.id
           )
           await Promise.all(
             related.map((c: { id: number }) =>
-              fetch(`${COMMENTS_ENDPOINT}/${c.id}`, { method: "DELETE" })
+              fetch(`${cfg.commentsEndpoint}/${c.id}`, { method: "DELETE" })
             )
           )
         }
@@ -349,17 +359,17 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         const allResponses = await responsesRes.json()
         if (Array.isArray(allResponses)) {
           const related = allResponses.filter(
-            (r: { lifemap_template_id?: number }) => r.lifemap_template_id === deleteTarget.id
+            (r: Record<string, unknown>) => Number(r[F.templateId]) === deleteTarget.id
           )
           await Promise.all(
             related.map((r: { id: number }) =>
-              fetch(`${RESPONSES_ENDPOINT}/${r.id}`, { method: "DELETE" })
+              fetch(`${cfg.responsePatchBase}/${r.id}`, { method: "DELETE" })
             )
           )
         }
       }
 
-      const res = await fetch(`${TEMPLATE_ENDPOINT}/${deleteTarget.id}`, { method: "DELETE" })
+      const res = await fetch(`${cfg.templateEndpoint}/${deleteTarget.id}`, { method: "DELETE" })
       if (res.ok) {
         toast("Question deleted", { duration: 2000 })
         setQuestions((prev) => prev.filter((q) => q.id !== deleteTarget.id))
@@ -375,7 +385,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const handleArchive = async () => {
     if (!archiveTarget?.id) return
     try {
-      const res = await fetch(`${TEMPLATE_ENDPOINT}/${archiveTarget.id}`, {
+      const res = await fetch(`${cfg.templateEndpoint}/${archiveTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isArchived: true, isPublished: false }),
@@ -396,7 +406,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const handleUnarchive = async (q: TemplateQuestion) => {
     if (!q.id) return
     try {
-      const res = await fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, {
+      const res = await fetch(`${cfg.templateEndpoint}/${q.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isArchived: false, isDraft: true }),
@@ -428,12 +438,12 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     setSavingGroup(true)
     try {
       const isEdit = !!data.id
-      const url = isEdit ? `${CUSTOM_GROUP_ENDPOINT}/${data.id}` : CUSTOM_GROUP_ENDPOINT
+      const url = isEdit ? `${cfg.customGroupEndpoint}/${data.id}` : cfg.customGroupEndpoint
       const method = isEdit ? "PATCH" : "POST"
 
       const payload = {
         ...data,
-        lifemap_sections_id: sectionId,
+        [F.sectionId]: sectionId,
         ...(!isEdit && { order: customGroups.length + 1 }),
       }
 
@@ -444,16 +454,17 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       })
 
       if (res.ok) {
-        if (!isEdit && data.lifemap_group_display_types_id) {
+        const displayTypesIdVal = field(data, F.displayTypesId)
+        if (!isEdit && displayTypesIdVal) {
           const created = await res.json()
           const newGroupId = created?.id
           if (newGroupId) {
             const params = new URLSearchParams({
-              lifemap_group_display_types_id: data.lifemap_group_display_types_id.toString(),
-              lifemap_sections_id: sectionId.toString(),
-              lifemap_custom_group_id: newGroupId.toString(),
+              [F.displayTypesId]: displayTypesIdVal.toString(),
+              [F.sectionId]: sectionId.toString(),
+              [F.customGroupId]: newGroupId.toString(),
             })
-            await fetch(`${ADD_GROUP_DISPLAY_TEMPLATE_ENDPOINT}?${params.toString()}`)
+            await fetch(`${cfg.addGroupDisplayTemplateEndpoint}?${params.toString()}`)
           }
         }
         toast(isEdit ? "Group updated" : "Group created", { duration: 2000 })
@@ -474,41 +485,41 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     setGroupSheetOpen(false)
     setDeletingGroupOverlay(true)
     try {
-      const commentsRes = await fetch(COMMENTS_ENDPOINT)
+      const commentsRes = await fetch(cfg.commentsEndpoint)
       if (commentsRes.ok) {
         const allComments = await commentsRes.json()
         if (Array.isArray(allComments)) {
           const groupComments = allComments.filter(
-            (c: { lifemap_custom_group_id?: number; lifemap_template_id?: number | null }) =>
-              c.lifemap_custom_group_id === editingGroup.id && !c.lifemap_template_id
+            (c: Record<string, unknown>) =>
+              numField(c, F.customGroupId) === editingGroup.id && !field(c, F.templateId)
           )
           await Promise.all(
             groupComments.map((c: { id: number }) =>
-              fetch(`${COMMENTS_ENDPOINT}/${c.id}`, { method: "DELETE" })
+              fetch(`${cfg.commentsEndpoint}/${c.id}`, { method: "DELETE" })
             )
           )
         }
       }
 
       const groupQuestions = questions.filter(
-        (q) => q.lifemap_custom_group_id === editingGroup.id
+        (q) => numField(q, F.customGroupId) === editingGroup.id
       )
       if (groupQuestions.length > 0) {
         await Promise.all(
           groupQuestions.map((q) =>
-            fetch(`${TEMPLATE_ENDPOINT}/${q.id}`, { method: "DELETE" })
+            fetch(`${cfg.templateEndpoint}/${q.id}`, { method: "DELETE" })
           )
         )
       }
 
-      const res = await fetch(`${CUSTOM_GROUP_ENDPOINT}/${editingGroup.id}`, {
+      const res = await fetch(`${cfg.customGroupEndpoint}/${editingGroup.id}`, {
         method: "DELETE",
       })
       if (res.ok) {
         toast("Group deleted", { duration: 2000 })
         setCustomGroups((prev) => prev.filter((g) => g.id !== editingGroup.id))
         setQuestions((prev) =>
-          prev.filter((q) => q.lifemap_custom_group_id !== editingGroup.id)
+          prev.filter((q) => numField(q, F.customGroupId) !== editingGroup.id)
         )
       }
     } catch {
@@ -526,10 +537,10 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     }
     setPublishing(true)
     try {
-      const res = await fetch(PUBLISH_QUESTIONS_ENDPOINT, {
+      const res = await fetch(cfg.publishQuestionsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lifemap_sections_id: sectionId }),
+        body: JSON.stringify({ [F.sectionId]: sectionId }),
       })
       if (!res.ok) throw new Error("Publish failed")
       setQuestions((prev) =>
@@ -546,7 +557,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const handleSaveSectionSettings = async () => {
     setSavingSection(true)
     try {
-      const res = await fetch(`${SECTIONS_ENDPOINT}/${sectionId}`, {
+      const res = await fetch(`${cfg.sectionsEndpoint}/${sectionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ section_description: localDescription, description: localDescription, isLocked, photo: localPhoto }),
@@ -556,7 +567,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       savedDescription.current = localDescription
       savedLocked.current = isLocked
       savedPhoto.current = localPhoto
-      invalidateSectionsCache()
+      onSectionsInvalidated()
       toast.success("Section settings saved")
       setSectionSettingsOpen(false)
     } catch {
@@ -570,10 +581,10 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     setDeletingSection(true)
     try {
       const [allTemplateRes, allGroupsRes, allCommentsRes, allResponsesRes] = await Promise.all([
-        fetch(TEMPLATE_ENDPOINT),
-        fetch(CUSTOM_GROUP_ENDPOINT),
-        fetch(`${COMMENTS_ENDPOINT}?lifemap_sections_id=${sectionId}`),
-        fetch(RESPONSES_ENDPOINT),
+        fetch(cfg.templateEndpoint),
+        fetch(cfg.customGroupEndpoint),
+        fetch(`${cfg.commentsEndpoint}?${F.sectionId}=${sectionId}`),
+        fetch(cfg.responsePatchBase),
       ])
 
       const deleteAll = async (endpoint: string, items: { id: number }[]) => {
@@ -583,8 +594,8 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       if (allCommentsRes.ok) {
         const comments = await allCommentsRes.json()
         if (Array.isArray(comments)) {
-          const sectionComments = comments.filter((c: { lifemap_sections_id?: number }) => Number(c.lifemap_sections_id) === sectionId)
-          await deleteAll(COMMENTS_ENDPOINT, sectionComments)
+          const sectionComments = comments.filter((c: Record<string, unknown>) => Number(c[F.sectionId] as number) === sectionId)
+          await deleteAll(cfg.commentsEndpoint, sectionComments)
         }
       }
 
@@ -592,33 +603,33 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         const allTemplate = await allTemplateRes.json()
         const templateIds = new Set(
           (allTemplate as TemplateQuestion[])
-            .filter((q) => q.lifemap_sections_id === sectionId)
+            .filter((q) => numField(q, F.sectionId) === sectionId)
             .map((q) => q.id)
             .filter(Boolean)
         )
         const responses = await allResponsesRes.json()
         if (Array.isArray(responses)) {
-          const sectionResponses = responses.filter((r: { lifemap_template_id?: number }) => templateIds.has(r.lifemap_template_id))
-          await deleteAll(RESPONSES_ENDPOINT, sectionResponses)
+          const sectionResponses = responses.filter((r: Record<string, unknown>) => templateIds.has(Number(r[F.templateId] as number)))
+          await deleteAll(cfg.responsePatchBase, sectionResponses)
         }
 
-        const sectionQuestions = (allTemplate as TemplateQuestion[]).filter((q) => q.lifemap_sections_id === sectionId && q.id)
-        await deleteAll(TEMPLATE_ENDPOINT, sectionQuestions as { id: number }[])
+        const sectionQuestions = (allTemplate as TemplateQuestion[]).filter((q) => numField(q, F.sectionId) === sectionId && q.id)
+        await deleteAll(cfg.templateEndpoint, sectionQuestions as { id: number }[])
       }
 
       if (allGroupsRes.ok) {
         const allGroups = await allGroupsRes.json()
         if (Array.isArray(allGroups)) {
-          const sectionGroups = allGroups.filter((g: { lifemap_sections_id?: number }) => Number(g.lifemap_sections_id) === sectionId)
-          await deleteAll(CUSTOM_GROUP_ENDPOINT, sectionGroups)
+          const sectionGroups = allGroups.filter((g: Record<string, unknown>) => Number(g[F.sectionId] as number) === sectionId)
+          await deleteAll(cfg.customGroupEndpoint, sectionGroups)
         }
       }
 
-      await fetch(`${SECTIONS_ENDPOINT}/${sectionId}`, { method: "DELETE" })
+      await fetch(`${cfg.sectionsEndpoint}/${sectionId}`, { method: "DELETE" })
 
-      invalidateSectionsCache()
+      onSectionsInvalidated()
       toast.success("Section deleted")
-      router.push("/admin/life-map-template")
+      router.push(templateBasePath)
     } catch {
       toast.error("Failed to delete section")
     } finally {
@@ -644,13 +655,13 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
   const buildFlatList = useCallback((): FlatItem[] => {
     const list: FlatItem[] = []
     const visible = hideArchived ? questions.filter((q) => !q.isArchived) : questions
-    const ungrouped = visible.filter((q) => !q.lifemap_custom_group_id).sort(sortPublishedFirst)
+    const ungrouped = visible.filter((q) => !field(q, F.customGroupId)).sort(sortPublishedFirst)
     for (const q of ungrouped) list.push({ kind: "question", q, groupId: null })
     const sortedGroups = [...customGroups].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     for (const g of sortedGroups) {
       if (!g.id) continue
       list.push({ kind: "group", g })
-      const gq = visible.filter((q) => q.lifemap_custom_group_id === g.id).sort(sortPublishedFirst)
+      const gq = visible.filter((q) => numField(q, F.customGroupId) === g.id).sort(sortPublishedFirst)
       for (const q of gq) list.push({ kind: "question", q, groupId: g.id })
     }
     return list
@@ -669,10 +680,10 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
     if (removed.kind === "group") {
       const groupId = removed.g.id!
       const children = reordered.filter(
-        (item) => item.kind === "question" && item.q.lifemap_custom_group_id === groupId
+        (item) => item.kind === "question" && numField(item.q, F.customGroupId) === groupId
       )
       const withoutChildren = reordered.filter(
-        (item) => !(item.kind === "question" && item.q.lifemap_custom_group_id === groupId)
+        (item) => !(item.kind === "question" && numField(item.q, F.customGroupId) === groupId)
       )
 
       const adjustedDest = Math.min(destIdx > srcIdx ? destIdx - children.length : destIdx, withoutChildren.length)
@@ -690,7 +701,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         } else {
           newQuestions.push({
             ...item.q,
-            lifemap_custom_group_id: currentGroupId,
+            [F.customGroupId]: currentGroupId,
             sortOrder: newQuestions.length + 1,
           })
         }
@@ -708,7 +719,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
             })
             .filter((ng) => ng.id)
             .map((ng) =>
-              fetch(`${CUSTOM_GROUP_ENDPOINT}/${ng.id}`, {
+              fetch(`${cfg.customGroupEndpoint}/${ng.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ order: ng.order }),
@@ -717,14 +728,14 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
           ...newQuestions
             .filter((nq) => {
               const orig = questions.find((oq) => oq.id === nq.id)
-              return !orig || orig.sortOrder !== nq.sortOrder || orig.lifemap_custom_group_id !== nq.lifemap_custom_group_id
+              return !orig || orig.sortOrder !== nq.sortOrder || field(orig, F.customGroupId) !== field(nq, F.customGroupId)
             })
             .filter((nq) => nq.id)
             .map((nq) =>
-              fetch(`${TEMPLATE_ENDPOINT}/${nq.id}`, {
+              fetch(`${cfg.templateEndpoint}/${nq.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sortOrder: nq.sortOrder, lifemap_custom_group_id: nq.lifemap_custom_group_id }),
+                body: JSON.stringify({ sortOrder: nq.sortOrder, [F.customGroupId]: (field(nq, F.customGroupId) as number | null) ?? 0 }),
               })
             ),
         ])
@@ -742,7 +753,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       } else {
         newQuestions.push({
           ...item.q,
-          lifemap_custom_group_id: currentGroupId,
+          [F.customGroupId]: currentGroupId,
           sortOrder: newQuestions.length + 1,
         })
       }
@@ -750,11 +761,11 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
 
     setQuestions(newQuestions)
 
-    const patches: { id: number; sortOrder: number; lifemap_custom_group_id: number | null }[] = []
+    const patches: { id: number; sortOrder: number; cgId: number | null }[] = []
     for (const nq of newQuestions) {
       const orig = questions.find((oq) => oq.id === nq.id)
-      if (!orig || orig.sortOrder !== nq.sortOrder || orig.lifemap_custom_group_id !== nq.lifemap_custom_group_id) {
-        if (nq.id) patches.push({ id: nq.id, sortOrder: nq.sortOrder, lifemap_custom_group_id: nq.lifemap_custom_group_id })
+      if (!orig || orig.sortOrder !== nq.sortOrder || field(orig, F.customGroupId) !== field(nq, F.customGroupId)) {
+        if (nq.id) patches.push({ id: nq.id, sortOrder: nq.sortOrder, cgId: (field(nq, F.customGroupId) as number | null) ?? 0 })
       }
     }
 
@@ -762,10 +773,10 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
       try {
         await Promise.all(
           patches.map((p) =>
-            fetch(`${TEMPLATE_ENDPOINT}/${p.id}`, {
+            fetch(`${cfg.templateEndpoint}/${p.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sortOrder: p.sortOrder, lifemap_custom_group_id: p.lifemap_custom_group_id }),
+              body: JSON.stringify({ sortOrder: p.sortOrder, [F.customGroupId]: p.cgId ?? 0 }),
             })
           )
         )
@@ -823,7 +834,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
 
       <div className="flex items-center justify-between">
         <Button variant="outline" asChild className="gap-2">
-          <Link href="/admin/life-map-template">
+          <Link href={templateBasePath}>
             <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
             Back
           </Link>
@@ -914,8 +925,8 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
                                         <HugeiconsIcon icon={DragDropIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-3.5 shrink-0" />
                                       </div>
                                       <span className="text-xs font-semibold uppercase tracking-wide">{item.g.group_name}</span>
-                                      {!!item.g.lifemap_group_display_types_id && (() => {
-                                        const dt = groupDisplayTypes.find((t) => t.id === item.g.lifemap_group_display_types_id)
+                                      {!!field(item.g, F.displayTypesId) && (() => {
+                                        const dt = groupDisplayTypes.find((t) => t.id === numField(item.g, F.displayTypesId))
                                         return dt ? (
                                           <Badge variant="outline" className="gap-1 text-[10px] font-medium">
                                             <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={2} className="size-3" />
@@ -924,7 +935,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
                                         ) : null
                                       })()}
                                       <div className="ml-auto flex items-center gap-1">
-                                        {!item.g.lifemap_group_display_types_id && (
+                                        {!field(item.g, F.displayTypesId) && (
                                           <Button
                                             variant="ghost"
                                             size="icon"
@@ -1041,6 +1052,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         saving={saving}
         onSave={handleSave}
         defaultGroupId={defaultGroupId}
+        fields={F}
       />
 
       <GroupSheet
@@ -1051,6 +1063,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
         onSave={handleSaveGroup}
         onDelete={handleDeleteGroup}
         groupDisplayTypes={groupDisplayTypes}
+        fields={F}
       />
 
       <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
@@ -1140,7 +1153,7 @@ export function TemplateManager({ section, sectionId, sectionLabel, sectionDescr
                   if (!file) return
                   setUploadingPhoto(true)
                   try {
-                    const uploaded = await uploadImageToXano(file)
+                    const uploaded = await uploadImageToXano(file, cfg.uploadEndpoint)
                     setLocalPhoto(uploaded)
                     toast.success("Photo uploaded")
                   } catch {
@@ -1279,6 +1292,7 @@ function QuestionSheet({
   saving,
   onSave,
   defaultGroupId,
+  fields: F,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1288,10 +1302,11 @@ function QuestionSheet({
   saving: boolean
   onSave: (data: Omit<TemplateQuestion, "id"> & { id?: number }) => Promise<void>
   defaultGroupId?: number | null
+  fields: FormApiConfig["fields"]
 }) {
   const isEdit = !!question
   const [form, setForm] = useState<Omit<TemplateQuestion, "id"> & { id?: number }>(
-    question ?? { ...emptyQuestion }
+    question ?? { ...makeEmptyQuestion(F) }
   )
   const [dropdownInput, setDropdownInput] = useState("")
   const [resourceInput, setResourceInput] = useState("")
@@ -1300,9 +1315,9 @@ function QuestionSheet({
 
   useEffect(() => {
     if (open) {
-      const base = question ?? { ...emptyQuestion }
+      const base = question ?? { ...makeEmptyQuestion(F) }
       if (!question && defaultGroupId) {
-        base.lifemap_custom_group_id = defaultGroupId
+        ;(base as unknown as Record<string, unknown>)[F.customGroupId] = defaultGroupId
       }
       setForm(base)
       setDropdownInput("")
@@ -1400,13 +1415,13 @@ function QuestionSheet({
             />
           </div>
 
-          {customGroups.filter((g) => !g.lifemap_group_display_types_id).length > 0 && (
+          {customGroups.filter((g) => !field(g, F.displayTypesId)).length > 0 && (
             <div className="space-y-2">
               <Label>Group</Label>
               <Select
-                value={form.lifemap_custom_group_id?.toString() ?? "none"}
+                value={(field(form, F.customGroupId) as number | null)?.toString() ?? "none"}
                 onValueChange={(v) =>
-                  updateField("lifemap_custom_group_id", v === "none" ? null : parseInt(v))
+                  setForm((prev) => ({ ...prev, [F.customGroupId]: v === "none" ? null : parseInt(v) }))
                 }
               >
                 <SelectTrigger className="w-full">
@@ -1414,7 +1429,7 @@ function QuestionSheet({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No group</SelectItem>
-                  {customGroups.filter((g) => !g.lifemap_group_display_types_id).map((g) => (
+                  {customGroups.filter((g) => !field(g, F.displayTypesId)).map((g) => (
                     <SelectItem key={g.id} value={g.id!.toString()}>
                       {g.group_name}
                     </SelectItem>
@@ -1698,6 +1713,7 @@ function GroupSheet({
   onSave,
   onDelete,
   groupDisplayTypes,
+  fields: F,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1706,10 +1722,11 @@ function GroupSheet({
   onSave: (data: Omit<CustomGroup, "id"> & { id?: number }) => Promise<void>
   onDelete: () => Promise<void>
   groupDisplayTypes: GroupDisplayType[]
+  fields: FormApiConfig["fields"]
 }) {
   const isEdit = !!group
   const [form, setForm] = useState<Omit<CustomGroup, "id"> & { id?: number }>(
-    group ?? { ...emptyGroup }
+    group ?? { ...makeEmptyGroup(F) }
   )
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deletingGroup, setDeletingGroup] = useState(false)
@@ -1717,7 +1734,7 @@ function GroupSheet({
 
   useEffect(() => {
     if (open) {
-      setForm(group ?? { ...emptyGroup })
+      setForm(group ?? { ...makeEmptyGroup(F) })
       setConfirmingDelete(false)
       setDeletingGroup(false)
       setGroupResourceInput("")
@@ -1766,11 +1783,11 @@ function GroupSheet({
             <div className="space-y-2">
               <Label>Group Template</Label>
               <Select
-                value={form.lifemap_group_display_types_id?.toString() ?? "none"}
+                value={(field(form, F.displayTypesId) as number | null)?.toString() ?? "none"}
                 onValueChange={(v) =>
                   setForm((prev) => ({
                     ...prev,
-                    lifemap_group_display_types_id: v === "none" ? null : parseInt(v),
+                    [F.displayTypesId]: v === "none" ? null : parseInt(v),
                   }))
                 }
               >
@@ -1792,8 +1809,8 @@ function GroupSheet({
             </div>
           )}
 
-          {isEdit && !!group?.lifemap_group_display_types_id && (() => {
-            const dt = groupDisplayTypes.find((t) => t.id === group.lifemap_group_display_types_id)
+          {isEdit && !!field(group, F.displayTypesId) && (() => {
+            const dt = groupDisplayTypes.find((t) => t.id === numField(group!, F.displayTypesId))
             return dt ? (
               <div className="space-y-2">
                 <Label>Group Template</Label>

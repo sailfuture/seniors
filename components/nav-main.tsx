@@ -18,6 +18,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarSeparator,
 } from "@/components/ui/sidebar"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon, SquareLock02Icon } from "@hugeicons/core-free-icons"
@@ -27,6 +28,7 @@ type NavItem = {
   url: string
   icon: React.ReactNode
   isActive?: boolean
+  separatorBefore?: boolean
   items?: {
     title: string
     url: string
@@ -125,7 +127,10 @@ export function NavMain({
       {!hideLabel && <SidebarGroupLabel>Navigation</SidebarGroupLabel>}
       <SidebarMenu>
         {items.map((item) => (
-          <NavCollapsibleItem key={item.title} item={item} pathname={pathname} />
+          <div key={item.title}>
+            {item.separatorBefore && <SidebarSeparator className="my-2" />}
+            <NavCollapsibleItem item={item} pathname={pathname} />
+          </div>
         ))}
       </SidebarMenu>
     </SidebarGroup>
