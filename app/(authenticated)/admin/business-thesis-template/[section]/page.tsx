@@ -16,6 +16,7 @@ export default function BusinessThesisTemplateSectionPage({
   const { section } = use(params)
   const searchParams = useSearchParams()
   const editQuestionId = searchParams.get("editQuestion") ? Number(searchParams.get("editQuestion")) : null
+  const newQuestion = searchParams.get("newQuestion") === "true"
 
   const [sectionId, setSectionId] = useState<number | null>(null)
   const [sectionLabel, setSectionLabel] = useState(btSlugToTitle(section))
@@ -82,6 +83,7 @@ export default function BusinessThesisTemplateSectionPage({
       templateBasePath="/admin/business-thesis-template"
       onSectionsInvalidated={invalidateBtSectionsCache}
       initialEditQuestionId={editQuestionId}
+      openNewQuestion={newQuestion}
     />
   )
 }

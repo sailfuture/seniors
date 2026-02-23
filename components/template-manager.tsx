@@ -171,6 +171,7 @@ interface TemplateManagerProps {
   templateBasePath?: string
   onSectionsInvalidated?: () => void
   initialEditQuestionId?: number | null
+  openNewQuestion?: boolean
 }
 
 export function TemplateManager({
@@ -184,6 +185,7 @@ export function TemplateManager({
   templateBasePath = "/admin/life-map-template",
   onSectionsInvalidated = invalidateSectionsCache,
   initialEditQuestionId,
+  openNewQuestion,
 }: TemplateManagerProps) {
   const cfg = apiConfig
   const F = cfg.fields
@@ -263,15 +265,22 @@ export function TemplateManager({
 
   const autoOpenedRef = useRef(false)
   useEffect(() => {
-    if (initialEditQuestionId && !loading && questions.length > 0 && !autoOpenedRef.current) {
+    if (autoOpenedRef.current) return
+    if (loading) return
+    if (initialEditQuestionId && questions.length > 0) {
       const q = questions.find((q) => q.id === initialEditQuestionId)
       if (q) {
         autoOpenedRef.current = true
         setEditingQuestion(q)
         setSheetOpen(true)
       }
+    } else if (openNewQuestion) {
+      autoOpenedRef.current = true
+      setEditingQuestion(null)
+      setDefaultGroupId(null)
+      setSheetOpen(true)
     }
-  }, [initialEditQuestionId, loading, questions])
+  }, [initialEditQuestionId, openNewQuestion, loading, questions])
 
   const [defaultGroupId, setDefaultGroupId] = useState<number | null>(null)
 

@@ -15,6 +15,7 @@ export default function LifeMapTemplateSectionPage({
   const { section } = use(params)
   const searchParams = useSearchParams()
   const editQuestionId = searchParams.get("editQuestion") ? Number(searchParams.get("editQuestion")) : null
+  const newQuestion = searchParams.get("newQuestion") === "true"
 
   const [sectionId, setSectionId] = useState<number | null>(null)
   const [sectionLabel, setSectionLabel] = useState(slugToTitle(section))
@@ -78,6 +79,7 @@ export default function LifeMapTemplateSectionPage({
       sectionLocked={sectionLocked}
       sectionPhoto={sectionPhoto}
       initialEditQuestionId={editQuestionId}
+      openNewQuestion={newQuestion}
     />
   )
 }

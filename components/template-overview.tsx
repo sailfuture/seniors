@@ -611,7 +611,7 @@ export function TemplateOverview({
                       size="sm"
                       className="mt-3 gap-2"
                       onClick={() => {
-                        router.push(`${templateBasePath}/${sheetSection.slug}`)
+                        router.push(`${templateBasePath}/${sheetSection.slug}?newQuestion=true`)
                         setSheetSection(null)
                       }}
                     >
