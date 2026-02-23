@@ -61,6 +61,7 @@ interface TemplateQuestion {
   dropdownOptions?: string[]
   public_display_title?: string
   public_display_description?: string
+  width?: number | null
   _question_types?: { id: number; type: string; noInput?: boolean }
 }
 
@@ -103,6 +104,13 @@ function getGroupColSpan(width: number | null | undefined): string {
   if (width === 1) return "md:col-span-6"
   if (width === 3) return "md:col-span-2"
   return "md:col-span-3"
+}
+
+function getQuestionColSpan(width: number | null | undefined, isShort: boolean): string {
+  if (width === 1) return "md:col-span-6"
+  if (width === 2) return "md:col-span-3"
+  if (width === 3) return "md:col-span-2"
+  return isShort ? "md:col-span-3" : "md:col-span-6"
 }
 
 function resolveImageUrl(path: string | undefined): string {
@@ -551,45 +559,19 @@ function UngroupedQuestions({
   questions: TemplateQuestion[]
   responseMap: Map<number, StudentResponse>
 }) {
-  const items: { question: TemplateQuestion; short: boolean }[] = questions.map((q) => {
-    const typeId = q.question_types_id ?? q._question_types?.id ?? null
-    return { question: q, short: isShortType(typeId) }
-  })
-
-  const rendered: React.ReactNode[] = []
-  let i = 0
-  while (i < items.length) {
-    const curr = items[i]
-    if (!curr.short) {
-      rendered.push(
-        <QuestionBlock key={curr.question.id} question={curr.question} response={responseMap.get(curr.question.id)} />
-      )
-      i++
-      continue
-    }
-    const shortRun: TemplateQuestion[] = [curr.question]
-    let j = i + 1
-    while (j < items.length && items[j].short) {
-      shortRun.push(items[j].question)
-      j++
-    }
-    if (shortRun.length >= 2) {
-      rendered.push(
-        <div key={`short-${shortRun[0].id}`} className="grid gap-6 md:grid-cols-2">
-          {shortRun.map((q) => (
-            <QuestionBlock key={q.id} question={q} response={responseMap.get(q.id)} />
-          ))}
-        </div>
-      )
-    } else {
-      rendered.push(
-        <QuestionBlock key={shortRun[0].id} question={shortRun[0]} response={responseMap.get(shortRun[0].id)} />
-      )
-    }
-    i = j
-  }
-
-  return <div className="mb-10 space-y-6">{rendered}</div>
+  return (
+    <div className="mb-10 grid gap-6 md:grid-cols-6">
+      {questions.map((q) => {
+        const typeId = q.question_types_id ?? q._question_types?.id ?? null
+        const colSpan = getQuestionColSpan(q.width, isShortType(typeId))
+        return (
+          <div key={q.id} className={colSpan}>
+            <QuestionBlock question={q} response={responseMap.get(q.id)} />
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function GroupCard({
@@ -601,15 +583,6 @@ function GroupCard({
   questions: TemplateQuestion[]
   responseMap: Map<number, StudentResponse>
 }) {
-  const shortQuestions = questions.filter((q) => {
-    const typeId = q.question_types_id ?? q._question_types?.id ?? null
-    return isShortType(typeId)
-  })
-  const fullQuestions = questions.filter((q) => {
-    const typeId = q.question_types_id ?? q._question_types?.id ?? null
-    return !isShortType(typeId)
-  })
-
   return (
     <Card className="border-gray-200 shadow-none">
       <CardHeader className="border-b">
@@ -622,28 +595,20 @@ function GroupCard({
         )}
       </CardHeader>
       <CardContent className="px-5 pb-5 pt-1">
-        <div className="space-y-5">
-          {fullQuestions.map((q) => (
-            <QuestionBlock
-              key={q.id}
-              question={q}
-              response={responseMap.get(q.id)}
-              compact
-            />
-          ))}
-
-          {shortQuestions.length > 0 && (
-            <div className={shortQuestions.length >= 2 ? "grid gap-5 md:grid-cols-2" : ""}>
-              {shortQuestions.map((q) => (
+        <div className="grid gap-5 md:grid-cols-6">
+          {questions.map((q) => {
+            const typeId = q.question_types_id ?? q._question_types?.id ?? null
+            const colSpan = getQuestionColSpan(q.width, isShortType(typeId))
+            return (
+              <div key={q.id} className={colSpan}>
                 <QuestionBlock
-                  key={q.id}
                   question={q}
                   response={responseMap.get(q.id)}
                   compact
                 />
-              ))}
-            </div>
-          )}
+              </div>
+            )
+          })}
         </div>
       </CardContent>
     </Card>

@@ -1582,14 +1582,14 @@ function QuestionSheet({
               value={form.width != null ? String(form.width) : "default"}
               onValueChange={(v) => updateField("width", v === "default" ? null : Number(v))}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Default" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="default">Default</SelectItem>
-                <SelectItem value="6">Full width</SelectItem>
-                <SelectItem value="3">Half width</SelectItem>
-                <SelectItem value="2">Third width</SelectItem>
+                <SelectItem value="1">Full width (100%)</SelectItem>
+                <SelectItem value="2">Half width (50%)</SelectItem>
+                <SelectItem value="3">Third width (33%)</SelectItem>
               </SelectContent>
             </Select>
           </div>

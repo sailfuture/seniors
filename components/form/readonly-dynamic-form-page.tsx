@@ -475,7 +475,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const isImage = typeId === QUESTION_TYPE.IMAGE_UPLOAD
         const isCurrency = typeId === QUESTION_TYPE.CURRENCY
         const qWidth = typeof q.width === "number" ? q.width : null
-        const widthToColSpan: Record<number, string> = { 6: "md:col-span-6", 3: "md:col-span-3", 2: "md:col-span-2" }
+        const widthToColSpan: Record<number, string> = { 1: "md:col-span-6", 2: "md:col-span-3", 3: "md:col-span-2" }
         const colSpan = flat ? "" : (qWidth ? (widthToColSpan[qWidth] ?? "md:col-span-3") : (isLong || isImage ? "md:col-span-6" : "md:col-span-3"))
 
         const gptzero = response ? plagiarismData.get(response.id) : undefined
