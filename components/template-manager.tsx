@@ -170,6 +170,7 @@ interface TemplateManagerProps {
   apiConfig?: FormApiConfig
   templateBasePath?: string
   onSectionsInvalidated?: () => void
+  initialEditQuestionId?: number | null
 }
 
 export function TemplateManager({
@@ -182,6 +183,7 @@ export function TemplateManager({
   apiConfig = LIFEMAP_API_CONFIG,
   templateBasePath = "/admin/life-map-template",
   onSectionsInvalidated = invalidateSectionsCache,
+  initialEditQuestionId,
 }: TemplateManagerProps) {
   const cfg = apiConfig
   const F = cfg.fields
@@ -259,6 +261,18 @@ export function TemplateManager({
     loadData()
   }, [loadData])
 
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (initialEditQuestionId && !loading && questions.length > 0 && !autoOpenedRef.current) {
+      const q = questions.find((q) => q.id === initialEditQuestionId)
+      if (q) {
+        autoOpenedRef.current = true
+        setEditingQuestion(q)
+        setSheetOpen(true)
+      }
+    }
+  }, [initialEditQuestionId, loading, questions])
+
   const [defaultGroupId, setDefaultGroupId] = useState<number | null>(null)
 
   const handleAdd = (groupId?: number | null) => {
@@ -309,7 +323,7 @@ export function TemplateManager({
                       method: "PATCH",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
-                        [F.customGroupId]: (field(data, F.customGroupId) as number | null) ?? 0,
+                        [F.customGroupId]: (field(data, F.customGroupId) as number | null) || null,
                         [F.sectionId]: sectionId,
                       }),
                     })
@@ -731,13 +745,18 @@ export function TemplateManager({
               return !orig || orig.sortOrder !== nq.sortOrder || field(orig, F.customGroupId) !== field(nq, F.customGroupId)
             })
             .filter((nq) => nq.id)
-            .map((nq) =>
-              fetch(`${cfg.templateEndpoint}/${nq.id}`, {
+            .map(async (nq) => {
+              const payload = { sortOrder: nq.sortOrder, [F.customGroupId]: (field(nq, F.customGroupId) as number | null) || null, [F.sectionId]: sectionId }
+              const res = await fetch(`${cfg.templateEndpoint}/${nq.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sortOrder: nq.sortOrder, [F.customGroupId]: (field(nq, F.customGroupId) as number | null) ?? 0 }),
+                body: JSON.stringify(payload),
               })
-            ),
+              if (!res.ok) {
+                const errText = await res.text().catch(() => "")
+                console.error(`PATCH template/${nq.id} failed (${res.status}):`, errText, "Payload:", payload)
+              }
+            }),
         ])
       } catch { /* local state already updated */ }
       return
@@ -765,20 +784,25 @@ export function TemplateManager({
     for (const nq of newQuestions) {
       const orig = questions.find((oq) => oq.id === nq.id)
       if (!orig || orig.sortOrder !== nq.sortOrder || field(orig, F.customGroupId) !== field(nq, F.customGroupId)) {
-        if (nq.id) patches.push({ id: nq.id, sortOrder: nq.sortOrder, cgId: (field(nq, F.customGroupId) as number | null) ?? 0 })
+        if (nq.id) patches.push({ id: nq.id, sortOrder: nq.sortOrder, cgId: (field(nq, F.customGroupId) as number | null) || null })
       }
     }
 
     if (patches.length > 0) {
       try {
         await Promise.all(
-          patches.map((p) =>
-            fetch(`${cfg.templateEndpoint}/${p.id}`, {
+          patches.map(async (p) => {
+            const payload = { sortOrder: p.sortOrder, [F.customGroupId]: p.cgId, [F.sectionId]: sectionId }
+            const res = await fetch(`${cfg.templateEndpoint}/${p.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sortOrder: p.sortOrder, [F.customGroupId]: p.cgId ?? 0 }),
+              body: JSON.stringify(payload),
             })
-          )
+            if (!res.ok) {
+              const errText = await res.text().catch(() => "")
+              console.error(`PATCH template/${p.id} failed (${res.status}):`, errText, "Payload:", payload)
+            }
+          })
         )
       } catch { /* local state already updated */ }
     }

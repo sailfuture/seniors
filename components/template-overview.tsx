@@ -541,19 +541,6 @@ export function TemplateOverview({
 
           <div className="flex-1 overflow-y-auto">
             <div className="space-y-4 border-b px-6 py-5">
-              {sheetSection && (
-                <Button
-                  variant="outline"
-                  className="w-full gap-2"
-                  onClick={() => {
-                    router.push(`${templateBasePath}/${sheetSection.slug}`)
-                    setSheetSection(null)
-                  }}
-                >
-                  <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="size-4" />
-                  Edit Questions
-                </Button>
-              )}
               <div className="space-y-2">
                 <Label htmlFor="sheet-section-description">Description</Label>
                 <Textarea
@@ -634,7 +621,14 @@ export function TemplateOverview({
                     }
                     const q = item.q
                     return (
-                      <div key={q.id} className="flex items-center gap-3 border-b px-6 py-3">
+                      <button
+                        key={q.id}
+                        className="flex w-full items-center gap-3 border-b px-6 py-3 text-left transition-colors hover:bg-muted/50"
+                        onClick={() => {
+                          router.push(`${templateBasePath}/${sheetSection.slug}?editQuestion=${q.id}`)
+                          setSheetSection(null)
+                        }}
+                      >
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">
                             {q.field_label || q.field_name}
@@ -647,7 +641,7 @@ export function TemplateOverview({
                         ) : (
                           <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 shrink-0 text-green-600" />
                         )}
-                      </div>
+                      </button>
                     )
                   })}
                 </div>
@@ -661,6 +655,17 @@ export function TemplateOverview({
             ).length
             return (
               <div className="flex shrink-0 items-center gap-2 border-t px-6 py-4">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      router.push(`${templateBasePath}/${sheetSection.slug}`)
+                      setSheetSection(null)
+                    }}
+                    title="Edit Questions"
+                  >
+                    <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="size-4" />
+                  </Button>
                   <Button
                     variant="outline"
                     size="icon"

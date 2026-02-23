@@ -1,6 +1,7 @@
 "use client"
 
 import { use, useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { TemplateManager } from "@/components/template-manager"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fetchBtSections, findBtSectionBySlug, btSlugToTitle, invalidateBtSectionsCache } from "@/lib/businessthesis-sections"
@@ -13,6 +14,8 @@ export default function BusinessThesisTemplateSectionPage({
   params: Promise<{ section: string }>
 }) {
   const { section } = use(params)
+  const searchParams = useSearchParams()
+  const editQuestionId = searchParams.get("editQuestion") ? Number(searchParams.get("editQuestion")) : null
 
   const [sectionId, setSectionId] = useState<number | null>(null)
   const [sectionLabel, setSectionLabel] = useState(btSlugToTitle(section))
@@ -78,6 +81,7 @@ export default function BusinessThesisTemplateSectionPage({
       apiConfig={BUSINESSTHESIS_API_CONFIG}
       templateBasePath="/admin/business-thesis-template"
       onSectionsInvalidated={invalidateBtSectionsCache}
+      initialEditQuestionId={editQuestionId}
     />
   )
 }

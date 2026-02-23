@@ -71,7 +71,7 @@ function NavCollapsibleItem({ item, pathname }: { item: NavItem; pathname: strin
                   return (
                     <SidebarMenuSubItem key={subItem.title}>
                       {subItem.isLocked ? (
-                        <SidebarMenuSubButton className="pointer-events-none opacity-50">
+                        <SidebarMenuSubButton className="cursor-not-allowed opacity-50">
                           <span className="flex-1">{subItem.title}</span>
                           <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="text-muted-foreground ml-auto size-3.5 shrink-0" />
                         </SidebarMenuSubButton>

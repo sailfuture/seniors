@@ -32,6 +32,7 @@ import { useSaveContext } from "@/lib/save-context"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { SidebarLeftIcon, LogoutIcon, UserIcon, Link01Icon } from "@hugeicons/core-free-icons"
 import { slugToTitle } from "@/lib/lifemap-sections"
+import { btSlugToTitle } from "@/lib/businessthesis-sections"
 
 function getRelativeTime(date: Date): string {
   const now = Date.now()
@@ -127,9 +128,17 @@ function HeaderBreadcrumb() {
       crumbs.push({ label: slugToTitle(sectionMatch[2]) })
     }
   } else if (adminBusiness) {
+    const sectionMatch = pathname.match(/^\/admin\/business-thesis\/([^/]+)\/([^/]+)/)
     crumbs.push({ label: "Business Thesis", href: "/admin/business-thesis" })
     if (studentName) {
-      crumbs.push({ label: studentName })
+      crumbs.push(
+        sectionMatch
+          ? { label: studentName, href: `/admin/business-thesis/${adminBusiness[1]}` }
+          : { label: studentName }
+      )
+    }
+    if (sectionMatch) {
+      crumbs.push({ label: btSlugToTitle(sectionMatch[2]) })
     }
   } else if (pathname.startsWith("/admin/life-map-template")) {
     const sectionMatch = pathname.match(/^\/admin\/life-map-template\/([^/]+)/)
@@ -139,12 +148,36 @@ function HeaderBreadcrumb() {
     } else {
       crumbs.push({ label: "Life Map Template" })
     }
+  } else if (pathname.startsWith("/admin/business-thesis-template")) {
+    const sectionMatch = pathname.match(/^\/admin\/business-thesis-template\/([^/]+)/)
+    if (sectionMatch) {
+      crumbs.push({ label: "Business Thesis Template", href: "/admin/business-thesis-template" })
+      crumbs.push({ label: btSlugToTitle(sectionMatch[1]) })
+    } else {
+      crumbs.push({ label: "Business Thesis Template" })
+    }
   } else if (pathname.startsWith("/admin/life-map")) {
     crumbs.push({ label: "Life Map" })
   } else if (pathname.startsWith("/admin/business-thesis")) {
     crumbs.push({ label: "Business Thesis" })
+  } else if (pathname.startsWith("/life-map/")) {
+    const sectionMatch = pathname.match(/^\/life-map\/([^/]+)/)
+    if (sectionMatch) {
+      crumbs.push({ label: "Life Map", href: "/life-map" })
+      crumbs.push({ label: slugToTitle(sectionMatch[1]) })
+    } else {
+      crumbs.push({ label: "Life Map" })
+    }
   } else if (pathname.startsWith("/life-map")) {
     crumbs.push({ label: "Life Map" })
+  } else if (pathname.startsWith("/business-thesis/")) {
+    const sectionMatch = pathname.match(/^\/business-thesis\/([^/]+)/)
+    if (sectionMatch) {
+      crumbs.push({ label: "Business Thesis", href: "/business-thesis" })
+      crumbs.push({ label: btSlugToTitle(sectionMatch[1]) })
+    } else {
+      crumbs.push({ label: "Business Thesis" })
+    }
   } else if (pathname.startsWith("/business-thesis")) {
     crumbs.push({ label: "Business Thesis" })
   }
@@ -256,7 +289,7 @@ export function SiteHeader() {
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <a
-                        href={`https://thesis.sailfutureacademy.org/dashboard?id=${studentsId}`}
+                        href={`/public/business-thesis/${studentsId}`}
                         target="_blank"
                         rel="noopener noreferrer"
                       >

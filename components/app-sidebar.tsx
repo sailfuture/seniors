@@ -10,10 +10,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -623,6 +626,19 @@ function getNavFromPathname(pathname: string, isAdmin: boolean, sections: LifeMa
   return buildStudentNav(sections, btSections, pathname, badges.commentCounts, badges.revisionCounts, badges.btCommentCounts, badges.btRevisionCounts)
 }
 
+function buildStudentPublicPagesNav(studentId: string | null): { title: string; url: string; icon: React.ReactNode; items: { title: string; url: string; isExternal?: boolean }[] } | null {
+  if (!studentId) return null
+  return {
+    title: "Public Pages",
+    url: "#",
+    icon: <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />,
+    items: [
+      { title: "Life Map", url: `/public/life-map/${studentId}`, isExternal: true },
+      { title: "Business Thesis", url: `/public/business-thesis/${studentId}`, isExternal: true },
+    ],
+  }
+}
+
 function extractStudentId(pathname: string): string | null {
   const match = pathname.match(/^\/admin\/(?:life-map|business-thesis)\/([^/]+)/)
   return match?.[1] ?? null
@@ -653,14 +669,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     btReadyReviewCounts: btReviewCounts.readyReview,
   }, studentList)
   const studentInfo = useStudentInfo(adminStudentId)
+  const publicPagesNav = !isAdmin ? buildStudentPublicPagesNav(ownStudentId) : null
 
   const isLifeMap = pathname.startsWith("/admin/life-map/") && adminStudentId
-  const isBusiness = pathname.startsWith("/admin/business-thesis/") && adminStudentId
-  const publicUrl = isLifeMap
-    ? `/public/life-map/${adminStudentId}`
-    : isBusiness
-      ? `https://thesis.sailfutureacademy.org/dashboard?id=${adminStudentId}`
-      : null
 
   return (
     <Sidebar
@@ -688,27 +699,61 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       )}
       <SidebarContent>
         {studentInfo && (
-          <div className="px-3 pt-3">
-            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground w-full justify-start gap-1.5 text-xs">
-              <Link href={isLifeMap ? "/admin/life-map" : "/admin/business-thesis"}>
-                <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-3.5" />
-                Student List
-              </Link>
-            </Button>
-          </div>
+          <SidebarGroup>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Student List">
+                  <Link href={isLifeMap ? "/admin/life-map" : "/admin/business-thesis"}>
+                    <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} />
+                    <span className="font-semibold">Student List</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
         )}
         <NavMain items={navItems} hideLabel={!!studentInfo} />
+        {publicPagesNav && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Public Pages</SidebarGroupLabel>
+            <SidebarMenu>
+              {publicPagesNav.items.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild tooltip={item.title}>
+                    <a href={item.url} target="_blank" rel="noopener noreferrer">
+                      <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
+                      <span>{item.title}</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+        {adminStudentId && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Public Pages</SidebarGroupLabel>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Life Map">
+                  <a href={`/public/life-map/${adminStudentId}`} target="_blank" rel="noopener noreferrer">
+                    <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
+                    <span>Life Map</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Business Thesis">
+                  <a href={`/public/business-thesis/${adminStudentId}`} target="_blank" rel="noopener noreferrer">
+                    <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
+                    <span>Business Thesis</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
       </SidebarContent>
-      {publicUrl && (
-        <SidebarFooter className="px-3 pb-4">
-          <Button variant="outline" size="sm" className="w-full gap-2" asChild>
-            <a href={publicUrl} target="_blank" rel="noopener noreferrer">
-              <HugeiconsIcon icon={Link01Icon} strokeWidth={2} className="size-4" />
-              View Live Public Page
-            </a>
-          </Button>
-        </SidebarFooter>
-      )}
     </Sidebar>
   )
 }

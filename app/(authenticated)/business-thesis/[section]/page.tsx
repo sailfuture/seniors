@@ -62,6 +62,7 @@ export default function BusinessThesisDynamicSectionPage({
       subtitle={description}
       sectionId={sectionId}
       apiConfig={BUSINESSTHESIS_API_CONFIG}
+      backHref="/business-thesis"
     />
   )
 }

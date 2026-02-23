@@ -1,6 +1,7 @@
 "use client"
 
 import { use, useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { TemplateManager } from "@/components/template-manager"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fetchSections, findSectionBySlug, slugToTitle } from "@/lib/lifemap-sections"
@@ -12,6 +13,8 @@ export default function LifeMapTemplateSectionPage({
   params: Promise<{ section: string }>
 }) {
   const { section } = use(params)
+  const searchParams = useSearchParams()
+  const editQuestionId = searchParams.get("editQuestion") ? Number(searchParams.get("editQuestion")) : null
 
   const [sectionId, setSectionId] = useState<number | null>(null)
   const [sectionLabel, setSectionLabel] = useState(slugToTitle(section))
@@ -74,6 +77,7 @@ export default function LifeMapTemplateSectionPage({
       sectionDescription={sectionDescription}
       sectionLocked={sectionLocked}
       sectionPhoto={sectionPhoto}
+      initialEditQuestionId={editQuestionId}
     />
   )
 }

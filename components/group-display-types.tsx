@@ -23,10 +23,10 @@ interface TemplateQuestion {
 
 interface StudentResponse {
   id: number
-  lifemap_template_id: number
   student_response: string
   image_response: { path?: string; url?: string; name?: string; mime?: string } | null
   isComplete?: boolean
+  [key: string]: unknown
 }
 
 const QUESTION_TYPE_IMAGE = 4

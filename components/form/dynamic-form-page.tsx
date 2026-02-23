@@ -3,6 +3,7 @@
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -43,6 +44,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  ArrowLeft02Icon,
   ImageUploadIcon,
   HelpCircleIcon,
   Link01Icon,
@@ -51,6 +53,7 @@ import {
   Comment01Icon,
   SentIcon,
   AlertCircleIcon,
+  RefreshIcon,
 } from "@hugeicons/core-free-icons"
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
@@ -125,9 +128,10 @@ interface DynamicFormPageProps {
   subtitle?: string
   sectionId: number
   apiConfig?: FormApiConfig
+  backHref?: string
 }
 
-export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMAP_API_CONFIG }: DynamicFormPageProps) {
+export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMAP_API_CONFIG, backHref }: DynamicFormPageProps) {
   const cfg = apiConfig
   const F = cfg.fields
   const searchParams = useSearchParams()
@@ -148,7 +152,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const [checkingPlagiarism, setCheckingPlagiarism] = useState<Set<number>>(new Set())
   const [updatingStatus, setUpdatingStatus] = useState<Set<number>>(new Set())
   const [hasDirty, setHasDirty] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const dirtyRef = useRef(new Set<number>())
+  const stalePlagiarismIds = useRef(new Set<number>())
   const saveAllRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
   const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
@@ -304,6 +310,17 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
       })
 
       await Promise.all(promises)
+
+      if (stalePlagiarismIds.current.size > 0 && cfg.gptzeroDeleteBase) {
+        const idsToDelete = Array.from(stalePlagiarismIds.current)
+        stalePlagiarismIds.current = new Set()
+        await Promise.all(
+          idsToDelete.map((id) =>
+            fetch(`${cfg.gptzeroDeleteBase}/${id}`, { method: "DELETE" }).catch(() => {})
+          )
+        )
+      }
+
       dirtyRef.current = new Set()
       setHasDirty(false)
       setSaveStatus("saved")
@@ -362,6 +379,8 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
 
     const response = responses.get(templateId)
     if (response && plagiarismData.has(response.id)) {
+      const record = plagiarismData.get(response.id)
+      if (record?.id) stalePlagiarismIds.current.add(record.id as number)
       setPlagiarismData((prev) => {
         const next = new Map(prev)
         next.delete(response.id)
@@ -372,8 +391,21 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
     autosaveTimerRef.current = setTimeout(() => {
       if (dirtyRef.current.size > 0) saveAllRef.current()
-    }, 3000)
+    }, 1500)
   }
+
+  const handleFieldBlur = useCallback(() => {
+    if (dirtyRef.current.size > 0) {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+      saveAllRef.current()
+    }
+  }, [])
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await loadData()
+    setRefreshing(false)
+  }, [loadData])
 
   const eventPrefix = cfg.eventPrefix ?? ""
   const dispatchCommentRead = useCallback((count: number) => {
@@ -588,6 +620,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           lastEdited={response?.last_edited}
           plagiarism={response ? plagiarismData.get(response.id) : undefined}
           onChange={(v) => handleChange(q.id, v)}
+          onBlur={handleFieldBlur}
           onImageUpload={(file) => handleImageUpload(q.id, file)}
           submittingForReview={checkingPlagiarism.has(q.id)}
           updatingStatus={updatingStatus.has(q.id)}
@@ -632,6 +665,20 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           )}
         </div>
         {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
+        {backHref && (
+          <div className="mt-3 flex items-center justify-between">
+            <Button variant="outline" size="sm" asChild className="gap-2">
+              <Link href={backHref}>
+                <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
+                Back
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleRefresh} disabled={refreshing}>
+              <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Button>
+          </div>
+        )}
       </div>
 
       <Sheet open={sectionCommentsOpen} onOpenChange={setSectionCommentsOpen}>
@@ -1001,6 +1048,7 @@ function DynamicField({
   value,
   imageValue,
   onChange,
+  onBlur,
   onImageUpload,
   comments,
   onMarkRead,
@@ -1017,6 +1065,7 @@ function DynamicField({
   value: string
   imageValue: Record<string, unknown> | null
   onChange: (value: string) => void
+  onBlur?: () => void
   onImageUpload: (file: File) => void
   comments: Comment[]
   onMarkRead: (commentIds: number[]) => void
@@ -1234,6 +1283,7 @@ function DynamicField({
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             disabled={isDimmed}
             spellCheck
           />
@@ -1247,6 +1297,7 @@ function DynamicField({
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             disabled={isDimmed}
             rows={4}
             spellCheck
@@ -1263,7 +1314,7 @@ function DynamicField({
       )}
 
       {typeId === QUESTION_TYPE.CURRENCY && (
-        <CurrencyInput value={value} onChange={onChange} disabled={isDimmed} />
+        <CurrencyInput value={value} onChange={onChange} onBlur={onBlur} disabled={isDimmed} />
       )}
 
       {typeId === QUESTION_TYPE.IMAGE_UPLOAD && (
@@ -1297,6 +1348,7 @@ function DynamicField({
             placeholder={question.placeholder || "https://..."}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             disabled={isDimmed}
           />
         </InputGroup>
@@ -1309,6 +1361,7 @@ function DynamicField({
             type="date"
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             disabled={isDimmed}
           />
         </InputGroup>
@@ -1361,7 +1414,7 @@ function PlagiarismScores({ data }: { data: GptZeroResult }) {
   )
 }
 
-function CurrencyInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+function CurrencyInput({ value, onChange, onBlur, disabled }: { value: string; onChange: (v: string) => void; onBlur?: () => void; disabled?: boolean }) {
   const numValue = parseInt(value.replace(/[^0-9]/g, ""), 10) || 0
   const display = numValue > 0 ? numValue.toLocaleString("en-US") : ""
 
@@ -1392,6 +1445,7 @@ function CurrencyInput({ value, onChange, disabled }: { value: string; onChange:
         disabled={disabled}
         onChange={handleChange}
         onFocus={handleFocus}
+        onBlur={onBlur}
       />
     </InputGroup>
   )

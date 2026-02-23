@@ -22,6 +22,7 @@ export interface FormApiConfig {
   addGroupDisplayTemplateEndpoint: string
   plagiarismCheckEndpoint?: string
   gptzeroEndpoint?: string
+  gptzeroDeleteBase?: string
   eventPrefix?: string
   fields: {
     sectionId: string
@@ -46,6 +47,7 @@ export const LIFEMAP_API_CONFIG: FormApiConfig = {
   addGroupDisplayTemplateEndpoint: `${LIFEMAP_BASE}/add_group_display_template`,
   plagiarismCheckEndpoint: `${PLAGIARISM_BASE}/plagiarism_checker`,
   gptzeroEndpoint: `${PLAGIARISM_BASE}/gptzero_document_by_section`,
+  gptzeroDeleteBase: `${PLAGIARISM_BASE}/gptzero_document`,
   fields: {
     sectionId: "lifemap_sections_id",
     customGroupId: "lifemap_custom_group_id",
@@ -70,6 +72,7 @@ export const BUSINESSTHESIS_API_CONFIG: FormApiConfig = {
   addGroupDisplayTemplateEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_add_group_display_template`,
   plagiarismCheckEndpoint: `${PLAGIARISM_BASE}/plagiarism_checker`,
   gptzeroEndpoint: `${PLAGIARISM_BASE}/businessthesis_gptzero_document_by_section`,
+  gptzeroDeleteBase: `${PLAGIARISM_BASE}/businessthesis_gptzero_document`,
   fields: {
     sectionId: "businessthesis_sections_id",
     customGroupId: "businessthesis_custom_group_id",

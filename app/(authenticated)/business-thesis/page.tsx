@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { useSession } from "next-auth/react"
 import {
   Table,
@@ -33,6 +34,8 @@ import {
   ArrowDown01Icon,
   ArrowUp01Icon,
   Comment01Icon,
+  Link01Icon,
+  ArrowLeft02Icon,
 } from "@hugeicons/core-free-icons"
 import { btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
 import type { Comment } from "@/lib/form-types"
@@ -65,19 +68,26 @@ interface TemplateQuestion {
   id: number
   field_label: string
   field_name: string
-  businessthesis_sections_id: number
-  businessthesis_custom_group_id: number | null
   isArchived: boolean
   isPublished: boolean
   sortOrder: number
   min_words?: number
   question_types_id?: number | null
   _question_types?: { id: number; type: string; noInput?: boolean }
+  [key: string]: unknown
+}
+
+function qSectionId(q: TemplateQuestion): number {
+  return Number(q.businessthesis_sections_id ?? q.lifemap_sections_id ?? 0)
+}
+
+function qGroupId(q: TemplateQuestion): number | null {
+  const v = q.businessthesis_custom_group_id ?? q.lifemap_custom_group_id
+  return v != null ? Number(v) || null : null
 }
 
 interface StudentResponse {
   id: number
-  businessthesis_template_id: number
   student_response: string
   wordCount: number
   isArchived?: boolean
@@ -85,6 +95,11 @@ interface StudentResponse {
   readyReview?: boolean
   revisionNeeded?: boolean
   isComplete?: boolean
+  [key: string]: unknown
+}
+
+function rTemplateId(r: StudentResponse): number {
+  return Number(r.businessthesis_template_id ?? r.lifemap_template_id ?? 0)
 }
 
 interface SectionRow {
@@ -200,12 +215,12 @@ export default function StudentBusinessThesisOverviewPage() {
       if (templateRes.ok) {
         const allQs: TemplateQuestion[] = await templateRes.json()
         const sectionQs = allQs
-          .filter((q) => !q.isArchived && q.isPublished && q.businessthesis_sections_id === row.section.id)
+          .filter((q) => !q.isArchived && q.isPublished && qSectionId(q) === row.section.id)
           .sort((a, b) => a.sortOrder - b.sortOrder)
         setSectionQuestions(
           groupId !== null
-            ? sectionQs.filter((q) => q.businessthesis_custom_group_id === groupId)
-            : sectionQs
+            ? sectionQs.filter((q) => qGroupId(q) === groupId)
+            : sectionQs.filter((q) => !qGroupId(q))
         )
       }
 
@@ -277,9 +292,23 @@ export default function StudentBusinessThesisOverviewPage() {
         <p className="text-muted-foreground mt-1 text-sm">
           View your progress across all sections.
         </p>
+        <div className="mt-3 flex items-center justify-between">
+          <Button variant="outline" size="sm" className="gap-2" asChild>
+            <Link href="/dashboard">
+              <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
+              Dashboard
+            </Link>
+          </Button>
+          {studentId && (
+            <Button variant="outline" size="sm" className="gap-2" asChild>
+              <a href={`/public/business-thesis/${studentId}`} target="_blank" rel="noopener noreferrer">
+                <HugeiconsIcon icon={Link01Icon} strokeWidth={2} className="size-4" />
+                View Thesis
+              </a>
+            </Button>
+          )}
+        </div>
       </div>
-
-      <hr className="border-border -mb-3" />
 
       <div className="rounded-md border">
         <Table className="table-fixed">
@@ -316,7 +345,7 @@ export default function StudentBusinessThesisOverviewPage() {
             <SheetTitle className="text-base">
               {sheetGroupId !== null
                 ? rows.flatMap((r) => r.groups).find((g) => g.id === sheetGroupId)?.group_name
-                : sheetRow?.section.section_title}
+                : (sheetRow && sheetRow.groups.length > 0 ? "Ungrouped" : sheetRow?.section.section_title)}
             </SheetTitle>
             <SheetDescription className="sr-only">Section details</SheetDescription>
           </SheetHeader>
@@ -367,7 +396,7 @@ export default function StudentBusinessThesisOverviewPage() {
             ) : (
               <div>
                 {sectionQuestions.map((q) => {
-                  const response = sectionResponses.find((r) => r.businessthesis_template_id === q.id)
+                  const response = sectionResponses.find((r) => rTemplateId(r) === q.id)
                   const relTime = formatRelativeTime(response?.last_edited)
                   const typeName = q._question_types?.type ?? (q.question_types_id ? questionTypes.find((t) => t.id === q.question_types_id)?.type : undefined)
 
@@ -481,15 +510,20 @@ function BtSectionTableRows({
     )
   }
 
-  const sectionQs = templateQuestions.filter((q) => q.businessthesis_sections_id === row.section.id)
-  const responseMap = new Map(responses.map((r) => [r.businessthesis_template_id, r]))
+  const sectionQs = templateQuestions.filter((q) => qSectionId(q) === row.section.id)
+  const responseMap = new Map(responses.map((r) => [rTemplateId(r), r]))
+  const ungroupedQs = sectionQs.filter((q) => !qGroupId(q))
+  const hasUngrouped = ungroupedQs.length > 0
 
   const groupCompletionCounts = row.groups.map((group) => {
-    const groupQs = sectionQs.filter((q) => q.businessthesis_custom_group_id === group.id)
+    const groupQs = sectionQs.filter((q) => qGroupId(q) === group.id)
     return groupQs.length > 0 && groupQs.every((q) => responseMap.get(q.id)?.isComplete)
   })
+  if (hasUngrouped) {
+    groupCompletionCounts.push(ungroupedQs.every((q) => responseMap.get(q.id)?.isComplete))
+  }
   const completedGroups = groupCompletionCounts.filter(Boolean).length
-  const totalGroups = row.groups.length
+  const totalGroups = row.groups.length + (hasUngrouped ? 1 : 0)
 
   return (
     <>
@@ -527,7 +561,7 @@ function BtSectionTableRows({
         </TableCell>
       </TableRow>
       {!collapsed && row.groups.map((group) => {
-        const groupQs = sectionQs.filter((q) => q.businessthesis_custom_group_id === group.id)
+        const groupQs = sectionQs.filter((q) => qGroupId(q) === group.id)
         const groupCompleted = groupQs.filter((q) => responseMap.get(q.id)?.isComplete).length
         const groupRevision = groupQs.filter((q) => responseMap.get(q.id)?.revisionNeeded).length
         const groupReady = groupQs.filter((q) => {
@@ -608,6 +642,59 @@ function BtSectionTableRows({
           </TableRow>
         )
       })}
+      {!collapsed && hasUngrouped && (() => {
+        const ugCompleted = ungroupedQs.filter((q) => responseMap.get(q.id)?.isComplete).length
+        const ugRevision = ungroupedQs.filter((q) => responseMap.get(q.id)?.revisionNeeded).length
+        const isUgComplete = ungroupedQs.length > 0 && ugCompleted === ungroupedQs.length
+        const remaining = ungroupedQs.length - ugCompleted
+        return (
+          <TableRow
+            className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} [&>td]:py-2.5 ${bgClass}`}
+            onClick={() => { if (!locked) onViewSummary(null) }}
+          >
+            <TableCell>
+              {isUgComplete ? (
+                <div className="inline-flex size-7 items-center justify-center rounded-md border">
+                  <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
+                </div>
+              ) : (
+                <div className="inline-flex size-7 items-center justify-center rounded-md border">
+                  <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
+                </div>
+              )}
+            </TableCell>
+            <TableCell>
+              <div className="flex items-center gap-2 pl-4">
+                <span className="text-sm font-semibold text-foreground">Ungrouped</span>
+                {!isUgComplete && ugRevision > 0 && (
+                  <div className="relative inline-flex size-7 items-center justify-center rounded-lg border" title={`${ugRevision} need revision`}>
+                    <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5 text-red-500" />
+                    <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{ugRevision}</span>
+                  </div>
+                )}
+                <span className="text-muted-foreground text-xs">·</span>
+                <span className={`text-xs font-medium ${isUgComplete ? "text-green-600" : "text-muted-foreground"}`}>
+                  {isUgComplete ? "Completed" : `${Math.round((ugCompleted / ungroupedQs.length) * 100)}%`}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell className="text-right">
+              {isUgComplete ? (
+                <span className="text-muted-foreground/60 text-xs">Done</span>
+              ) : (
+                <div className="flex items-center justify-end gap-1.5">
+                  <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-green-600" title={`${ugCompleted} completed`}>
+                    {ugCompleted}
+                  </div>
+                  <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-muted-foreground" title={`${remaining} remaining`}>
+                    {remaining}
+                  </div>
+                </div>
+              )}
+            </TableCell>
+          </TableRow>
+        )
+      })()}
     </>
   )
 }

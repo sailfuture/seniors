@@ -8,6 +8,7 @@ export default function AdminBusinessThesisPage() {
       title="Business Thesis — Student Roster"
       description="View and manage student Business Thesis submissions."
       basePath="/admin/business-thesis"
+      publicBaseUrl="/public/business-thesis"
     />
   )
 }

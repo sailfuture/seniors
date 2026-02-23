@@ -26,21 +26,20 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { GroupDisplayRenderer, isGroupDisplayType, DISPLAY_TYPE, getGoogleSheetUrl, GoogleSheetOpenButton } from "@/components/group-display-types"
 import { icons as lucideIcons } from "lucide-react"
 
-const XANO_BASE =
-  process.env.NEXT_PUBLIC_XANO_API_BASE ??
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
+const BT_BASE =
+  process.env.NEXT_PUBLIC_XANO_BT_API_BASE ??
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:45yS7ICi"
 
-const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
-const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
-const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
-const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
+const SECTIONS_ENDPOINT = `${BT_BASE}/businessthesis_sections`
+const TEMPLATE_ENDPOINT = `${BT_BASE}/businessthesis_template`
+const RESPONSES_ENDPOINT = `${BT_BASE}/businessthesis_responses_by_student`
+const CUSTOM_GROUP_ENDPOINT = `${BT_BASE}/businessthesis_custom_group`
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
 
-interface LifeMapSection {
+interface BusinessThesisSection {
   id: number
   section_title: string
-  section_description?: string
   description?: string
   isLocked?: boolean
   order?: number
@@ -51,8 +50,6 @@ interface TemplateQuestion {
   id: number
   field_label: string
   field_name: string
-  lifemap_sections_id: number
-  lifemap_custom_group_id: number | null
   isArchived: boolean
   isPublished: boolean
   sortOrder: number
@@ -62,29 +59,40 @@ interface TemplateQuestion {
   public_display_title?: string
   public_display_description?: string
   _question_types?: { id: number; type: string; noInput?: boolean }
+  [key: string]: unknown
+}
+
+function qSectionId(q: TemplateQuestion): number {
+  return Number(q.businessthesis_sections_id ?? q.lifemap_sections_id ?? 0)
+}
+
+function qGroupId(q: TemplateQuestion): number | null {
+  const v = q.businessthesis_custom_group_id ?? q.lifemap_custom_group_id
+  return v != null ? Number(v) || null : null
 }
 
 interface StudentResponse {
   id: number
-  lifemap_template_id: number
   student_response: string
-  date_response: string | null
+  date_response?: string | null
   image_response: { path?: string; url?: string; name?: string; mime?: string } | null
   students_id: string
   isArchived?: boolean
   isComplete?: boolean
-  lifemap_sections_id?: number
-  lifemap_custom_group_id?: number | null
   [key: string]: unknown
+}
+
+function rTemplateId(r: StudentResponse): number {
+  return Number(r.businessthesis_template_id ?? r.lifemap_template_id ?? 0)
 }
 
 interface CustomGroup {
   id: number
   group_name: string
   group_description: string
-  lifemap_sections_id: number
+  businessthesis_sections_id: number
   order?: number
-  lifemap_group_display_types_id?: number | null
+  businessthesis_group_display_types_id?: number | null
   icon_name?: string | null
 }
 
@@ -152,14 +160,14 @@ function isShortType(typeId: number | null): boolean {
     typeId === QUESTION_TYPE.DATE
 }
 
-export default function PublicLifeMapPage({
+export default function PublicBusinessThesisPage({
   params,
 }: {
   params: Promise<{ studentId: string }>
 }) {
   const { studentId } = use(params)
 
-  const [sections, setSections] = useState<LifeMapSection[]>([])
+  const [sections, setSections] = useState<BusinessThesisSection[]>([])
   const [templates, setTemplates] = useState<TemplateQuestion[]>([])
   const [responses, setResponses] = useState<StudentResponse[]>([])
   const [groups, setGroups] = useState<CustomGroup[]>([])
@@ -181,7 +189,7 @@ export default function PublicLifeMapPage({
         ])
 
       if (sectionsRes.ok) {
-        const data: LifeMapSection[] = await sectionsRes.json()
+        const data: BusinessThesisSection[] = await sectionsRes.json()
         setSections(data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)))
       }
       if (templateRes.ok) {
@@ -241,7 +249,7 @@ export default function PublicLifeMapPage({
 
   const responseMap = new Map<number, StudentResponse>()
   for (const r of responses) {
-    responseMap.set(r.lifemap_template_id, r)
+    responseMap.set(rTemplateId(r), r)
   }
 
   if (loading) {
@@ -249,7 +257,7 @@ export default function PublicLifeMapPage({
       <div className="bg-background flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="border-muted-foreground/30 border-t-foreground h-8 w-8 animate-spin rounded-full border-2" />
-          <p className="text-muted-foreground text-sm">Loading Life Map...</p>
+          <p className="text-muted-foreground text-sm">Loading Business Thesis...</p>
         </div>
       </div>
     )
@@ -258,12 +266,11 @@ export default function PublicLifeMapPage({
   return (
     <div className="[--header-height:calc(var(--spacing)*14)]">
       <SidebarProvider className="flex flex-col">
-        {/* Fixed top header */}
         <header className="bg-background sticky top-0 z-50 flex w-full items-center border-b">
           <div className="flex h-(--header-height) w-full items-center gap-2 px-4">
             <span className="text-sm font-semibold tracking-tight">SailFuture Academy</span>
             <Separator orientation="vertical" className="mx-2 data-vertical:h-4 data-vertical:self-auto" />
-            <span className="text-muted-foreground text-sm">Life Map</span>
+            <span className="text-muted-foreground text-sm">Business Thesis</span>
             <div className="ml-auto flex items-center gap-3">
               {studentName && (
                 <div className="flex items-center gap-2">
@@ -279,7 +286,6 @@ export default function PublicLifeMapPage({
         </header>
 
         <div className="flex flex-1">
-          {/* Sidebar */}
           <Sidebar className="top-(--header-height) h-[calc(100svh-var(--header-height))]!">
             <SidebarHeader className="gap-0 px-0 py-0">
               {studentName && (
@@ -291,7 +297,7 @@ export default function PublicLifeMapPage({
                     </Avatar>
                     <div className="flex min-w-0 flex-col">
                       <span className="text-sm font-semibold">{studentName}</span>
-                      <span className="text-muted-foreground text-xs">Life Map</span>
+                      <span className="text-muted-foreground text-xs">Business Thesis</span>
                     </div>
                   </div>
                   <Separator />
@@ -322,30 +328,30 @@ export default function PublicLifeMapPage({
             </SidebarContent>
           </Sidebar>
 
-          {/* Main content */}
           <SidebarInset className="bg-gray-50">
             <div className="w-full p-4 md:p-6 lg:p-8">
               {sections.map((section) => {
                 const sectionTemplates = templates
-                  .filter((q) => q.lifemap_sections_id === section.id)
+                  .filter((q) => qSectionId(q) === section.id)
                   .sort((a, b) => a.sortOrder - b.sortOrder)
                 const sectionGroups = groups
-                  .filter((g) => g.lifemap_sections_id === section.id)
+                  .filter((g) => g.businessthesis_sections_id === section.id)
                   .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
                 const ungroupedTemplates = sectionTemplates.filter(
-                  (q) => !q.lifemap_custom_group_id
+                  (q) => !qGroupId(q)
                 )
                 const groupedMap = new Map<number, TemplateQuestion[]>()
                 for (const q of sectionTemplates) {
-                  if (q.lifemap_custom_group_id) {
-                    const arr = groupedMap.get(q.lifemap_custom_group_id) ?? []
+                  const gid = qGroupId(q)
+                  if (gid) {
+                    const arr = groupedMap.get(gid) ?? []
                     arr.push(q)
-                    groupedMap.set(q.lifemap_custom_group_id, arr)
+                    groupedMap.set(gid, arr)
                   }
                 }
 
-                const desc = section.section_description || section.description || ""
+                const desc = section.description || ""
                 const photoUrl = section.photo?.path
                   ? resolveImageUrl(section.photo.path)
                   : null
@@ -380,9 +386,9 @@ export default function PublicLifeMapPage({
                             const groupQuestions = groupedMap.get(group.id) ?? []
                             if (groupQuestions.length === 0) return null
 
-                            if (isGroupDisplayType(group.lifemap_group_display_types_id)) {
-                              const isGoogleBudget = group.lifemap_group_display_types_id === DISPLAY_TYPE.GOOGLE_BUDGET
-                              const isTransportBudget = group.lifemap_group_display_types_id === DISPLAY_TYPE.TRANSPORTATION_BUDGET
+                            if (isGroupDisplayType(group.businessthesis_group_display_types_id)) {
+                              const isGoogleBudget = group.businessthesis_group_display_types_id === DISPLAY_TYPE.GOOGLE_BUDGET
+                              const isTransportBudget = group.businessthesis_group_display_types_id === DISPLAY_TYPE.TRANSPORTATION_BUDGET
                               const sheetUrl = isGoogleBudget ? getGoogleSheetUrl(groupQuestions, responseMap) : ""
                               return (
                                 <div key={group.id} className={isTransportBudget ? "md:col-span-1" : "md:col-span-2"}>
@@ -401,7 +407,7 @@ export default function PublicLifeMapPage({
                                     </CardHeader>
                                     <CardContent className="px-5 pb-5 pt-4">
                                       <GroupDisplayRenderer
-                                        displayTypeId={group.lifemap_group_display_types_id!}
+                                        displayTypeId={group.businessthesis_group_display_types_id!}
                                         questions={groupQuestions}
                                         responseMap={responseMap}
                                         mode="public"
@@ -437,7 +443,7 @@ export default function PublicLifeMapPage({
               {sections.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-32 text-center">
                   <p className="text-muted-foreground text-lg font-medium">
-                    No Life Map data found.
+                    No Business Thesis data found.
                   </p>
                 </div>
               )}

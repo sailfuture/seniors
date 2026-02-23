@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { useSession } from "next-auth/react"
 import {
   Table,
@@ -33,6 +34,8 @@ import {
   ArrowDown01Icon,
   ArrowUp01Icon,
   Comment01Icon,
+  Link01Icon,
+  ArrowLeft02Icon,
 } from "@hugeicons/core-free-icons"
 import { titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import type { Comment } from "@/lib/form-types"
@@ -273,9 +276,23 @@ export default function StudentLifeMapOverviewPage() {
         <p className="text-muted-foreground mt-1 text-sm">
           View your progress across all sections.
         </p>
+        <div className="mt-3 flex items-center justify-between">
+          <Button variant="outline" size="sm" className="gap-2" asChild>
+            <Link href="/dashboard">
+              <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
+              Dashboard
+            </Link>
+          </Button>
+          {studentId && (
+            <Button variant="outline" size="sm" className="gap-2" asChild>
+              <a href={`/public/life-map/${studentId}`} target="_blank" rel="noopener noreferrer">
+                <HugeiconsIcon icon={Link01Icon} strokeWidth={2} className="size-4" />
+                View Life Map
+              </a>
+            </Button>
+          )}
+        </div>
       </div>
-
-      <hr className="border-border -mb-3" />
 
       <div className="rounded-md border">
         <Table className="table-fixed">
