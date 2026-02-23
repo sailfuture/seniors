@@ -268,6 +268,11 @@ export default function PublicBusinessThesisPage({
       <SidebarProvider className="flex flex-col">
         <header className="bg-background sticky top-0 z-50 flex w-full items-center border-b">
           <div className="flex h-(--header-height) w-full items-center gap-2 px-4">
+            <img
+              src="/images/sailfuture-square.webp"
+              alt="SailFuture Academy"
+              className="size-7 shrink-0 rounded-full border border-gray-300 shadow-sm"
+            />
             <span className="text-sm font-semibold tracking-tight">SailFuture Academy</span>
             <Separator orientation="vertical" className="mx-2 data-vertical:h-4 data-vertical:self-auto" />
             <span className="text-muted-foreground text-sm">Business Thesis</span>
