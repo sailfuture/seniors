@@ -51,6 +51,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import type { Comment } from "@/lib/form-types"
+import { useRefreshRegister } from "@/lib/refresh-context"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -208,6 +209,16 @@ export default function AdminStudentLifeMapOverviewPage({
     loadData()
     loadComments()
   }, [loadData, loadComments])
+
+  const { register, unregister } = useRefreshRegister()
+  useEffect(() => {
+    const fn = async () => {
+      setLoading(true)
+      await Promise.all([loadData(), loadComments()])
+    }
+    register(fn)
+    return () => unregister()
+  }, [loadData, loadComments, register, unregister])
 
   const openSheet = async (row: SectionRow, groupId: number | null) => {
     setSheetRow(row)

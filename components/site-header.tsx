@@ -29,8 +29,9 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useSaveContext } from "@/lib/save-context"
+import { useRefreshContext } from "@/lib/refresh-context"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { SidebarLeftIcon, LogoutIcon, UserIcon, Link01Icon } from "@hugeicons/core-free-icons"
+import { SidebarLeftIcon, LogoutIcon, UserIcon, Link01Icon, RefreshIcon } from "@hugeicons/core-free-icons"
 import { slugToTitle } from "@/lib/lifemap-sections"
 import { btSlugToTitle } from "@/lib/businessthesis-sections"
 
@@ -211,6 +212,7 @@ export function SiteHeader() {
   const { toggleSidebar } = useSidebar()
   const { data: session, status } = useSession()
   const saveCtx = useSaveContext()
+  const refreshCtx = useRefreshContext()
   const studentsId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
   const role = (session?.user as Record<string, unknown>)?.role as string | undefined
   const isStudent = role === "student" && studentsId
@@ -262,6 +264,23 @@ export function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-3">
           {saveCtx && <SaveControls />}
+
+          {refreshCtx && (
+            <Button
+              variant="outline"
+              size="icon"
+              className={`h-8 w-8 ${!refreshCtx.refreshFn ? "cursor-not-allowed opacity-50" : ""}`}
+              onClick={refreshCtx.triggerRefresh}
+              disabled={refreshCtx.refreshing || !refreshCtx.refreshFn}
+              title={refreshCtx.refreshFn ? "Refresh data" : "Refresh not available on this page"}
+            >
+              <HugeiconsIcon
+                icon={RefreshIcon}
+                strokeWidth={2}
+                className={`size-4 ${refreshCtx.refreshing ? "animate-spin" : ""}`}
+              />
+            </Button>
+          )}
 
           {showUser && (
             <DropdownMenu>

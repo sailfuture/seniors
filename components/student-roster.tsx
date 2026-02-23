@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -37,7 +37,7 @@ interface GroupedStudents {
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
 
-const ALL_RESPONSES_ENDPOINT =
+const LM_RESPONSES_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/lifemap_responses"
 
 function getInitials(firstName: string, lastName: string) {
@@ -95,9 +95,10 @@ interface StudentRosterProps {
   description: string
   basePath: string
   publicBaseUrl?: string
+  responsesEndpoint?: string
 }
 
-export function StudentRoster({ title, description, basePath, publicBaseUrl }: StudentRosterProps) {
+export function StudentRoster({ title, description, basePath, publicBaseUrl, responsesEndpoint = LM_RESPONSES_ENDPOINT }: StudentRosterProps) {
   const router = useRouter()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
@@ -105,45 +106,45 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl }: S
   const [reviewCounts, setReviewCounts] = useState<Map<string, number>>(new Map())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [studentsRes, reviewsRes] = await Promise.all([
-          fetch(STUDENTS_ENDPOINT),
-          fetch(ALL_RESPONSES_ENDPOINT),
-        ])
+  const fetchData = useCallback(async () => {
+    try {
+      const [studentsRes, reviewsRes] = await Promise.all([
+        fetch(STUDENTS_ENDPOINT),
+        fetch(responsesEndpoint),
+      ])
 
-        if (studentsRes.ok) {
-          const data = await studentsRes.json()
-          const studentList: Student[] = Array.isArray(data) ? data : []
-          setStudents(studentList)
+      if (studentsRes.ok) {
+        const data = await studentsRes.json()
+        const studentList: Student[] = Array.isArray(data) ? data : []
+        setStudents(studentList)
 
-          const yearGroups = new Set(studentList.map((s) => s.yearGroup || "Other"))
-          const nonBatch2026 = [...yearGroups].filter((g) => !g.includes("2026"))
-          setCollapsedGroups(new Set(nonBatch2026))
-        }
-
-        if (reviewsRes.ok) {
-          const responses = await reviewsRes.json()
-          if (Array.isArray(responses)) {
-            const counts = new Map<string, number>()
-            for (const r of responses) {
-              if (!r.readyReview || r.isComplete || r.revisionNeeded) continue
-              const sid = String(r.students_id)
-              counts.set(sid, (counts.get(sid) ?? 0) + 1)
-            }
-            setReviewCounts(counts)
-          }
-        }
-      } catch {
-        // Silently fail
-      } finally {
-        setLoading(false)
+        const yearGroups = new Set(studentList.map((s) => s.yearGroup || "Other"))
+        const nonBatch2026 = [...yearGroups].filter((g) => !g.includes("2026"))
+        setCollapsedGroups(new Set(nonBatch2026))
       }
-    }
 
+      if (reviewsRes.ok) {
+        const responses = await reviewsRes.json()
+        if (Array.isArray(responses)) {
+          const counts = new Map<string, number>()
+          for (const r of responses) {
+            if (!r.readyReview || r.isComplete || r.revisionNeeded) continue
+            const sid = String(r.students_id)
+            counts.set(sid, (counts.get(sid) ?? 0) + 1)
+          }
+          setReviewCounts(counts)
+        }
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setLoading(false)
+    }
+  }, [responsesEndpoint])
+
+  useEffect(() => {
     fetchData()
-  }, [])
+  }, [fetchData])
 
   const filtered = students.filter((s) => {
     const q = search.toLowerCase()

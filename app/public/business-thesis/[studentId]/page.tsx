@@ -94,6 +94,7 @@ interface CustomGroup {
   order?: number
   businessthesis_group_display_types_id?: number | null
   icon_name?: string | null
+  width?: number | null
 }
 
 const QUESTION_TYPE = {
@@ -105,6 +106,12 @@ const QUESTION_TYPE = {
   URL: 6,
   DATE: 7,
 } as const
+
+function getGroupColSpan(width: number | null | undefined): string {
+  if (width === 1) return "md:col-span-6"
+  if (width === 3) return "md:col-span-2"
+  return "md:col-span-3"
+}
 
 function resolveImageUrl(path: string | undefined): string {
   if (!path) return ""
@@ -190,7 +197,7 @@ export default function PublicBusinessThesisPage({
 
       if (sectionsRes.ok) {
         const data: BusinessThesisSection[] = await sectionsRes.json()
-        setSections(data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)))
+        setSections(data.filter((s) => !s.isLocked).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)))
       }
       if (templateRes.ok) {
         const data: TemplateQuestion[] = await templateRes.json()
@@ -386,17 +393,20 @@ export default function PublicBusinessThesisPage({
                       )}
 
                       {sectionGroups.length > 0 && (
-                        <div className="grid gap-6 md:grid-cols-2">
+                        <div className="grid gap-6 md:grid-cols-6">
                           {sectionGroups.map((group) => {
                             const groupQuestions = groupedMap.get(group.id) ?? []
                             if (groupQuestions.length === 0) return null
+
+                            const colSpan = getGroupColSpan(group.width)
 
                             if (isGroupDisplayType(group.businessthesis_group_display_types_id)) {
                               const isGoogleBudget = group.businessthesis_group_display_types_id === DISPLAY_TYPE.GOOGLE_BUDGET
                               const isTransportBudget = group.businessthesis_group_display_types_id === DISPLAY_TYPE.TRANSPORTATION_BUDGET
                               const sheetUrl = isGoogleBudget ? getGoogleSheetUrl(groupQuestions, responseMap) : ""
+                              const displayColSpan = group.width ? colSpan : (isTransportBudget ? "md:col-span-3" : "md:col-span-6")
                               return (
-                                <div key={group.id} className={isTransportBudget ? "md:col-span-1" : "md:col-span-2"}>
+                                <div key={group.id} className={displayColSpan}>
                                   <Card className="border-gray-200 shadow-none">
                                     <CardHeader className="border-b">
                                       <div className="flex items-center justify-between">
@@ -424,12 +434,13 @@ export default function PublicBusinessThesisPage({
                             }
 
                             return (
-                              <GroupCard
-                                key={group.id}
-                                group={group}
-                                questions={groupQuestions}
-                                responseMap={responseMap}
-                              />
+                              <div key={group.id} className={colSpan}>
+                                <GroupCard
+                                  group={group}
+                                  questions={groupQuestions}
+                                  responseMap={responseMap}
+                                />
+                              </div>
                             )
                           })}
                         </div>

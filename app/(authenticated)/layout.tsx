@@ -1,6 +1,7 @@
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { SaveProvider } from "@/lib/save-context"
+import { RefreshProvider } from "@/lib/refresh-context"
 import {
   SidebarInset,
   SidebarProvider,
@@ -13,15 +14,17 @@ export default function AuthenticatedLayout({
 }) {
   return (
     <SaveProvider>
-      <div className="[--header-height:calc(--spacing(14))]">
-        <SidebarProvider className="flex flex-col">
-          <SiteHeader />
-          <div className="flex flex-1">
-            <AppSidebar />
-            <SidebarInset>{children}</SidebarInset>
-          </div>
-        </SidebarProvider>
-      </div>
+      <RefreshProvider>
+        <div className="[--header-height:calc(--spacing(14))]">
+          <SidebarProvider className="flex flex-col">
+            <SiteHeader />
+            <div className="flex flex-1">
+              <AppSidebar />
+              <SidebarInset>{children}</SidebarInset>
+            </div>
+          </SidebarProvider>
+        </div>
+      </RefreshProvider>
     </SaveProvider>
   )
 }

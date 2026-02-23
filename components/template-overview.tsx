@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Table,
@@ -52,6 +52,7 @@ import {
 } from "@/lib/lifemap-sections"
 import { uploadImageToXano, type XanoImageResponse } from "@/lib/xano"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
+import { useBumpSidebar } from "@/lib/refresh-context"
 
 interface TemplateQuestion {
   id: number
@@ -109,6 +110,7 @@ export function TemplateOverview({
   const cfg = apiConfig
   const F = cfg.fields
   const router = useRouter()
+  const bumpSidebar = useBumpSidebar()
   const [summaries, setSummaries] = useState<SectionSummary[]>([])
   const [allQuestions, setAllQuestions] = useState<TemplateQuestion[]>([])
   const [allGroups, setAllGroups] = useState<CustomGroup[]>([])
@@ -131,47 +133,46 @@ export function TemplateOverview({
   const [sheetLockConfirm, setSheetLockConfirm] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [sectionsRes, templateRes, groupsRes, typesRes] = await Promise.all([
-          fetch(cfg.sectionsEndpoint),
-          fetch(cfg.templateEndpoint),
-          fetch(cfg.customGroupEndpoint),
-          fetch(cfg.questionTypesEndpoint),
-        ])
+  const loadData = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true)
+    try {
+      const [sectionsRes, templateRes, groupsRes, typesRes] = await Promise.all([
+        fetch(cfg.sectionsEndpoint),
+        fetch(cfg.templateEndpoint),
+        fetch(cfg.customGroupEndpoint),
+        fetch(cfg.questionTypesEndpoint),
+      ])
 
-        const rawSections: LifeMapSection[] = sectionsRes.ok ? await sectionsRes.json() : []
-        const sections = rawSections.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        const questions: TemplateQuestion[] = templateRes.ok ? await templateRes.json() : []
-        const groups: CustomGroup[] = groupsRes.ok ? await groupsRes.json() : []
-        const types: QuestionType[] = typesRes.ok ? await typesRes.json() : []
+      const rawSections: LifeMapSection[] = sectionsRes.ok ? await sectionsRes.json() : []
+      const sections = rawSections.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      const questions: TemplateQuestion[] = templateRes.ok ? await templateRes.json() : []
+      const groups: CustomGroup[] = groupsRes.ok ? await groupsRes.json() : []
+      const types: QuestionType[] = typesRes.ok ? await typesRes.json() : []
 
-        setAllQuestions(questions)
-        setAllGroups(groups)
-        setQuestionTypes(types)
+      setAllQuestions(questions)
+      setAllGroups(groups)
+      setQuestionTypes(types)
 
-        const result: SectionSummary[] = sections.map((s) => {
-          const allSectionQs = questions.filter((q) => numField(q, F.sectionId) === s.id)
-          return {
-            section: s,
-            slug: slugFn(s.section_title),
-            total: allSectionQs.filter((q) => !q.isArchived).length,
-            drafts: allSectionQs.filter((q) => q.isDraft && !q.isArchived).length,
-            archived: allSectionQs.filter((q) => q.isArchived).length,
-          }
-        })
+      const result: SectionSummary[] = sections.map((s) => {
+        const allSectionQs = questions.filter((q) => numField(q, F.sectionId) === s.id)
+        return {
+          section: s,
+          slug: slugFn(s.section_title),
+          total: allSectionQs.filter((q) => !q.isArchived).length,
+          drafts: allSectionQs.filter((q) => q.isDraft && !q.isArchived).length,
+          archived: allSectionQs.filter((q) => q.isArchived).length,
+        }
+      })
 
-        setSummaries(result)
-      } catch {
-        // Silently fail
-      } finally {
-        setLoading(false)
-      }
+      setSummaries(result)
+    } catch {
+      // Silently fail
+    } finally {
+      setLoading(false)
     }
+  }, [cfg])
 
-    load()
-  }, [])
+  useEffect(() => { loadData() }, [loadData])
 
   useEffect(() => {
     setSummaries((prev) =>
@@ -248,6 +249,7 @@ export function TemplateOverview({
         )
       )
       onSectionsInvalidated()
+      bumpSidebar()
     } catch {
       toast.error("Failed to reorder sections")
     }
@@ -330,6 +332,7 @@ export function TemplateOverview({
           : null
       )
       onSectionsInvalidated()
+      bumpSidebar()
       toast.success("Section settings saved")
     } catch {
       toast.error("Failed to save section settings")
@@ -360,6 +363,7 @@ export function TemplateOverview({
       if (!res.ok) throw new Error()
       const created: LifeMapSection = await res.json()
       onSectionsInvalidated()
+      bumpSidebar()
       setSummaries((prev) => [
         ...prev,
         {

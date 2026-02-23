@@ -25,6 +25,9 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Comment01Icon,
   Delete02Icon,
+  CheckmarkCircle02Icon,
+  ArrowTurnBackwardIcon,
+  AlertCircleIcon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
@@ -65,6 +68,12 @@ interface PlagiarismData {
   [key: string]: unknown
 }
 
+interface ResponseStatus {
+  isComplete?: boolean
+  revisionNeeded?: boolean
+  readyReview?: boolean
+}
+
 interface TeacherCommentProps {
   fieldName: string
   fieldLabel: string
@@ -78,6 +87,10 @@ interface TeacherCommentProps {
   square?: boolean
   plagiarism?: PlagiarismData
   teacherGuideline?: string
+  responseStatus?: ResponseStatus | null
+  onMarkCompleteAction?: () => void
+  onRequestRevision?: () => void
+  onClearStatus?: () => void
 }
 
 export function TeacherComment({
@@ -92,6 +105,10 @@ export function TeacherComment({
   square,
   plagiarism,
   teacherGuideline,
+  responseStatus,
+  onMarkCompleteAction,
+  onRequestRevision,
+  onClearStatus,
 }: TeacherCommentProps) {
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState("")
@@ -232,6 +249,70 @@ export function TeacherComment({
               </div>
             </div>
           </div>
+
+          {responseStatus && (onMarkCompleteAction || onRequestRevision || onClearStatus) && (
+            <div className="border-t bg-muted/30 px-6 py-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {responseStatus.isComplete && (
+                    <>
+                      <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-green-600" />
+                      <span className="font-medium text-green-600">Complete</span>
+                    </>
+                  )}
+                  {responseStatus.revisionNeeded && (
+                    <>
+                      <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5 text-red-500" />
+                      <span className="font-medium text-red-500">Revision Needed</span>
+                    </>
+                  )}
+                  {responseStatus.readyReview && !responseStatus.isComplete && !responseStatus.revisionNeeded && (
+                    <>
+                      <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-blue-500" />
+                      <span className="font-medium text-blue-500">Ready for Review</span>
+                    </>
+                  )}
+                  {!responseStatus.isComplete && !responseStatus.revisionNeeded && !responseStatus.readyReview && (
+                    <span>No status</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {(responseStatus.isComplete || responseStatus.revisionNeeded) && onClearStatus && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-muted-foreground"
+                      onClick={() => { onClearStatus(); setOpen(false) }}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                  {!responseStatus.revisionNeeded && onRequestRevision && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1.5 px-2 text-xs"
+                      onClick={() => { onRequestRevision() }}
+                    >
+                      <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3" />
+                      Revision
+                    </Button>
+                  )}
+                  {!responseStatus.isComplete && onMarkCompleteAction && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1.5 border-green-200 bg-green-50 px-2 text-xs text-green-700 hover:bg-green-100 hover:text-green-800"
+                      onClick={() => { onMarkCompleteAction(); setOpen(false) }}
+                    >
+                      <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3" />
+                      Complete
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
     </>

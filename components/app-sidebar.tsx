@@ -27,8 +27,9 @@ import {
   ArrowLeft02Icon,
 } from "@hugeicons/core-free-icons"
 import Link from "next/link"
-import { fetchSections, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
-import { fetchBtSections, btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
+import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
+import { fetchBtSections, invalidateBtSectionsCache, btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
+import { useRefreshKey } from "@/lib/refresh-context"
 import type { Comment } from "@/lib/form-types"
 
 const XANO_BASE =
@@ -132,18 +133,26 @@ function useStudentList(): StudentListItem[] {
   return students
 }
 
-function useLifeMapSections() {
+function useLifeMapSections(refreshKey: number) {
   const [sections, setSections] = useState<LifeMapSection[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
+    if (refreshKey > 0) {
+      invalidateSectionsCache()
+      setLoading(true)
+    }
     fetchSections().then((data) => {
-      if (!cancelled) setSections(data)
+      if (!cancelled) {
+        setSections(data)
+        setLoading(false)
+      }
     })
     return () => { cancelled = true }
-  }, [])
+  }, [refreshKey])
 
-  return sections
+  return { sections, loading }
 }
 
 interface SectionBadgeCounts {
@@ -151,11 +160,13 @@ interface SectionBadgeCounts {
   revisionNeeded: Map<number, number>
 }
 
-function useSectionReviewCounts(studentId: string | null): SectionBadgeCounts {
+function useSectionReviewCounts(studentId: string | null, refreshKey: number): { counts: SectionBadgeCounts; loading: boolean } {
   const [counts, setCounts] = useState<SectionBadgeCounts>({ readyReview: new Map(), revisionNeeded: new Map() })
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!studentId) { setCounts({ readyReview: new Map(), revisionNeeded: new Map() }); return }
+    if (!studentId) { setCounts({ readyReview: new Map(), revisionNeeded: new Map() }); setLoading(false); return }
+    if (refreshKey > 0) setLoading(true)
     let cancelled = false
     const load = async () => {
       try {
@@ -191,12 +202,12 @@ function useSectionReviewCounts(studentId: string | null): SectionBadgeCounts {
           }
         }
 
-        if (!cancelled) setCounts({ readyReview: ready, revisionNeeded: revision })
-      } catch { /* ignore */ }
+        if (!cancelled) { setCounts({ readyReview: ready, revisionNeeded: revision }); setLoading(false) }
+      } catch { if (!cancelled) setLoading(false) }
     }
     load()
     return () => { cancelled = true }
-  }, [studentId])
+  }, [studentId, refreshKey])
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -222,14 +233,16 @@ function useSectionReviewCounts(studentId: string | null): SectionBadgeCounts {
     return () => window.removeEventListener("review-update", handler)
   }, [])
 
-  return counts
+  return { counts, loading }
 }
 
-function useBtSectionReviewCounts(studentId: string | null): SectionBadgeCounts {
+function useBtSectionReviewCounts(studentId: string | null, refreshKey: number): { counts: SectionBadgeCounts; loading: boolean } {
   const [counts, setCounts] = useState<SectionBadgeCounts>({ readyReview: new Map(), revisionNeeded: new Map() })
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!studentId) { setCounts({ readyReview: new Map(), revisionNeeded: new Map() }); return }
+    if (!studentId) { setCounts({ readyReview: new Map(), revisionNeeded: new Map() }); setLoading(false); return }
+    if (refreshKey > 0) setLoading(true)
     let cancelled = false
     const load = async () => {
       try {
@@ -265,12 +278,12 @@ function useBtSectionReviewCounts(studentId: string | null): SectionBadgeCounts 
           }
         }
 
-        if (!cancelled) setCounts({ readyReview: ready, revisionNeeded: revision })
-      } catch { /* ignore */ }
+        if (!cancelled) { setCounts({ readyReview: ready, revisionNeeded: revision }); setLoading(false) }
+      } catch { if (!cancelled) setLoading(false) }
     }
     load()
     return () => { cancelled = true }
-  }, [studentId])
+  }, [studentId, refreshKey])
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -296,14 +309,16 @@ function useBtSectionReviewCounts(studentId: string | null): SectionBadgeCounts 
     return () => window.removeEventListener("bt-review-update", handler)
   }, [])
 
-  return counts
+  return { counts, loading }
 }
 
-function useBtSectionCommentCounts(studentId: string | null): Map<number, number> {
+function useBtSectionCommentCounts(studentId: string | null, refreshKey: number): { counts: Map<number, number>; loading: boolean } {
   const [counts, setCounts] = useState<Map<number, number>>(new Map())
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!studentId) { setCounts(new Map()); return }
+    if (!studentId) { setCounts(new Map()); setLoading(false); return }
+    if (refreshKey > 0) setLoading(true)
     let cancelled = false
     const load = async () => {
       try {
@@ -332,12 +347,12 @@ function useBtSectionCommentCounts(studentId: string | null): Map<number, number
           const sid = Number(c.businessthesis_sections_id)
           if (sid) map.set(sid, (map.get(sid) ?? 0) + 1)
         }
-        setCounts(map)
-      } catch { /* ignore */ }
+        if (!cancelled) { setCounts(map); setLoading(false) }
+      } catch { if (!cancelled) setLoading(false) }
     }
     load()
     return () => { cancelled = true }
-  }, [studentId])
+  }, [studentId, refreshKey])
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -355,14 +370,16 @@ function useBtSectionCommentCounts(studentId: string | null): Map<number, number
     return () => window.removeEventListener("bt-comment-read", handler)
   }, [])
 
-  return counts
+  return { counts, loading }
 }
 
-function useSectionCommentCounts(studentId: string | null): Map<number, number> {
+function useSectionCommentCounts(studentId: string | null, refreshKey: number): { counts: Map<number, number>; loading: boolean } {
   const [counts, setCounts] = useState<Map<number, number>>(new Map())
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!studentId) { setCounts(new Map()); return }
+    if (!studentId) { setCounts(new Map()); setLoading(false); return }
+    if (refreshKey > 0) setLoading(true)
     let cancelled = false
     const load = async () => {
       try {
@@ -391,12 +408,12 @@ function useSectionCommentCounts(studentId: string | null): Map<number, number> 
           const sid = Number(c.lifemap_sections_id)
           if (sid) map.set(sid, (map.get(sid) ?? 0) + 1)
         }
-        setCounts(map)
-      } catch { /* ignore */ }
+        if (!cancelled) { setCounts(map); setLoading(false) }
+      } catch { if (!cancelled) setLoading(false) }
     }
     load()
     return () => { cancelled = true }
-  }, [studentId])
+  }, [studentId, refreshKey])
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -414,21 +431,29 @@ function useSectionCommentCounts(studentId: string | null): Map<number, number> 
     return () => window.removeEventListener("comment-read", handler)
   }, [])
 
-  return counts
+  return { counts, loading }
 }
 
-function useBusinessThesisSections() {
+function useBusinessThesisSections(refreshKey: number) {
   const [sections, setSections] = useState<BusinessThesisSection[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
+    if (refreshKey > 0) {
+      invalidateBtSectionsCache()
+      setLoading(true)
+    }
     fetchBtSections().then((data) => {
-      if (!cancelled) setSections(data)
+      if (!cancelled) {
+        setSections(data)
+        setLoading(false)
+      }
     })
     return () => { cancelled = true }
-  }, [])
+  }, [refreshKey])
 
-  return sections
+  return { sections, loading }
 }
 
 function buildBusinessSectionItems(sections: BusinessThesisSection[]) {
@@ -649,22 +674,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: session } = useSession()
   const role = (session?.user as Record<string, unknown>)?.role as string | undefined
   const isAdmin = role === "admin"
-  const sections = useLifeMapSections()
-  const btSections = useBusinessThesisSections()
+  const refreshKey = useRefreshKey()
+  const { sections, loading: sectionsLoading } = useLifeMapSections(refreshKey)
+  const { sections: btSections, loading: btSectionsLoading } = useBusinessThesisSections(refreshKey)
 
   const adminStudentId = extractStudentId(pathname)
   const ownStudentId = !isAdmin ? ((session?.user as Record<string, unknown>)?.students_id as string | undefined) ?? null : null
   const studentId = adminStudentId ?? ownStudentId
-  const reviewCounts = useSectionReviewCounts(studentId)
-  const commentCounts = useSectionCommentCounts(!isAdmin ? studentId : null)
-  const btReviewCounts = useBtSectionReviewCounts(studentId)
-  const btCommentCounts = useBtSectionCommentCounts(!isAdmin ? studentId : null)
+  const { counts: reviewCounts, loading: reviewLoading } = useSectionReviewCounts(studentId, refreshKey)
+  const { counts: commentCounts, loading: commentLoading } = useSectionCommentCounts(!isAdmin ? studentId : null, refreshKey)
+  const { counts: btReviewCounts, loading: btReviewLoading } = useBtSectionReviewCounts(studentId, refreshKey)
+  const { counts: btCommentCounts, loading: btCommentLoading } = useBtSectionCommentCounts(!isAdmin ? studentId : null, refreshKey)
+  const sidebarLoading = sectionsLoading || btSectionsLoading || reviewLoading || commentLoading || btReviewLoading || btCommentLoading
   const studentList = useStudentList()
   const navItems = getNavFromPathname(pathname, isAdmin, sections, btSections, {
-    commentCounts,
+    commentCounts: commentCounts,
     revisionCounts: reviewCounts.revisionNeeded,
     readyReviewCounts: reviewCounts.readyReview,
-    btCommentCounts,
+    btCommentCounts: btCommentCounts,
     btRevisionCounts: btReviewCounts.revisionNeeded,
     btReadyReviewCounts: btReviewCounts.readyReview,
   }, studentList)
@@ -712,7 +739,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroup>
         )}
-        <NavMain items={navItems} hideLabel={!!studentInfo} />
+        <NavMain items={navItems} hideLabel={!!studentInfo} loading={sidebarLoading} />
         {publicPagesNav && (
           <SidebarGroup>
             <SidebarGroupLabel>Public Pages</SidebarGroupLabel>

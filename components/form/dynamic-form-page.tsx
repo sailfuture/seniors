@@ -53,11 +53,11 @@ import {
   Comment01Icon,
   SentIcon,
   AlertCircleIcon,
-  RefreshIcon,
 } from "@hugeicons/core-free-icons"
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
 import { useSaveRegister } from "@/lib/save-context"
+import { useRefreshRegister } from "@/lib/refresh-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
@@ -138,6 +138,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const focusField = searchParams.get("focus")
   const { data: session } = useSession()
   const { register: registerSave, unregister: unregisterSave } = useSaveRegister()
+  const { register: registerRefresh, unregister: unregisterRefresh } = useRefreshRegister()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
@@ -152,15 +153,15 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const [checkingPlagiarism, setCheckingPlagiarism] = useState<Set<number>>(new Set())
   const [updatingStatus, setUpdatingStatus] = useState<Set<number>>(new Set())
   const [hasDirty, setHasDirty] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
   const dirtyRef = useRef(new Set<number>())
   const stalePlagiarismIds = useRef(new Set<number>())
   const saveAllRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
   const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (showLoading = false) => {
     if (!studentId) return
+    if (showLoading) setLoading(true)
 
     try {
       const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
@@ -223,11 +224,12 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             })
             .map((c: Record<string, unknown>) => {
               const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
-              const teacher = teachers?.[0]
+              const singleTeacher = c._teacher as { firstName?: string; lastName?: string } | undefined
+              const teacher = teachers?.[0] ?? singleTeacher
               const teacherName = teacher
                 ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
                 : (c.teacher_name as string | undefined)
-              return { ...c, teacher_name: teacherName } as Comment
+              return { ...c, teacher_name: teacherName || undefined } as Comment
             })
           setComments(enriched)
         }
@@ -348,6 +350,11 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     return () => unregisterSave()
   }, [unregisterSave])
 
+  useEffect(() => {
+    registerRefresh(async () => { await loadData(true) })
+    return () => unregisterRefresh()
+  }, [loadData, registerRefresh, unregisterRefresh])
+
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -400,12 +407,6 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
       saveAllRef.current()
     }
   }, [])
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
-    await loadData()
-    setRefreshing(false)
-  }, [loadData])
 
   const eventPrefix = cfg.eventPrefix ?? ""
   const dispatchCommentRead = useCallback((count: number) => {
@@ -625,7 +626,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           submittingForReview={checkingPlagiarism.has(q.id)}
           updatingStatus={updatingStatus.has(q.id)}
           responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : undefined}
-          onSendForReview={response && q.question_types_id !== QUESTION_TYPE.IMAGE_UPLOAD ? () => handleResponseStatusChange(response.id, q.id, "ready") : undefined}
+          onSendForReview={response ? () => handleResponseStatusChange(response.id, q.id, "ready") : undefined}
           onEditSubmission={response?.readyReview ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
           onRequestReopen={response?.isComplete ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
         />
@@ -666,16 +667,12 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         </div>
         {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
         {backHref && (
-          <div className="mt-3 flex items-center justify-between">
+          <div className="mt-3">
             <Button variant="outline" size="sm" asChild className="gap-2">
               <Link href={backHref}>
                 <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
                 Back
               </Link>
-            </Button>
-            <Button variant="outline" size="sm" className="gap-2" onClick={handleRefresh} disabled={refreshing}>
-              <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
-              {refreshing ? "Refreshing..." : "Refresh"}
             </Button>
           </div>
         )}
@@ -703,10 +700,13 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
 
       {groupedSections.map(({ group, questions: gQuestions }) => {
         const eligibleForReview = gQuestions.filter((q) => {
-          if (q.question_types_id === QUESTION_TYPE.IMAGE_UPLOAD) return false
           const r = responses.get(q.id)
           if (!r) return false
           if (r.isComplete || r.readyReview) return false
+          if (q.question_types_id === QUESTION_TYPE.IMAGE_UPLOAD) {
+            const img = r.image_response
+            return !!img && Object.keys(img).length > 0 && !!(img.path || img.url || img.name)
+          }
           const text = localValues.get(q.id) ?? r.student_response ?? ""
           if (!text.trim()) return false
           const wordCount = text.trim().split(/\s+/).filter(Boolean).length
@@ -1097,9 +1097,12 @@ function DynamicField({
   const isComplete = responseStatus?.isComplete === true
   const isReadyForReview = responseStatus?.readyReview === true && !isComplete && !responseStatus?.revisionNeeded
   const isDimmed = isComplete || isReadyForReview
+  const isImageType = typeId === QUESTION_TYPE.IMAGE_UPLOAD
+  const hasImage = !!imageValue && Object.keys(imageValue).length > 0 && !!(imageValue.path || imageValue.url || imageValue.name)
   const wordCount = value.trim().split(/\s+/).filter(Boolean).length
   const meetsMinWords = !question.min_words || question.min_words <= 0 || wordCount >= question.min_words
-  const canSubmitForReview = value.trim().length > 0 && meetsMinWords
+  const hasContent = isImageType ? hasImage : value.trim().length > 0
+  const canSubmitForReview = hasContent && meetsMinWords
 
   return (
     <div className="space-y-2" data-field-name={question.field_name}>
@@ -1213,7 +1216,7 @@ function DynamicField({
                 className={`h-6 px-2 text-[10px] ${!canSubmitForReview || submittingForReview || updatingStatus ? "pointer-events-none" : ""}`}
                 onClick={() => setConfirmAction("send")}
                 disabled={!canSubmitForReview || submittingForReview || updatingStatus}
-                title={!canSubmitForReview ? (value.trim().length === 0 ? "Response is empty" : `Minimum ${question.min_words} words required`) : undefined}
+                title={!canSubmitForReview ? (!hasContent ? (isImageType ? "No image uploaded" : "Response is empty") : `Minimum ${question.min_words} words required`) : undefined}
               >
                 {updatingStatus ? <><Loader2 className="size-3 animate-spin" /> Sending...</> : submittingForReview ? "Checking..." : "Send for Review"}
               </Button>

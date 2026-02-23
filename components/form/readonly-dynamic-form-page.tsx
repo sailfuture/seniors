@@ -41,6 +41,7 @@ import { TeacherComment } from "./teacher-comment"
 import type { Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
+import { useRefreshRegister } from "@/lib/refresh-context"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -193,6 +194,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const focusField = searchParams.get("focus")
   const focusApplied = useRef(false)
   const { data: session } = useSession()
+  const { register: registerRefresh, unregister: unregisterRefresh } = useRefreshRegister()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
@@ -202,8 +204,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const [revisionModal, setRevisionModal] = useState<{ responseId: number; templateId: number } | null>(null)
   const [revisionComment, setRevisionComment] = useState("")
 
-  useEffect(() => {
-    const loadData = async () => {
+  const loadData = useCallback(async (showLoading = false) => {
+      if (showLoading) setLoading(true)
       try {
         const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
           fetch(cfg.templateEndpoint),
@@ -261,11 +263,12 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               })
               .map((c: Record<string, unknown>) => {
                 const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
-                const teacher = teachers?.[0]
+                const singleTeacher = c._teacher as { firstName?: string; lastName?: string } | undefined
+                const teacher = teachers?.[0] ?? singleTeacher
                 const teacherName = teacher
                   ? `${teacher.firstName ?? ""} ${teacher.lastName ?? ""}`.trim()
-                  : undefined
-                return { ...c, teacher_name: teacherName } as Comment
+                  : (c.teacher_name as string | undefined)
+                return { ...c, teacher_name: teacherName || undefined } as Comment
               })
             setComments(enriched)
           }
@@ -297,10 +300,16 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
       } finally {
         setLoading(false)
       }
-    }
+  }, [studentId, sectionId, cfg, F])
 
+  useEffect(() => {
     loadData()
-  }, [studentId, sectionId])
+  }, [loadData])
+
+  useEffect(() => {
+    registerRefresh(async () => { await loadData(true) })
+    return () => unregisterRefresh()
+  }, [loadData, registerRefresh, unregisterRefresh])
 
   useEffect(() => {
     if (!focusField || loading || focusApplied.current) return
@@ -539,6 +548,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   onDelete={handleDelete}
                   plagiarism={isLong ? gptzero : undefined}
                   teacherGuideline={q.teacher_guideline}
+                  responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : null}
+                  onMarkCompleteAction={response ? () => handleResponseReviewAction(response.id, q.id, "complete") : undefined}
+                  onRequestRevision={response ? () => { setRevisionModal({ responseId: response.id, templateId: q.id }); setRevisionComment("") } : undefined}
+                  onClearStatus={response ? () => handleResponseReviewAction(response.id, q.id, "clear") : undefined}
                 />
                 {response && (
                   <>
@@ -596,11 +609,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     )
   }
 
-  const allReadyQuestions = questions.filter((q) => {
-    const r = responses.get(q.id)
-    return r?.readyReview && !r?.isComplete && !r?.revisionNeeded
-  })
-
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div className="flex items-start justify-between gap-4">
@@ -608,18 +616,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           <h1 className="text-2xl font-bold">{title}</h1>
           {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
         </div>
-        {allReadyQuestions.length > 0 && (
-          <ConfirmAllButton
-            readyCount={allReadyQuestions.length}
-            onConfirmAll={async () => {
-              for (const q of allReadyQuestions) {
-                const r = responses.get(q.id)
-                if (r) await handleResponseReviewAction(r.id, q.id, "complete", undefined, true)
-              }
-              toast.success(`${allReadyQuestions.length} question${allReadyQuestions.length > 1 ? "s" : ""} confirmed`, { duration: 3000 })
-            }}
-          />
-        )}
       </div>
 
       {headerContent}
@@ -628,13 +624,67 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         <p className="text-muted-foreground">No data submitted yet for this section.</p>
       ) : (
         <div className="space-y-6">
-          {ungroupedQuestions.length > 0 && (
-            <Card>
-              <CardContent className="p-6">
-                {renderQuestionList(ungroupedQuestions)}
-              </CardContent>
-            </Card>
-          )}
+          {ungroupedQuestions.length > 0 && (() => {
+            const ungroupedResponses = ungroupedQuestions.map((q) => responses.get(q.id)).filter(Boolean) as StudentResponse[]
+            const completedCount = ungroupedResponses.filter((r) => r.isComplete).length
+            const revisionCount = ungroupedResponses.filter((r) => r.revisionNeeded).length
+            const readyCount = ungroupedResponses.filter((r) => r.readyReview && !r.isComplete && !r.revisionNeeded).length
+            const blankCount = ungroupedQuestions.length - completedCount - revisionCount - readyCount
+            const hasBadges = completedCount > 0 || readyCount > 0 || revisionCount > 0 || blankCount > 0
+            return (
+              <Card className="overflow-hidden !pt-0 !gap-0">
+                {hasBadges && (
+                  <div className="flex items-center justify-between border-b px-6 py-3">
+                    <div className="flex shrink-0 items-center gap-2">
+                      {completedCount > 0 && (
+                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
+                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
+                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-green-600 text-[9px] font-bold text-white">{completedCount}</span>
+                        </div>
+                      )}
+                      {readyCount > 0 && (
+                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${readyCount} ready for review`}>
+                          <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
+                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{readyCount}</span>
+                        </div>
+                      )}
+                      {revisionCount > 0 && (
+                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${revisionCount} need revision`}>
+                          <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
+                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{revisionCount}</span>
+                        </div>
+                      )}
+                      {blankCount > 0 && (
+                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${blankCount} not started`}>
+                          <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
+                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
+                        </div>
+                      )}
+                    </div>
+                    {readyCount > 0 && (
+                      <ConfirmAllButton
+                        readyCount={readyCount}
+                        onConfirmAll={async () => {
+                          const readyQs = ungroupedQuestions.filter((q) => {
+                            const r = responses.get(q.id)
+                            return r?.readyReview && !r?.isComplete && !r?.revisionNeeded
+                          })
+                          for (const q of readyQs) {
+                            const r = responses.get(q.id)
+                            if (r) await handleResponseReviewAction(r.id, q.id, "complete", undefined, true)
+                          }
+                          toast.success(`${readyQs.length} question${readyQs.length > 1 ? "s" : ""} confirmed`, { duration: 3000 })
+                        }}
+                      />
+                    )}
+                  </div>
+                )}
+                <CardContent className="p-6">
+                  {renderQuestionList(ungroupedQuestions)}
+                </CardContent>
+              </Card>
+            )
+          })()}
 
           {groupedSections.map(({ group, questions: gQuestions }) => {
             const groupResponses = gQuestions.map((q) => responses.get(q.id)).filter(Boolean) as StudentResponse[]

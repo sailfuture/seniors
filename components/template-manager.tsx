@@ -65,6 +65,7 @@ import { toast } from "sonner"
 import { invalidateSectionsCache } from "@/lib/lifemap-sections"
 import { uploadImageToXano, type XanoImageResponse } from "@/lib/xano"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
+import { useBumpSidebar } from "@/lib/refresh-context"
 
 interface TemplateQuestion {
   id?: number
@@ -100,6 +101,7 @@ interface CustomGroup {
   instructions: string
   resources: string[]
   order?: number
+  width?: number | null
 }
 
 function field<T>(obj: T, key: string): unknown {
@@ -146,6 +148,7 @@ function makeEmptyGroup(F: FormApiConfig["fields"]): Omit<CustomGroup, "id"> {
     group_description: "",
     instructions: "",
     resources: [],
+    width: null,
     [F.sectionId]: 0,
     [F.displayTypesId]: null,
   }
@@ -190,6 +193,7 @@ export function TemplateManager({
   const cfg = apiConfig
   const F = cfg.fields
   const router = useRouter()
+  const bumpSidebar = useBumpSidebar()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
@@ -591,6 +595,7 @@ export function TemplateManager({
       savedLocked.current = isLocked
       savedPhoto.current = localPhoto
       onSectionsInvalidated()
+      bumpSidebar()
       toast.success("Section settings saved")
       setSectionSettingsOpen(false)
     } catch {
@@ -651,6 +656,7 @@ export function TemplateManager({
       await fetch(`${cfg.sectionsEndpoint}/${sectionId}`, { method: "DELETE" })
 
       onSectionsInvalidated()
+      bumpSidebar()
       toast.success("Section deleted")
       router.push(templateBasePath)
     } catch {
@@ -1934,6 +1940,32 @@ function GroupSheet({
             )}
             <p className="text-muted-foreground text-xs">
               Links shown as clickable cards in the group instruction sheet.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Public Page Width</Label>
+            <Select
+              value={form.width?.toString() ?? "default"}
+              onValueChange={(v) =>
+                setForm((prev) => ({
+                  ...prev,
+                  width: v === "default" ? null : parseInt(v),
+                }))
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Default (half width)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default (half width)</SelectItem>
+                <SelectItem value="1">Full width (100%)</SelectItem>
+                <SelectItem value="2">Half width (50%)</SelectItem>
+                <SelectItem value="3">Third width (33%)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">
+              Controls the column width of this group on the public page. Desktop/tablet only.
             </p>
           </div>
 
