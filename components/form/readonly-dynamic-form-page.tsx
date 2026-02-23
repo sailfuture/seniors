@@ -310,9 +310,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
       if (!el) return
       el.scrollIntoView({ behavior: "smooth", block: "center" })
       setTimeout(() => {
-        const input = el.querySelector("input, textarea, select") as HTMLElement | null
-        input?.focus()
-      }, 400)
+        const commentBtn = el.querySelector("[data-comment-trigger]") as HTMLElement | null
+        commentBtn?.click()
+      }, 500)
     })
   }, [focusField, loading])
 
@@ -532,6 +532,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   fieldName={q.field_name}
                   fieldLabel={q.field_label}
                   fieldValue={value || "—"}
+                  imageUrl={isImage ? getImageUrl(imageValue) : undefined}
                   minWords={q.min_words > 0 ? q.min_words : undefined}
                   comments={comments}
                   onSubmit={handlePostComment}

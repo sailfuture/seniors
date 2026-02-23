@@ -88,7 +88,6 @@ export function CommentBadge({
 
   const displayAnswer = fieldValue && fieldValue !== "—" && fieldValue !== "" ? fieldValue : null
   const wordCount = displayAnswer && minWords ? getWordCount(displayAnswer) : null
-  const showAnswerBlock = displayAnswer || minWords
 
   return (
     <>
@@ -117,26 +116,21 @@ export function CommentBadge({
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto">
-            {showAnswerBlock && (
-              <>
-                <div className="space-y-1 px-6 py-4">
-                  <p className="text-muted-foreground text-sm">{fieldLabel}</p>
-                  {displayAnswer && (
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
-                  )}
-                  {!displayAnswer && (
-                    <p className="text-muted-foreground/50 text-sm italic">No response</p>
-                  )}
-                  {wordCount !== null && minWords && (
-                    <p className="text-muted-foreground/60 text-xs">
-                      {wordCount} / {minWords} words
-                    </p>
-                  )}
-                  {plagiarism && <PlagiarismScoresInline data={plagiarism} />}
-                </div>
-                <Separator />
-              </>
-            )}
+            <div className="space-y-1 px-6 py-4">
+              <p className="text-sm font-semibold">{fieldLabel}</p>
+              {displayAnswer ? (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
+              ) : (
+                <p className="text-muted-foreground/50 text-sm italic">No response</p>
+              )}
+              {wordCount !== null && minWords && (
+                <p className="text-muted-foreground/60 text-xs">
+                  {wordCount} / {minWords} words
+                </p>
+              )}
+              {plagiarism && <PlagiarismScoresInline data={plagiarism} />}
+            </div>
+            <Separator />
 
             <div className="space-y-2 px-6 py-4">
               {fieldComments.map((comment, i) => {

@@ -69,6 +69,7 @@ interface TeacherCommentProps {
   fieldName: string
   fieldLabel: string
   fieldValue?: string
+  imageUrl?: string | null
   minWords?: number
   comments: Comment[]
   onSubmit: (fieldName: string, note: string) => Promise<void>
@@ -83,6 +84,7 @@ export function TeacherComment({
   fieldName,
   fieldLabel,
   fieldValue,
+  imageUrl,
   minWords,
   comments,
   onSubmit,
@@ -113,12 +115,12 @@ export function TeacherComment({
 
   const displayAnswer = fieldValue && fieldValue !== "—" && fieldValue !== "" ? fieldValue : null
   const wordCount = displayAnswer && minWords ? getWordCount(displayAnswer) : null
-  const showAnswerBlock = displayAnswer || minWords
 
   return (
     <>
       <button
         type="button"
+        data-comment-trigger
         onClick={() => setOpen(true)}
         className={cn(
           "relative inline-flex items-center justify-center transition-colors",
@@ -157,26 +159,25 @@ export function TeacherComment({
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto">
-            {showAnswerBlock && (
-              <>
-                <div className="space-y-3 px-6 py-4">
-                  <p className="text-sm font-semibold">{fieldLabel}</p>
-                  {displayAnswer && (
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
-                  )}
-                  {!displayAnswer && (
-                    <p className="text-muted-foreground/50 text-sm italic">No response</p>
-                  )}
-                  {wordCount !== null && minWords && (
-                    <p className="text-muted-foreground/60 text-xs">
-                      {wordCount} / {minWords} words
-                    </p>
-                  )}
-                  {plagiarism && <PlagiarismDisplay data={plagiarism} />}
-                </div>
-                <Separator />
-              </>
-            )}
+            <div className="space-y-3 px-6 py-4">
+              <p className="text-sm font-semibold">{fieldLabel}</p>
+              {imageUrl ? (
+                <a href={imageUrl} target="_blank" rel="noopener noreferrer">
+                  <img src={imageUrl} alt={fieldLabel} className="h-40 w-full rounded-lg border object-cover" />
+                </a>
+              ) : displayAnswer ? (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
+              ) : (
+                <p className="text-muted-foreground/50 text-sm italic">No response</p>
+              )}
+              {wordCount !== null && minWords && (
+                <p className="text-muted-foreground/60 text-xs">
+                  {wordCount} / {minWords} words
+                </p>
+              )}
+              {plagiarism && <PlagiarismDisplay data={plagiarism} />}
+            </div>
+            <Separator />
 
             {teacherGuideline && (
               <div className="border-b px-6 py-4">
