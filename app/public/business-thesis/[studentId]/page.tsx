@@ -610,7 +610,7 @@ function GroupCard({
   const sourceQuestions = questions.filter((q) => (q.question_types_id ?? q._question_types?.id) === QUESTION_TYPE.SOURCE)
   const sourceEntries = sourceQuestions
     .map((q) => ({ question: q, response: responseMap.get(q.id) }))
-    .filter((e) => e.response && (e.response.source_link || e.response.title_of_source || e.response.author_name_or_publisher))
+    .filter((e) => e.response?.isComplete && (e.response.source_link || e.response.title_of_source || e.response.author_name_or_publisher))
 
   return (
     <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
