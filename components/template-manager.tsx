@@ -93,6 +93,7 @@ interface TemplateQuestion {
 interface QuestionType {
   id: number
   type: string
+  noInput?: boolean
 }
 
 interface CustomGroup {
@@ -1428,7 +1429,7 @@ function QuestionSheet({
                 <SelectValue placeholder="Select type..." />
               </SelectTrigger>
               <SelectContent>
-                {questionTypes.map((qt) => (
+                {questionTypes.filter((qt) => !qt.noInput).map((qt) => (
                   <SelectItem key={qt.id} value={qt.id.toString()}>
                     {qt.type}
                   </SelectItem>
