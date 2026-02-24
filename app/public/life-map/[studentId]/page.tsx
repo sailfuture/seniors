@@ -595,12 +595,12 @@ function GroupCard({
         )}
       </CardHeader>
       <CardContent className="px-5 pb-5 pt-1">
-        <div className="grid gap-5 md:grid-cols-6">
+        <div className="grid items-stretch gap-5 md:grid-cols-6">
           {questions.map((q) => {
             const typeId = q.question_types_id ?? q._question_types?.id ?? null
             const colSpan = getQuestionColSpan(q.width, isShortType(typeId))
             return (
-              <div key={q.id} className={colSpan}>
+              <div key={q.id} className={`${colSpan} flex flex-col`}>
                 <QuestionBlock
                   question={q}
                   response={responseMap.get(q.id)}
@@ -638,13 +638,13 @@ function QuestionBlock({
   if (isImage && hasImageResponse) {
     const imgSrc = response.image_response!.path || response.image_response!.url
     return (
-      <Card className="gap-0 border-gray-200 py-0 shadow-none">
-        <CardContent className="p-0">
+      <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
+        <CardContent className="flex-1 p-0">
           <img
             src={resolveImageUrl(imgSrc)}
             alt={title || "Student upload"}
-            className="w-full rounded-t-xl object-cover"
-            style={{ maxHeight: compact ? "280px" : "480px" }}
+            className="h-full w-full rounded-t-xl object-cover"
+            style={{ minHeight: compact ? "200px" : "280px" }}
           />
         </CardContent>
         {(title || description) && (
@@ -660,9 +660,9 @@ function QuestionBlock({
   if (!isComplete || (!hasImageResponse && !hasTextResponse)) {
     if (isImage) {
       return (
-        <Card className="gap-0 border-gray-200 py-0 shadow-none">
-          <CardContent className="p-0">
-            <div className="flex min-h-[160px] items-center justify-center rounded-t-xl bg-gray-100" />
+        <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
+          <CardContent className="flex-1 p-0">
+            <div className="flex h-full min-h-[160px] items-center justify-center rounded-t-xl bg-gray-100" />
           </CardContent>
           {(title || description) && (
             <CardFooter className="flex-col items-start gap-0.5 border-t-0 bg-white">
@@ -713,13 +713,13 @@ function ResponseDisplay({
       return <div className="flex min-h-[160px] items-center justify-center rounded-xl bg-gray-100" />
     }
     return (
-      <Card className="gap-0 border-gray-200 py-0 shadow-none">
-        <CardContent className="p-0">
+      <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
+        <CardContent className="flex-1 p-0">
           <img
             src={resolveImageUrl(src)}
             alt="Student upload"
-            className="w-full rounded-xl object-cover"
-            style={{ maxHeight: "480px" }}
+            className="h-full w-full rounded-xl object-cover"
+            style={{ minHeight: "200px" }}
           />
         </CardContent>
       </Card>

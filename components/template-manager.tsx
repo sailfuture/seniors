@@ -979,12 +979,12 @@ export function TemplateManager({
                                         {!field(item.g, F.displayTypesId) && (
                                           <Button
                                             variant="ghost"
-                                            size="icon"
-                                            className="size-7"
+                                            size="sm"
+                                            className="h-7 gap-1 px-2 text-xs"
                                             onClick={() => handleAdd(item.g.id)}
-                                            title="Add question to group"
                                           >
                                             <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-3.5" />
+                                            Add Question
                                           </Button>
                                         )}
                                         <Button
