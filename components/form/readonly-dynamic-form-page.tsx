@@ -492,6 +492,27 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const isSubmitted = response && (response.readyReview || response.isComplete || response.revisionNeeded)
         const qIsDimmed = qIsComplete || qNeedsRevision
 
+        let studentEditedSinceRevision = false
+        if (qNeedsRevision && response) {
+          const revisionComments = comments.filter(
+            (c) => c.field_name === q.field_name && c.isRevisionFeedback
+          )
+          if (revisionComments.length > 0) {
+            const latestRevision = revisionComments.reduce((a, b) => {
+              const aTime = typeof a.created_at === "number" ? a.created_at : new Date(String(a.created_at)).getTime()
+              const bTime = typeof b.created_at === "number" ? b.created_at : new Date(String(b.created_at)).getTime()
+              return bTime > aTime ? b : a
+            })
+            const revisionTime = typeof latestRevision.created_at === "number"
+              ? latestRevision.created_at
+              : new Date(String(latestRevision.created_at)).getTime()
+            const editTime = typeof response.last_edited === "number"
+              ? response.last_edited
+              : response.last_edited ? new Date(String(response.last_edited)).getTime() : 0
+            studentEditedSinceRevision = editTime > revisionTime + 5000
+          }
+        }
+
         let displayValue: React.ReactNode
         if (isImage) {
           const url = getImageUrl(imageValue)
@@ -561,7 +582,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : null}
                   onMarkCompleteAction={isSubmitted ? () => handleResponseReviewAction(response!.id, q.id, "complete") : undefined}
                   onRequestRevision={isSubmitted ? () => { setRevisionModal({ responseId: response!.id, templateId: q.id }); setRevisionComment("") } : undefined}
-                  onUndoStatus={isSubmitted && (response!.isComplete || response!.revisionNeeded) ? () => handleResponseReviewAction(response!.id, q.id, "ready") : undefined}
+                  onUndoStatus={isSubmitted && (response!.isComplete || (response!.revisionNeeded && !studentEditedSinceRevision)) ? () => handleResponseReviewAction(response!.id, q.id, "ready") : undefined}
                 />
                 {response && (() => {
                   if (!isSubmitted) {
@@ -593,15 +614,17 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                         <div title="Needs revision">
                           <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-1.5 text-[10px] text-muted-foreground"
-                          title="Undo — return to review"
-                          onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
-                        >
-                          Undo
-                        </Button>
+                        {!studentEditedSinceRevision && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                            title="Undo — return to review"
+                            onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
+                          >
+                            Undo
+                          </Button>
+                        )}
                       </>
                     )
                   }
