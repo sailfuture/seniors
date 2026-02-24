@@ -1405,7 +1405,8 @@ function QuestionSheet({
     onSave({ ...form, field_name: fieldName })
   }
 
-  const showMinWords = selectedTypeName === "Long Response" || selectedTypeName === "Short Response"
+  const isSource = selectedTypeName === "Source"
+  const showMinWords = !isSource && (selectedTypeName === "Long Response" || selectedTypeName === "Short Response")
   const showDropdown = selectedTypeName === "Dropdown"
 
   return (
@@ -1429,11 +1430,14 @@ function QuestionSheet({
                 <SelectValue placeholder="Select type..." />
               </SelectTrigger>
               <SelectContent>
-                {questionTypes.filter((qt) => !qt.noInput).map((qt) => (
-                  <SelectItem key={qt.id} value={qt.id.toString()}>
-                    {qt.type}
-                  </SelectItem>
-                ))}
+                {questionTypes
+                  .filter((qt) => !qt.noInput)
+                  .sort((a, b) => a.type.localeCompare(b.type))
+                  .map((qt) => (
+                    <SelectItem key={qt.id} value={qt.id.toString()}>
+                      {qt.type}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>
@@ -1448,14 +1452,16 @@ function QuestionSheet({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Placeholder Text</Label>
-            <Input
-              placeholder="e.g. Describe your housing situation..."
-              value={form.placeholder}
-              onChange={(e) => updateField("placeholder", e.target.value)}
-            />
-          </div>
+          {!isSource && (
+            <div className="space-y-2">
+              <Label>Placeholder Text</Label>
+              <Input
+                placeholder="e.g. Describe your housing situation..."
+                value={form.placeholder}
+                onChange={(e) => updateField("placeholder", e.target.value)}
+              />
+            </div>
+          )}
 
           {customGroups.filter((g) => !field(g, F.displayTypesId)).length > 0 && (
             <div className="space-y-2">
@@ -1538,15 +1544,17 @@ function QuestionSheet({
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label>Detailed Instructions</Label>
-            <Textarea
-              placeholder="In-depth instructions that open in a side panel for the student..."
-              value={form.detailed_instructions}
-              onChange={(e) => updateField("detailed_instructions", e.target.value)}
-              rows={6}
-            />
-          </div>
+          {!isSource && (
+            <div className="space-y-2">
+              <Label>Detailed Instructions</Label>
+              <Textarea
+                placeholder="In-depth instructions that open in a side panel for the student..."
+                value={form.detailed_instructions}
+                onChange={(e) => updateField("detailed_instructions", e.target.value)}
+                rows={6}
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Teacher Guideline</Label>
@@ -1558,184 +1566,194 @@ function QuestionSheet({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Public Display Title</Label>
-            <Input
-              placeholder="Title shown on the public Life Map page..."
-              value={form.public_display_title ?? ""}
-              onChange={(e) => updateField("public_display_title", e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Public Display Description</Label>
-            <Textarea
-              placeholder="Description shown on the public Life Map page..."
-              value={form.public_display_description ?? ""}
-              onChange={(e) => updateField("public_display_description", e.target.value)}
-              rows={3}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Display Width</Label>
-            <Select
-              value={form.width != null ? String(form.width) : "default"}
-              onValueChange={(v) => updateField("width", v === "default" ? null : Number(v))}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Default" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">Default</SelectItem>
-                <SelectItem value="1">Full width (100%)</SelectItem>
-                <SelectItem value="2">Half width (50%)</SelectItem>
-                <SelectItem value="3">Third width (33%)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Sentence Starters</Label>
-            <Textarea
-              placeholder="Add a sentence starter..."
-              value={sentenceStarterInput}
-              onChange={(e) => setSentenceStarterInput(e.target.value)}
-              rows={2}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => {
-                const trimmed = sentenceStarterInput.trim()
-                if (trimmed && !(form.sentence_starters ?? []).includes(trimmed)) {
-                  updateField("sentence_starters", [...(form.sentence_starters ?? []), trimmed])
-                  setSentenceStarterInput("")
-                }
-              }}
-            >
-              Add
-            </Button>
-            {(form.sentence_starters ?? []).length > 0 && (
-              <div className="space-y-1 pt-2">
-                {(form.sentence_starters ?? []).map((s, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
-                  >
-                    <span className="text-sm">{s}</span>
-                    <button
-                      type="button"
-                      onClick={() => updateField("sentence_starters", (form.sentence_starters ?? []).filter((_, i) => i !== idx))}
-                      className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+          {!isSource && (
+            <>
+              <div className="space-y-2">
+                <Label>Public Display Title</Label>
+                <Input
+                  placeholder="Title shown on the public Life Map page..."
+                  value={form.public_display_title ?? ""}
+                  onChange={(e) => updateField("public_display_title", e.target.value)}
+                />
               </div>
-            )}
-          </div>
 
-          <div className="space-y-2">
-            <Label>Examples</Label>
-            <Textarea
-              placeholder="Add an example response..."
-              value={exampleInput}
-              onChange={(e) => setExampleInput(e.target.value)}
-              rows={3}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => {
-                const trimmed = exampleInput.trim()
-                if (trimmed && !(form.examples ?? []).includes(trimmed)) {
-                  updateField("examples", [...(form.examples ?? []), trimmed])
-                  setExampleInput("")
-                }
-              }}
-            >
-              Add
-            </Button>
-            {(form.examples ?? []).length > 0 && (
-              <div className="space-y-1 pt-2">
-                {(form.examples ?? []).map((ex, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
-                  >
-                    <span className="text-sm">{ex}</span>
-                    <button
-                      type="button"
-                      onClick={() => updateField("examples", (form.examples ?? []).filter((_, i) => i !== idx))}
-                      className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                <Label>Public Display Description</Label>
+                <Textarea
+                  placeholder="Description shown on the public Life Map page..."
+                  value={form.public_display_description ?? ""}
+                  onChange={(e) => updateField("public_display_description", e.target.value)}
+                  rows={3}
+                />
               </div>
-            )}
-          </div>
 
-          <div className="space-y-2">
-            <Label>Resources</Label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="Add a URL..."
-                value={resourceInput}
-                onChange={(e) => setResourceInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
+              <div className="space-y-2">
+                <Label>Display Width</Label>
+                <Select
+                  value={form.width != null ? String(form.width) : "default"}
+                  onValueChange={(v) => updateField("width", v === "default" ? null : Number(v))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Default" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default</SelectItem>
+                    <SelectItem value="1">Full width (100%)</SelectItem>
+                    <SelectItem value="2">Half width (50%)</SelectItem>
+                    <SelectItem value="3">Third width (33%)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
+
+          {!isSource && (
+            <>
+              <div className="space-y-2">
+                <Label>Sentence Starters</Label>
+                <Textarea
+                  placeholder="Add a sentence starter..."
+                  value={sentenceStarterInput}
+                  onChange={(e) => setSentenceStarterInput(e.target.value)}
+                  rows={2}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    const trimmed = sentenceStarterInput.trim()
+                    if (trimmed && !(form.sentence_starters ?? []).includes(trimmed)) {
+                      updateField("sentence_starters", [...(form.sentence_starters ?? []), trimmed])
+                      setSentenceStarterInput("")
+                    }
+                  }}
+                >
+                  Add
+                </Button>
+                {(form.sentence_starters ?? []).length > 0 && (
+                  <div className="space-y-1 pt-2">
+                    {(form.sentence_starters ?? []).map((s, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
+                      >
+                        <span className="text-sm">{s}</span>
+                        <button
+                          type="button"
+                          onClick={() => updateField("sentence_starters", (form.sentence_starters ?? []).filter((_, i) => i !== idx))}
+                          className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Examples</Label>
+                <Textarea
+                  placeholder="Add an example response..."
+                  value={exampleInput}
+                  onChange={(e) => setExampleInput(e.target.value)}
+                  rows={3}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    const trimmed = exampleInput.trim()
+                    if (trimmed && !(form.examples ?? []).includes(trimmed)) {
+                      updateField("examples", [...(form.examples ?? []), trimmed])
+                      setExampleInput("")
+                    }
+                  }}
+                >
+                  Add
+                </Button>
+                {(form.examples ?? []).length > 0 && (
+                  <div className="space-y-1 pt-2">
+                    {(form.examples ?? []).map((ex, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
+                      >
+                        <span className="text-sm">{ex}</span>
+                        <button
+                          type="button"
+                          onClick={() => updateField("examples", (form.examples ?? []).filter((_, i) => i !== idx))}
+                          className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {!isSource && (
+            <div className="space-y-2">
+              <Label>Resources</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Add a URL..."
+                  value={resourceInput}
+                  onChange={(e) => setResourceInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      const trimmed = resourceInput.trim()
+                      if (trimmed && !form.resources.includes(trimmed)) {
+                        updateField("resources", [...form.resources, trimmed])
+                        setResourceInput("")
+                      }
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
                     const trimmed = resourceInput.trim()
                     if (trimmed && !form.resources.includes(trimmed)) {
                       updateField("resources", [...form.resources, trimmed])
                       setResourceInput("")
                     }
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const trimmed = resourceInput.trim()
-                  if (trimmed && !form.resources.includes(trimmed)) {
-                    updateField("resources", [...form.resources, trimmed])
-                    setResourceInput("")
-                  }
-                }}
-              >
-                Add
-              </Button>
-            </div>
-            {form.resources.length > 0 && (
-              <div className="space-y-1 pt-2">
-                {form.resources.map((url, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
-                  >
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="truncate text-sm text-blue-600 underline hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">{url}</a>
-                    <button
-                      type="button"
-                      onClick={() => updateField("resources", form.resources.filter((_, i) => i !== idx))}
-                      className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+                  }}
+                >
+                  Add
+                </Button>
               </div>
-            )}
-          </div>
+              {form.resources.length > 0 && (
+                <div className="space-y-1 pt-2">
+                  {form.resources.map((url, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-muted/50 flex items-center justify-between rounded-md border px-3 py-2"
+                    >
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="truncate text-sm text-blue-600 underline hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">{url}</a>
+                      <button
+                        type="button"
+                        onClick={() => updateField("resources", form.resources.filter((_, i) => i !== idx))}
+                        className="text-muted-foreground hover:text-destructive ml-2 shrink-0 text-sm transition-colors"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Field Name</Label>

@@ -110,7 +110,18 @@ interface StudentResponse {
   readyReview?: boolean
   revisionNeeded?: boolean
   isComplete?: boolean
+  source_link?: string
+  title_of_source?: string
+  author_name_or_publisher?: string
+  date_of_publication?: string
   [key: string]: unknown
+}
+
+interface SourceFields {
+  source_link: string
+  title_of_source: string
+  author_name_or_publisher: string
+  date_of_publication: string
 }
 
 const QUESTION_TYPE = {
@@ -121,6 +132,7 @@ const QUESTION_TYPE = {
   DROPDOWN: 5,
   URL: 6,
   DATE: 7,
+  SOURCE: 12,
 } as const
 
 interface DynamicFormPageProps {
@@ -143,6 +155,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
   const [localValues, setLocalValues] = useState<Map<number, string>>(new Map())
+  const [localSourceValues, setLocalSourceValues] = useState<Map<number, SourceFields>>(new Map())
   const [comments, setComments] = useState<Comment[]>([])
   const [sectionCommentsOpen, setSectionCommentsOpen] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -197,14 +210,24 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         const data = (await responsesRes.json()) as StudentResponse[]
         const map = new Map<number, StudentResponse>()
         const values = new Map<number, string>()
+        const sourceValues = new Map<number, SourceFields>()
         for (const r of data) {
           if (r.isArchived) continue
           const tid = Number(r[F.templateId])
           map.set(tid, r)
           values.set(tid, r.student_response ?? "")
+          if (r.source_link || r.title_of_source || r.author_name_or_publisher || r.date_of_publication) {
+            sourceValues.set(tid, {
+              source_link: r.source_link ?? "",
+              title_of_source: r.title_of_source ?? "",
+              author_name_or_publisher: r.author_name_or_publisher ?? "",
+              date_of_publication: r.date_of_publication ?? "",
+            })
+          }
         }
         setResponses(map)
         setLocalValues(values)
+        setLocalSourceValues(sourceValues)
       }
 
       if (groupsRes.ok) {
@@ -297,21 +320,32 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     try {
       const promises = Array.from(dirty).map(async (templateId) => {
         const response = responses.get(templateId)
-        const value = localValues.get(templateId) ?? ""
-        const wordCount = value.trim().split(/\s+/).filter(Boolean).length
+        const question = questions.find((q) => q.id === templateId)
+        const isSource = question?.question_types_id === QUESTION_TYPE.SOURCE
 
         if (response) {
           const now = new Date().toISOString()
+          let patch: Record<string, unknown>
+
+          if (isSource) {
+            const source = localSourceValues.get(templateId) ?? { source_link: "", title_of_source: "", author_name_or_publisher: "", date_of_publication: "" }
+            patch = { ...source, last_edited: now }
+          } else {
+            const value = localValues.get(templateId) ?? ""
+            const wordCount = value.trim().split(/\s+/).filter(Boolean).length
+            patch = { student_response: value, wordCount, last_edited: now }
+          }
+
           await fetch(`${cfg.responsePatchBase}/${response.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ student_response: value, wordCount, last_edited: now }),
+            body: JSON.stringify(patch),
           })
           setResponses((prev) => {
             const next = new Map(prev)
             const latest = next.get(templateId)
             if (latest) {
-              next.set(templateId, { ...latest, student_response: value, last_edited: now })
+              next.set(templateId, { ...latest, ...patch, last_edited: now })
             }
             return next
           })
@@ -327,7 +361,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     } catch {
       setSaveStatus("error")
     }
-  }, [responses, localValues])
+  }, [responses, localValues, localSourceValues, questions])
 
   saveAllRef.current = saveAll
 
@@ -389,6 +423,23 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         return next
       })
     }
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    autosaveTimerRef.current = setTimeout(() => {
+      if (dirtyRef.current.size > 0) saveAllRef.current()
+    }, 1500)
+  }
+
+  const handleSourceChange = (templateId: number, field: keyof SourceFields, value: string) => {
+    setLocalSourceValues((prev) => {
+      const next = new Map(prev)
+      const existing = next.get(templateId) ?? { source_link: "", title_of_source: "", author_name_or_publisher: "", date_of_publication: "" }
+      next.set(templateId, { ...existing, [field]: value })
+      return next
+    })
+    dirtyRef.current.add(templateId)
+    setHasDirty(true)
+    setSaveStatus("idle")
 
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
     autosaveTimerRef.current = setTimeout(() => {
@@ -483,10 +534,12 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
       try {
       if (action === "ready" && studentId) {
         const response = responses.get(templateId)
+        const question = questions.find((q) => q.id === templateId)
+        const isSourceQ = question?.question_types_id === QUESTION_TYPE.SOURCE
         const text = localValues.get(templateId) ?? response?.student_response ?? ""
         const textWordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-        if (textWordCount >= 20 && cfg.plagiarismCheckEndpoint) {
+        if (!isSourceQ && textWordCount >= 20 && cfg.plagiarismCheckEndpoint) {
           setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
           try {
             const respIdField = cfg.plagiarismResponseIdField ?? `${F.sectionId.replace('_id', '')}_responses_id`
@@ -628,6 +681,8 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           onSendForReview={response ? () => handleResponseStatusChange(response.id, q.id, "ready") : undefined}
           onEditSubmission={response?.readyReview ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
           onRequestReopen={response?.isComplete ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
+          sourceValues={localSourceValues.get(q.id)}
+          onSourceChange={(field, v) => handleSourceChange(q.id, field, v)}
         />
       )
     })
@@ -705,6 +760,10 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           if (q.question_types_id === QUESTION_TYPE.IMAGE_UPLOAD) {
             const img = r.image_response
             return !!img && Object.keys(img).length > 0 && !!(img.path || img.url || img.name)
+          }
+          if (q.question_types_id === QUESTION_TYPE.SOURCE) {
+            const src = localSourceValues.get(q.id)
+            return !!(src && (src.source_link.trim() || src.title_of_source.trim()))
           }
           const text = localValues.get(q.id) ?? r.student_response ?? ""
           if (!text.trim()) return false
@@ -1059,6 +1118,8 @@ function DynamicField({
   onSendForReview,
   onRequestReopen,
   onEditSubmission,
+  sourceValues,
+  onSourceChange,
 }: {
   question: TemplateQuestion
   value: string
@@ -1072,6 +1133,8 @@ function DynamicField({
   plagiarism?: GptZeroResult
   submittingForReview?: boolean
   updatingStatus?: boolean
+  sourceValues?: SourceFields
+  onSourceChange?: (field: keyof SourceFields, value: string) => void
   responseStatus?: { isComplete?: boolean; revisionNeeded?: boolean; readyReview?: boolean }
   onSendForReview?: () => void
   onRequestReopen?: () => void
@@ -1097,10 +1160,12 @@ function DynamicField({
   const isReadyForReview = responseStatus?.readyReview === true && !isComplete && !responseStatus?.revisionNeeded
   const isDimmed = isComplete || isReadyForReview
   const isImageType = typeId === QUESTION_TYPE.IMAGE_UPLOAD
+  const isSourceType = typeId === QUESTION_TYPE.SOURCE
   const hasImage = !!imageValue && Object.keys(imageValue).length > 0 && !!(imageValue.path || imageValue.url || imageValue.name)
   const wordCount = value.trim().split(/\s+/).filter(Boolean).length
   const meetsMinWords = !question.min_words || question.min_words <= 0 || wordCount >= question.min_words
-  const hasContent = isImageType ? hasImage : value.trim().length > 0
+  const hasSourceContent = isSourceType && sourceValues && (sourceValues.source_link.trim().length > 0 || sourceValues.title_of_source.trim().length > 0)
+  const hasContent = isImageType ? hasImage : isSourceType ? !!hasSourceContent : value.trim().length > 0
   const canSubmitForReview = hasContent && meetsMinWords
 
   return (
@@ -1367,6 +1432,64 @@ function DynamicField({
             disabled={isDimmed}
           />
         </InputGroup>
+      )}
+
+      {typeId === QUESTION_TYPE.SOURCE && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-[11px]">Source Link</Label>
+            <InputGroup>
+              <InputGroupInput
+                className={isDimmed ? "" : "font-semibold"}
+                type="url"
+                placeholder="https://..."
+                value={sourceValues?.source_link ?? ""}
+                onChange={(e) => onSourceChange?.("source_link", e.target.value)}
+                onBlur={onBlur}
+                disabled={isDimmed}
+              />
+            </InputGroup>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-[11px]">Title of Source</Label>
+            <InputGroup>
+              <InputGroupInput
+                className={isDimmed ? "" : "font-semibold"}
+                placeholder="Enter title..."
+                value={sourceValues?.title_of_source ?? ""}
+                onChange={(e) => onSourceChange?.("title_of_source", e.target.value)}
+                onBlur={onBlur}
+                disabled={isDimmed}
+              />
+            </InputGroup>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-[11px]">Author / Publisher</Label>
+            <InputGroup>
+              <InputGroupInput
+                className={isDimmed ? "" : "font-semibold"}
+                placeholder="Enter author or publisher..."
+                value={sourceValues?.author_name_or_publisher ?? ""}
+                onChange={(e) => onSourceChange?.("author_name_or_publisher", e.target.value)}
+                onBlur={onBlur}
+                disabled={isDimmed}
+              />
+            </InputGroup>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-[11px]">Date of Publication</Label>
+            <InputGroup>
+              <InputGroupInput
+                className={isDimmed ? "" : "font-semibold"}
+                type="date"
+                value={sourceValues?.date_of_publication ?? ""}
+                onChange={(e) => onSourceChange?.("date_of_publication", e.target.value)}
+                onBlur={onBlur}
+                disabled={isDimmed}
+              />
+            </InputGroup>
+          </div>
+        </div>
       )}
 
       </div>

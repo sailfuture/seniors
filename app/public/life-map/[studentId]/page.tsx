@@ -12,6 +12,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarInset,
+  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import {
   Card,
@@ -76,6 +77,10 @@ interface StudentResponse {
   isComplete?: boolean
   lifemap_sections_id?: number
   lifemap_custom_group_id?: number | null
+  source_link?: string
+  title_of_source?: string
+  author_name_or_publisher?: string
+  date_of_publication?: string
   [key: string]: unknown
 }
 
@@ -98,6 +103,7 @@ const QUESTION_TYPE = {
   DROPDOWN: 5,
   URL: 6,
   DATE: 7,
+  SOURCE: 12,
 } as const
 
 function getGroupColSpan(width: number | null | undefined): string {
@@ -281,6 +287,8 @@ export default function PublicLifeMapPage({
               alt="SailFuture Academy"
               className="size-7 shrink-0 rounded-full border border-gray-300 shadow-sm"
             />
+            <Separator orientation="vertical" className="mx-2 data-vertical:h-4 data-vertical:self-auto" />
+            <SidebarTrigger />
             <span className="text-sm font-semibold tracking-tight">SailFuture Academy</span>
             <Separator orientation="vertical" className="mx-2 data-vertical:h-4 data-vertical:self-auto" />
             <span className="text-muted-foreground text-sm">Life Map</span>
@@ -395,7 +403,7 @@ export default function PublicLifeMapPage({
                       )}
 
                       {sectionGroups.length > 0 && (
-                        <div className="grid gap-6 md:grid-cols-6">
+                        <div className="grid items-stretch gap-6 md:grid-cols-6">
                           {sectionGroups.map((group) => {
                             const groupQuestions = groupedMap.get(group.id) ?? []
                             if (groupQuestions.length === 0) return null
@@ -408,8 +416,8 @@ export default function PublicLifeMapPage({
                               const sheetUrl = isGoogleBudget ? getGoogleSheetUrl(groupQuestions, responseMap) : ""
                               const displayColSpan = group.width ? colSpan : (isTransportBudget ? "md:col-span-3" : "md:col-span-6")
                               return (
-                                <div key={group.id} className={displayColSpan}>
-                                  <Card className="border-gray-200 shadow-none">
+                                <div key={group.id} className={`${displayColSpan} flex flex-col`}>
+                                  <Card className="flex h-full flex-col border-gray-200 shadow-none">
                                     <CardHeader className="border-b">
                                       <div className="flex items-center justify-between">
                                         <CardTitle>{group.group_name}</CardTitle>
@@ -422,7 +430,7 @@ export default function PublicLifeMapPage({
                                         <CardDescription>{group.group_description}</CardDescription>
                                       )}
                                     </CardHeader>
-                                    <CardContent className="px-5 pb-5 pt-4">
+                                    <CardContent className="flex-1 px-5 pb-5 pt-4">
                                       <GroupDisplayRenderer
                                         displayTypeId={group.lifemap_group_display_types_id!}
                                         questions={groupQuestions}
@@ -436,7 +444,7 @@ export default function PublicLifeMapPage({
                             }
 
                             return (
-                              <div key={group.id} className={colSpan}>
+                              <div key={group.id} className={`${colSpan} flex flex-col`}>
                                 <GroupCard
                                   group={group}
                                   questions={groupQuestions}
@@ -559,19 +567,29 @@ function UngroupedQuestions({
   questions: TemplateQuestion[]
   responseMap: Map<number, StudentResponse>
 }) {
+  const filtered = questions.filter((q) => (q.question_types_id ?? q._question_types?.id) !== QUESTION_TYPE.SOURCE)
+  if (filtered.length === 0) return null
   return (
-    <div className="mb-10 grid gap-6 md:grid-cols-6">
-      {questions.map((q) => {
+    <div className="mb-10 grid items-stretch gap-6 md:grid-cols-6">
+      {filtered.map((q) => {
         const typeId = q.question_types_id ?? q._question_types?.id ?? null
         const colSpan = getQuestionColSpan(q.width, isShortType(typeId))
         return (
-          <div key={q.id} className={colSpan}>
+          <div key={q.id} className={`${colSpan} flex flex-col`}>
             <QuestionBlock question={q} response={responseMap.get(q.id)} />
           </div>
         )
       })}
     </div>
   )
+}
+
+function formatCitation(r: StudentResponse): string {
+  const parts: string[] = []
+  if (r.author_name_or_publisher) parts.push(r.author_name_or_publisher + ".")
+  if (r.title_of_source) parts.push(`\u201c${r.title_of_source}.\u201d`)
+  if (r.date_of_publication) parts.push(formatDate(r.date_of_publication) + ",")
+  return parts.join(" ")
 }
 
 function GroupCard({
@@ -583,9 +601,15 @@ function GroupCard({
   questions: TemplateQuestion[]
   responseMap: Map<number, StudentResponse>
 }) {
+  const regularQuestions = questions.filter((q) => (q.question_types_id ?? q._question_types?.id) !== QUESTION_TYPE.SOURCE)
+  const sourceQuestions = questions.filter((q) => (q.question_types_id ?? q._question_types?.id) === QUESTION_TYPE.SOURCE)
+  const sourceEntries = sourceQuestions
+    .map((q) => ({ question: q, response: responseMap.get(q.id) }))
+    .filter((e) => e.response && (e.response.source_link || e.response.title_of_source || e.response.author_name_or_publisher))
+
   return (
-    <Card className="border-gray-200 shadow-none">
-      <CardHeader className="border-b">
+    <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
+      <CardHeader className="border-b pt-4">
         <div className="flex items-center justify-between">
           <CardTitle>{group.group_name}</CardTitle>
           {group.icon_name && <GroupIcon name={group.icon_name} />}
@@ -594,9 +618,9 @@ function GroupCard({
           <CardDescription>{group.group_description}</CardDescription>
         )}
       </CardHeader>
-      <CardContent className="px-5 pb-5 pt-1">
+      <CardContent className={`flex-1 px-5 pt-4 ${sourceEntries.length > 0 ? "pb-3" : "pb-5"}`}>
         <div className="grid items-stretch gap-5 md:grid-cols-6">
-          {questions.map((q) => {
+          {regularQuestions.map((q) => {
             const typeId = q.question_types_id ?? q._question_types?.id ?? null
             const colSpan = getQuestionColSpan(q.width, isShortType(typeId))
             return (
@@ -611,6 +635,33 @@ function GroupCard({
           })}
         </div>
       </CardContent>
+      {sourceEntries.length > 0 && (
+        <div className="rounded-b-xl border-t bg-gray-50 px-5 py-3">
+          <p className="text-muted-foreground mb-1.5 text-[10px] font-semibold uppercase tracking-wider">Sources</p>
+          <div className="space-y-1">
+            {sourceEntries.map(({ question, response }) => {
+              const r = response!
+              const citation = formatCitation(r)
+              return (
+                <p key={question.id} className="text-muted-foreground text-xs leading-snug">
+                  {citation}{" "}
+                  {r.source_link && (
+                    <a
+                      href={r.source_link.startsWith("http") ? r.source_link : `https://${r.source_link}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline break-all hover:text-blue-800"
+                    >
+                      {r.source_link}
+                    </a>
+                  )}
+                  {"."}
+                </p>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </Card>
   )
 }
@@ -674,7 +725,7 @@ function QuestionBlock({
       )
     }
     return (
-      <div className="">
+      <div className="flex h-full flex-col">
         {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
         {description && (
           <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
@@ -685,12 +736,12 @@ function QuestionBlock({
   }
 
   return (
-    <div className="">
+    <div className="flex h-full flex-col">
       {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
       {description && (
         <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
       )}
-      <div className="mt-2">
+      <div className="mt-2 flex-1">
         <ResponseDisplay typeId={typeId} response={response} />
       </div>
     </div>
@@ -760,6 +811,37 @@ function ResponseDisplay({
       <span className="text-foreground inline-block rounded-full border border-gray-300 px-4 py-1.5 text-sm font-medium">
         {text}
       </span>
+    )
+  }
+
+  if (typeId === QUESTION_TYPE.SOURCE) {
+    const sl = response.source_link ?? ""
+    const ts = response.title_of_source ?? ""
+    const ap = response.author_name_or_publisher ?? ""
+    const dp = response.date_of_publication ?? ""
+    const hasAny = sl || ts || ap || dp
+    if (!hasAny) return <p className="text-muted-foreground text-sm italic">—</p>
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-muted-foreground text-[11px] uppercase tracking-wide">Source Link</p>
+          {sl ? (
+            <a href={sl.startsWith("http") ? sl : `https://${sl}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 underline break-all hover:text-blue-800">{sl}</a>
+          ) : <p className="text-muted-foreground text-sm">—</p>}
+        </div>
+        <div>
+          <p className="text-muted-foreground text-[11px] uppercase tracking-wide">Title</p>
+          <p className="text-foreground text-sm font-bold">{ts || "—"}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground text-[11px] uppercase tracking-wide">Author / Publisher</p>
+          <p className="text-foreground text-sm font-bold">{ap || "—"}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground text-[11px] uppercase tracking-wide">Date of Publication</p>
+          <p className="text-foreground text-sm font-bold">{dp ? formatDate(dp) : "—"}</p>
+        </div>
+      </div>
     )
   }
 

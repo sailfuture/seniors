@@ -92,6 +92,10 @@ interface StudentResponse {
   readyReview?: boolean
   revisionNeeded?: boolean
   isComplete?: boolean
+  source_link?: string
+  title_of_source?: string
+  author_name_or_publisher?: string
+  date_of_publication?: string
   [key: string]: unknown
 }
 
@@ -119,6 +123,7 @@ const QUESTION_TYPE = {
   DROPDOWN: 5,
   URL: 6,
   DATE: 7,
+  SOURCE: 12,
 } as const
 
 interface ReadOnlyDynamicFormPageProps {
@@ -481,9 +486,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const isLong = typeId === QUESTION_TYPE.LONG_RESPONSE
         const isImage = typeId === QUESTION_TYPE.IMAGE_UPLOAD
         const isCurrency = typeId === QUESTION_TYPE.CURRENCY
-        const qWidth = typeof q.width === "number" ? q.width : null
-        const widthToColSpan: Record<number, string> = { 1: "md:col-span-6", 2: "md:col-span-3", 3: "md:col-span-2" }
-        const colSpan = flat ? "" : (qWidth ? (widthToColSpan[qWidth] ?? "md:col-span-3") : (isLong || isImage ? "md:col-span-6" : "md:col-span-3"))
+        const isSource = typeId === QUESTION_TYPE.SOURCE
+        const colSpan = flat ? "" : (isLong || isImage || isSource ? "md:col-span-6" : "md:col-span-3")
 
         const gptzero = response ? plagiarismData.get(response.id) : undefined
         const aiIsHighest = gptzero ? isAiHighest(gptzero) : false
@@ -531,6 +535,36 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             <a href={value} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-blue-600 underline break-all hover:text-blue-800 dark:text-blue-400">
               {value}
             </a>
+          ) : (
+            <p className="text-muted-foreground text-sm">—</p>
+          )
+        } else if (typeId === QUESTION_TYPE.SOURCE) {
+          const sl = response?.source_link ?? ""
+          const ts = response?.title_of_source ?? ""
+          const ap = response?.author_name_or_publisher ?? ""
+          const dp = response?.date_of_publication ?? ""
+          const hasAny = sl || ts || ap || dp
+          displayValue = hasAny ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <p className="text-muted-foreground text-[11px]">Source Link</p>
+                {sl ? (
+                  <a href={sl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-blue-600 underline break-all hover:text-blue-800 dark:text-blue-400">{sl}</a>
+                ) : <p className="text-muted-foreground text-sm">—</p>}
+              </div>
+              <div>
+                <p className="text-muted-foreground text-[11px]">Title of Source</p>
+                <p className="text-sm font-semibold">{ts || "—"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-[11px]">Author / Publisher</p>
+                <p className="text-sm font-semibold">{ap || "—"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-[11px]">Date of Publication</p>
+                <p className="text-sm font-semibold">{dp || "—"}</p>
+              </div>
+            </div>
           ) : (
             <p className="text-muted-foreground text-sm">—</p>
           )
