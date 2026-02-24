@@ -458,7 +458,7 @@ function SectionTableRows({
   responses: StudentResponse[]
   comments: Comment[]
 }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(locked)
 
   const bgClass = locked
     ? "bg-gray-50 hover:bg-gray-100 dark:bg-gray-900/30 dark:hover:bg-gray-900/50"
@@ -487,7 +487,7 @@ function SectionTableRows({
         <TableCell>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">{row.section.section_title}</span>
+              <span className={`text-sm font-medium ${locked ? "text-muted-foreground/40" : ""}`}>{row.section.section_title}</span>
               {unreadCount > 0 && (
                 <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${unreadCount} unread comment${unreadCount !== 1 ? "s" : ""}`}>
                   <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-blue-500" />
@@ -532,8 +532,8 @@ function SectionTableRows({
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-medium">{row.section.section_title}</span>
-            <span className="text-muted-foreground text-sm">({totalGroups})</span>
+            <span className={`text-sm font-medium ${locked ? "text-muted-foreground/40" : ""}`}>{row.section.section_title}</span>
+            <span className={`text-sm font-medium ${locked ? "text-muted-foreground/40" : ""}`}>({totalGroups})</span>
           </div>
           {row.section.section_description && (
             <p className="text-muted-foreground mt-0.5 truncate text-xs">{row.section.section_description}</p>
@@ -572,7 +572,9 @@ function SectionTableRows({
               return rTime > lTime ? r.last_edited : latest
             }, null)
           : null
-        const groupRowBg = bgClass
+        const groupRowBg = locked
+          ? "bg-gray-50 hover:bg-gray-100 dark:bg-gray-900/30 dark:hover:bg-gray-900/50"
+          : "bg-gray-50/25 hover:bg-gray-50/50 dark:bg-gray-900/10 dark:hover:bg-gray-900/20"
         return (
           <TableRow
             key={group.id}
@@ -592,7 +594,7 @@ function SectionTableRows({
             </TableCell>
             <TableCell>
               <div className="flex items-center gap-2 pl-4">
-                <span className="text-sm font-semibold text-foreground">{group.group_name}</span>
+                <span className={`text-sm font-normal ${locked ? "text-muted-foreground/40" : "text-foreground"}`}>{group.group_name}</span>
                 {unreadGroupComments > 0 && (
                   <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${unreadGroupComments} unread comment${unreadGroupComments !== 1 ? "s" : ""}`}>
                     <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-blue-500" />
@@ -606,7 +608,7 @@ function SectionTableRows({
                   </div>
                 )}
                 <span className="text-muted-foreground text-xs">·</span>
-                <span className={`text-xs font-medium ${isGroupComplete ? "text-green-600" : "text-muted-foreground"}`}>
+                <span className={`text-xs font-medium ${isGroupComplete ? "text-green-600" : locked ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
                   {isGroupComplete ? "Completed" : `${groupQs.length > 0 ? Math.round((groupCompleted / groupQs.length) * 100) : 0}%`}
                 </span>
               </div>
