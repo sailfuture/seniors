@@ -21,6 +21,7 @@ export interface FormApiConfig {
   groupDisplayTypesEndpoint: string
   addGroupDisplayTemplateEndpoint: string
   plagiarismCheckEndpoint?: string
+  plagiarismResponseIdField?: string
   gptzeroEndpoint?: string
   gptzeroDeleteBase?: string
   eventPrefix?: string
@@ -46,6 +47,7 @@ export const LIFEMAP_API_CONFIG: FormApiConfig = {
   groupDisplayTypesEndpoint: `${LIFEMAP_BASE}/lifemap_group_display_types`,
   addGroupDisplayTemplateEndpoint: `${LIFEMAP_BASE}/add_group_display_template`,
   plagiarismCheckEndpoint: `${PLAGIARISM_BASE}/plagiarism_checker`,
+  plagiarismResponseIdField: "lifemap_sections_responses_id",
   gptzeroEndpoint: `${PLAGIARISM_BASE}/gptzero_document_by_section`,
   gptzeroDeleteBase: `${PLAGIARISM_BASE}/gptzero_document`,
   fields: {
@@ -70,9 +72,10 @@ export const BUSINESSTHESIS_API_CONFIG: FormApiConfig = {
   publishQuestionsEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_publish_questions`,
   groupDisplayTypesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_group_display_types`,
   addGroupDisplayTemplateEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_add_group_display_template`,
-  plagiarismCheckEndpoint: `${PLAGIARISM_BASE}/plagiarism_checker`,
+  plagiarismCheckEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_plagiarism_checker`,
+  plagiarismResponseIdField: "businessthesis_responses_id",
   gptzeroEndpoint: `${PLAGIARISM_BASE}/businessthesis_gptzero_document_by_section`,
-  gptzeroDeleteBase: `${PLAGIARISM_BASE}/businessthesis_gptzero_document`,
+  gptzeroDeleteBase: `${BUSINESSTHESIS_BASE}/businessthesis_gptzero_document`,
   fields: {
     sectionId: "businessthesis_sections_id",
     customGroupId: "businessthesis_custom_group_id",

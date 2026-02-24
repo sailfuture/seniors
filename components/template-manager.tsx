@@ -844,12 +844,12 @@ export function TemplateManager({
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {(publishing || deletingGroupOverlay || saving || savingGroup) && createPortal(
+      {(publishing || deletingGroupOverlay || deletingSection || saving || savingGroup) && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3">
             <div className="size-8 animate-spin rounded-full border-4 border-muted-foreground/30 border-t-foreground" />
             <p className="text-sm font-medium">
-              {publishing ? "Publishing questions..." : deletingGroupOverlay ? "Deleting group..." : "Saving..."}
+              {deletingSection ? "Deleting section..." : publishing ? "Publishing questions..." : deletingGroupOverlay ? "Deleting group..." : "Saving..."}
             </p>
           </div>
         </div>,

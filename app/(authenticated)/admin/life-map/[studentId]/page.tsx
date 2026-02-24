@@ -681,7 +681,7 @@ function SectionTableRows({
                 )}
                 <span className="text-muted-foreground text-xs">·</span>
                 <span className={`text-xs font-medium ${isGroupComplete ? "text-green-600" : "text-muted-foreground"}`}>
-                  {isGroupComplete ? "Completed" : `${Math.round((groupCompleted / groupQs.length) * 100)}%`}
+                  {isGroupComplete ? "Completed" : `${groupQs.length > 0 ? Math.round((groupCompleted / groupQs.length) * 100) : 0}%`}
                 </span>
               </div>
             </TableCell>

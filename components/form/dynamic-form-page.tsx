@@ -154,7 +154,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const [updatingStatus, setUpdatingStatus] = useState<Set<number>>(new Set())
   const [hasDirty, setHasDirty] = useState(false)
   const dirtyRef = useRef(new Set<number>())
-  const stalePlagiarismIds = useRef(new Set<number>())
+  
   const saveAllRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
   const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
@@ -245,7 +245,14 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             if (Array.isArray(gptzeroData)) {
               const map = new Map<number, GptZeroResult>()
               for (const r of gptzeroData) {
-                const respId = r.lifemap_responses_id ?? r.businessthesis_responses_id
+                const rec = r as Record<string, unknown>
+                let respId: number | undefined
+                for (const key of Object.keys(rec)) {
+                  if (key.endsWith('_responses_id') && rec[key]) {
+                    respId = Number(rec[key])
+                    break
+                  }
+                }
                 if (!respId) continue
                 const existing = map.get(respId)
                 if (!existing || (r.id as number) > (existing.id as number)) {
@@ -313,16 +320,6 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
 
       await Promise.all(promises)
 
-      if (stalePlagiarismIds.current.size > 0 && cfg.gptzeroDeleteBase) {
-        const idsToDelete = Array.from(stalePlagiarismIds.current)
-        stalePlagiarismIds.current = new Set()
-        await Promise.all(
-          idsToDelete.map((id) =>
-            fetch(`${cfg.gptzeroDeleteBase}/${id}`, { method: "DELETE" }).catch(() => {})
-          )
-        )
-      }
-
       dirtyRef.current = new Set()
       setHasDirty(false)
       setSaveStatus("saved")
@@ -386,8 +383,6 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
 
     const response = responses.get(templateId)
     if (response && plagiarismData.has(response.id)) {
-      const record = plagiarismData.get(response.id)
-      if (record?.id) stalePlagiarismIds.current.add(record.id as number)
       setPlagiarismData((prev) => {
         const next = new Map(prev)
         next.delete(response.id)
@@ -494,15 +489,22 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         if (textWordCount >= 20 && cfg.plagiarismCheckEndpoint) {
           setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
           try {
+            const respIdField = cfg.plagiarismResponseIdField ?? `${F.sectionId.replace('_id', '')}_responses_id`
             const params = new URLSearchParams({
               text,
-              [`${F.sectionId.replace('_id', '')}_responses_id`]: String(responseId),
+              [respIdField]: String(responseId),
               students_id: studentId,
               [F.sectionId]: String(sectionId),
             })
             const checkRes = await fetch(`${cfg.plagiarismCheckEndpoint}?${params}`)
             if (checkRes.ok) {
               const record = await checkRes.json() as GptZeroResult
+              const aiPct = typeof record?.class_probability_ai === "string"
+                ? parseFloat(record.class_probability_ai)
+                : typeof record?.class_probability_ai === "number"
+                  ? record.class_probability_ai
+                  : 0
+              const normalizedAi = aiPct <= 1 ? aiPct * 100 : aiPct
               if (record) {
                 setPlagiarismData((prev) => {
                   const next = new Map(prev)
@@ -510,13 +512,10 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
                   return next
                 })
               }
-              const aiPct = typeof record.class_probability_ai === "string"
-                ? parseFloat(record.class_probability_ai)
-                : typeof record.class_probability_ai === "number"
-                  ? record.class_probability_ai
-                  : 0
-              const normalizedAi = aiPct <= 1 ? aiPct * 100 : aiPct
               if (normalizedAi > 50) {
+                if (record?.id && cfg.gptzeroDeleteBase) {
+                  fetch(`${cfg.gptzeroDeleteBase}/${record.id}`, { method: "DELETE" }).catch(() => {})
+                }
                 toast.error("Submission rejected — AI-generated content detected. Please revise your response.", { duration: 5000 })
                 return
               }

@@ -283,7 +283,14 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               if (Array.isArray(gptzeroData)) {
                 const map = new Map<number, GptZeroResult>()
                 for (const r of gptzeroData) {
-                  const respId = r.lifemap_responses_id ?? r.businessthesis_responses_id
+                  const rec = r as Record<string, unknown>
+                  let respId: number | undefined
+                  for (const key of Object.keys(rec)) {
+                    if (key.endsWith('_responses_id') && rec[key]) {
+                      respId = Number(rec[key])
+                      break
+                    }
+                  }
                   if (!respId) continue
                   const existing = map.get(respId)
                   if (!existing || (r.id as number) > (existing.id as number)) {
@@ -482,6 +489,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const aiIsHighest = gptzero ? isAiHighest(gptzero) : false
         const qIsComplete = response?.isComplete === true
         const qNeedsRevision = response?.revisionNeeded === true
+        const isSubmitted = response && (response.readyReview || response.isComplete || response.revisionNeeded)
         const qIsDimmed = qIsComplete || qNeedsRevision
 
         let displayValue: React.ReactNode
@@ -511,12 +519,12 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               <p className={`whitespace-pre-wrap text-sm ${qIsDimmed ? "" : "font-semibold"}`}>
                 {value || "—"}
               </p>
-              {isLong && (q.min_words > 0 || gptzero) && (
+              {isLong && (q.min_words > 0 || (gptzero && isSubmitted)) && (
                 <div className="text-muted-foreground/60 mt-1 flex items-center justify-between text-xs">
                   <span>
                     {isLong && q.min_words > 0 ? `${getWordCount(value)} / ${q.min_words} words` : ""}
                   </span>
-                  {gptzero && <PlagiarismScoresInline data={gptzero} />}
+                  {gptzero && isSubmitted && <PlagiarismScoresInline data={gptzero} />}
                 </div>
               )}
             </div>
@@ -548,16 +556,57 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   comments={comments}
                   onSubmit={handlePostComment}
                   onDelete={handleDelete}
-                  plagiarism={isLong ? gptzero : undefined}
+                  plagiarism={isLong && isSubmitted ? gptzero : undefined}
                   teacherGuideline={q.teacher_guideline}
                   responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : null}
-                  onMarkCompleteAction={response ? () => handleResponseReviewAction(response.id, q.id, "complete") : undefined}
-                  onRequestRevision={response ? () => { setRevisionModal({ responseId: response.id, templateId: q.id }); setRevisionComment("") } : undefined}
-                  onClearStatus={response ? () => handleResponseReviewAction(response.id, q.id, "clear") : undefined}
+                  onMarkCompleteAction={isSubmitted ? () => handleResponseReviewAction(response!.id, q.id, "complete") : undefined}
+                  onRequestRevision={isSubmitted ? () => { setRevisionModal({ responseId: response!.id, templateId: q.id }); setRevisionComment("") } : undefined}
+                  onUndoStatus={isSubmitted && (response!.isComplete || response!.revisionNeeded) ? () => handleResponseReviewAction(response!.id, q.id, "ready") : undefined}
                 />
-                {response && (
-                  <>
-                    {!response.revisionNeeded && (
+                {response && (() => {
+                  if (!isSubmitted) {
+                    return (
+                      <span className="text-muted-foreground/50 text-[10px] font-medium uppercase tracking-wide">Draft</span>
+                    )
+                  }
+                  if (response.isComplete) {
+                    return (
+                      <>
+                        <div title="Complete">
+                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                          title="Undo — return to review"
+                          onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
+                        >
+                          Undo
+                        </Button>
+                      </>
+                    )
+                  }
+                  if (response.revisionNeeded) {
+                    return (
+                      <>
+                        <div title="Needs revision">
+                          <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                          title="Undo — return to review"
+                          onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
+                        >
+                          Undo
+                        </Button>
+                      </>
+                    )
+                  }
+                  return (
+                    <>
                       <Button
                         variant="outline"
                         size="icon"
@@ -567,8 +616,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       >
                         <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                       </Button>
-                    )}
-                    {!response.isComplete && (
                       <Button
                         variant="outline"
                         size="icon"
@@ -578,24 +625,12 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       >
                         <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                       </Button>
-                    )}
-                    {response.isComplete && (
-                      <div title="Complete">
-                        <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-                      </div>
-                    )}
-                    {response.revisionNeeded && (
-                      <div title="Needs revision">
-                        <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-                      </div>
-                    )}
-                    {response.readyReview && !response.isComplete && !response.revisionNeeded && (
                       <div title="Ready for review">
                         <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
                       </div>
-                    )}
-                  </>
-                )}
+                    </>
+                  )
+                })()}
               </div>
             </div>
             {displayValue}
@@ -696,6 +731,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             const blankCount = gQuestions.length - completedCount - revisionCount - readyCount
 
             const hasDisplayType = isGroupDisplayType(group[F.displayTypesId] as number | null | undefined)
+            const groupComments = comments.filter(
+              (c) => c.field_name === "_section_comment" && Number(c[F.customGroupId]) === group.id
+            )
 
             return (
               <Card key={group.id} className="overflow-hidden !pt-0 !gap-0">
@@ -727,6 +765,38 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                           <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
                         </div>
                       )}
+                      <TeacherComment
+                        fieldName="_section_comment"
+                        fieldLabel={group.group_name}
+                        fieldValue={group.group_description || undefined}
+                        comments={groupComments}
+                        onSubmit={async (_, note) => {
+                          const teacherName = session?.user?.name ?? "Teacher"
+                          const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
+                          const payload: Record<string, unknown> = {
+                            students_id: studentId,
+                            teachers_id: teachersId,
+                            field_name: "_section_comment",
+                            [F.sectionId]: sectionId,
+                            [F.customGroupId]: group.id,
+                            note,
+                            isOld: false,
+                            isComplete: false,
+                            teacher_name: teacherName,
+                          }
+                          const res = await fetch(cfg.commentsEndpoint, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(payload),
+                          })
+                          if (res.ok) {
+                            const newComment = await res.json()
+                            setComments((prev) => [...prev, { ...newComment, teacher_name: newComment.teacher_name || teacherName }])
+                          }
+                        }}
+                        onDelete={handleDelete}
+                        square
+                      />
                       {readyCount > 0 && (
                         <ConfirmAllButton
                           readyCount={readyCount}

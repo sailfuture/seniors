@@ -28,6 +28,7 @@ import {
   CheckmarkCircle02Icon,
   ArrowTurnBackwardIcon,
   AlertCircleIcon,
+  SentIcon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
@@ -91,6 +92,7 @@ interface TeacherCommentProps {
   onMarkCompleteAction?: () => void
   onRequestRevision?: () => void
   onClearStatus?: () => void
+  onUndoStatus?: () => void
 }
 
 export function TeacherComment({
@@ -109,6 +111,7 @@ export function TeacherComment({
   onMarkCompleteAction,
   onRequestRevision,
   onClearStatus,
+  onUndoStatus,
 }: TeacherCommentProps) {
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState("")
@@ -250,44 +253,41 @@ export function TeacherComment({
             </div>
           </div>
 
-          {responseStatus && (onMarkCompleteAction || onRequestRevision || onClearStatus) && (
-            <div className="border-t bg-muted/30 px-6 py-3">
+          {responseStatus && (onMarkCompleteAction || onRequestRevision || onUndoStatus) && (
+            <div className="border-t px-6 py-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
                   {responseStatus.isComplete && (
-                    <>
+                    <div className="inline-flex size-7 items-center justify-center rounded-md border border-green-200" title="Complete">
                       <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-green-600" />
-                      <span className="font-medium text-green-600">Complete</span>
-                    </>
+                    </div>
                   )}
                   {responseStatus.revisionNeeded && (
-                    <>
+                    <div className="inline-flex size-7 items-center justify-center rounded-md border border-red-200" title="Revision Needed">
                       <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5 text-red-500" />
-                      <span className="font-medium text-red-500">Revision Needed</span>
-                    </>
+                    </div>
                   )}
                   {responseStatus.readyReview && !responseStatus.isComplete && !responseStatus.revisionNeeded && (
-                    <>
-                      <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-blue-500" />
-                      <span className="font-medium text-blue-500">Ready for Review</span>
-                    </>
+                    <div className="inline-flex size-7 items-center justify-center rounded-md border border-blue-200" title="Ready for Review">
+                      <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-3.5 text-blue-500" />
+                    </div>
                   )}
                   {!responseStatus.isComplete && !responseStatus.revisionNeeded && !responseStatus.readyReview && (
-                    <span>No status</span>
+                    <span className="text-muted-foreground/50 text-xs italic">Not submitted</span>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {(responseStatus.isComplete || responseStatus.revisionNeeded) && onClearStatus && (
+                  {(responseStatus.isComplete || responseStatus.revisionNeeded) && onUndoStatus && (
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-7 px-2 text-xs text-muted-foreground"
-                      onClick={() => { onClearStatus(); setOpen(false) }}
+                      onClick={() => { onUndoStatus(); setOpen(false) }}
                     >
-                      Clear
+                      Undo
                     </Button>
                   )}
-                  {!responseStatus.revisionNeeded && onRequestRevision && (
+                  {!responseStatus.revisionNeeded && !responseStatus.isComplete && onRequestRevision && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -298,7 +298,7 @@ export function TeacherComment({
                       Revision
                     </Button>
                   )}
-                  {!responseStatus.isComplete && onMarkCompleteAction && (
+                  {!responseStatus.isComplete && !responseStatus.revisionNeeded && onMarkCompleteAction && (
                     <Button
                       variant="outline"
                       size="sm"

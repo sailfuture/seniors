@@ -761,7 +761,7 @@ function BtSectionTableRows({
                 )}
                 <span className="text-muted-foreground text-xs">·</span>
                 <span className={`text-xs font-medium ${isUgComplete ? "text-green-600" : "text-muted-foreground"}`}>
-                  {isUgComplete ? "Completed" : `${Math.round((ugCompleted / ungroupedQs.length) * 100)}%`}
+                  {isUgComplete ? "Completed" : `${ungroupedQs.length > 0 ? Math.round((ugCompleted / ungroupedQs.length) * 100) : 0}%`}
                 </span>
               </div>
             </TableCell>
