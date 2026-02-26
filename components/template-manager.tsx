@@ -1156,7 +1156,7 @@ export function TemplateManager({
         onDelete={handleDeleteGroup}
         groupDisplayTypes={groupDisplayTypes}
         fields={F}
-        questionCount={editingGroup?.id ? questions.filter((q) => Number(q[F.customGroupId]) === editingGroup.id).length : 0}
+        questionCount={editingGroup?.id ? questions.filter((q) => Number(field(q, F.customGroupId)) === editingGroup.id).length : 0}
       />
 
       <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
