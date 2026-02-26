@@ -60,6 +60,7 @@ import {
   Archive02Icon,
   ArrowTurnBackwardIcon,
   SentIcon,
+  Copy01Icon,
 } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
 import { invalidateSectionsCache } from "@/lib/lifemap-sections"
@@ -430,6 +431,34 @@ export function TemplateManager({
       toast("Failed to archive question", { duration: 3000 })
     } finally {
       setArchiveTarget(null)
+    }
+  }
+
+  const handleDuplicate = async (q: TemplateQuestion) => {
+    try {
+      const { id, _question_types, ...rest } = q as TemplateQuestion & { id: number }
+      const payload = {
+        ...rest,
+        field_label: `${q.field_label} (copy)`,
+        field_name: `${q.field_name}_copy_${Date.now()}`,
+        sortOrder: q.sortOrder + 1,
+        isDraft: true,
+        isPublished: false,
+        isArchived: false,
+      }
+      const res = await fetch(cfg.templateEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        toast("Question duplicated", { duration: 2000 })
+        await loadData()
+      } else {
+        toast("Failed to duplicate question", { duration: 3000 })
+      }
+    } catch {
+      toast("Failed to duplicate question", { duration: 3000 })
     }
   }
 
@@ -959,7 +988,7 @@ export function TemplateManager({
                                 <TableRow
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
-                                  className={`bg-muted/40 hover:bg-muted/40 ${snapshot.isDragging ? "opacity-70 shadow-lg" : ""}`}
+                                  className={`bg-muted/70 hover:bg-muted/80 ${snapshot.isDragging ? "opacity-70 shadow-lg" : ""}`}
                                 >
                                   <TableCell colSpan={COL_COUNT}>
                                     <div className="flex items-center gap-2">
@@ -1059,15 +1088,35 @@ export function TemplateManager({
                                       </Button>
                                     </div>
                                   ) : (
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      className="size-7 text-muted-foreground hover:text-amber-500"
-                                      onClick={(e) => { e.stopPropagation(); setArchiveTarget(q) }}
-                                      title="Archive"
-                                    >
-                                      <HugeiconsIcon icon={Archive02Icon} strokeWidth={2} className="size-3.5" />
-                                    </Button>
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="size-7 text-muted-foreground hover:text-foreground"
+                                        onClick={(e) => { e.stopPropagation(); handleDuplicate(q) }}
+                                        title="Duplicate"
+                                      >
+                                        <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} className="size-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="size-7 text-muted-foreground hover:text-red-500"
+                                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(q) }}
+                                        title="Delete"
+                                      >
+                                        <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="size-7 text-muted-foreground hover:text-amber-500"
+                                        onClick={(e) => { e.stopPropagation(); setArchiveTarget(q) }}
+                                        title="Archive"
+                                      >
+                                        <HugeiconsIcon icon={Archive02Icon} strokeWidth={2} className="size-3.5" />
+                                      </Button>
+                                    </div>
                                   )}
                                 </TableCell>
                               </TableRow>
@@ -1093,6 +1142,7 @@ export function TemplateManager({
         customGroups={customGroups}
         saving={saving}
         onSave={handleSave}
+        onDelete={(q) => { setSheetOpen(false); setDeleteTarget(q) }}
         defaultGroupId={defaultGroupId}
         fields={F}
       />
@@ -1106,6 +1156,7 @@ export function TemplateManager({
         onDelete={handleDeleteGroup}
         groupDisplayTypes={groupDisplayTypes}
         fields={F}
+        questionCount={editingGroup?.id ? questions.filter((q) => Number(q[F.customGroupId]) === editingGroup.id).length : 0}
       />
 
       <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
@@ -1333,6 +1384,7 @@ function QuestionSheet({
   customGroups,
   saving,
   onSave,
+  onDelete,
   defaultGroupId,
   fields: F,
 }: {
@@ -1343,6 +1395,7 @@ function QuestionSheet({
   customGroups: CustomGroup[]
   saving: boolean
   onSave: (data: Omit<TemplateQuestion, "id"> & { id?: number }) => Promise<void>
+  onDelete?: (q: TemplateQuestion) => void
   defaultGroupId?: number | null
   fields: FormApiConfig["fields"]
 }) {
@@ -1769,7 +1822,18 @@ function QuestionSheet({
         </div>
 
         <div className="shrink-0 border-t px-6 py-4">
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center gap-2">
+            {isEdit && question && onDelete && (
+              <Button
+                variant="outline"
+                className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                onClick={() => onDelete(question as TemplateQuestion)}
+              >
+                <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
+                Delete
+              </Button>
+            )}
+            <div className="flex-1" />
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
@@ -1792,6 +1856,7 @@ function GroupSheet({
   onDelete,
   groupDisplayTypes,
   fields: F,
+  questionCount = 0,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1801,6 +1866,7 @@ function GroupSheet({
   onDelete: () => Promise<void>
   groupDisplayTypes: GroupDisplayType[]
   fields: FormApiConfig["fields"]
+  questionCount?: number
 }) {
   const isEdit = !!group
   const [form, setForm] = useState<Omit<CustomGroup, "id"> & { id?: number }>(
@@ -2039,9 +2105,12 @@ function GroupSheet({
         <AlertDialog open={confirmingDelete} onOpenChange={(v) => { if (!deletingGroup) setConfirmingDelete(v) }}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete group?</AlertDialogTitle>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-5 text-red-500" />
+                Delete group?
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently delete this group and all questions within it.
+                This will permanently delete this group{questionCount > 0 ? ` and its ${questionCount} question${questionCount !== 1 ? "s" : ""}` : ""}. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
