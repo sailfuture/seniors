@@ -2110,7 +2110,7 @@ function GroupSheet({
                 Delete group?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently delete this group{questionCount > 0 ? ` and its ${questionCount} question${questionCount !== 1 ? "s" : ""}` : ""}. This action cannot be undone.
+                This will permanently delete this group{questionCount > 0 ? <> and its <span className="font-semibold">{questionCount} question{questionCount !== 1 ? "s" : ""}</span></> : ""}. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
