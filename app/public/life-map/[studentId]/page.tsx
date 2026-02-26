@@ -353,7 +353,7 @@ export default function PublicLifeMapPage({
           {/* Main content */}
           <SidebarInset className="bg-gray-50">
             <div className="w-full p-4 md:p-6 lg:p-8">
-              {sections.map((section) => {
+              {sections.map((section, sectionIdx) => {
                 const sectionTemplates = templates
                   .filter((q) => q.lifemap_sections_id === section.id)
                   .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -391,7 +391,7 @@ export default function PublicLifeMapPage({
                       title={section.section_title}
                       description={desc}
                       photoUrl={photoUrl}
-                      sectionNumber={section.order ?? 0}
+                      sectionNumber={sectionIdx + 1}
                     />
 
                     <div className="mt-6 space-y-6">

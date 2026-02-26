@@ -45,6 +45,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
+  ArrowDown01Icon,
   ImageUploadIcon,
   HelpCircleIcon,
   Link01Icon,
@@ -842,11 +843,22 @@ function GroupSection({
   const readyCount = questionResponses.filter((r) => r.readyReview && !r.isComplete && !r.revisionNeeded).length
   const blankCount = totalQuestions - completedCount - revisionCount - readyCount
   const allComplete = completedCount === totalQuestions && totalQuestions > 0
+  const [collapsed, setCollapsed] = useState(allComplete)
 
   return (
     <Card className="overflow-hidden !pt-0 !gap-0">
-      <div className="flex items-center justify-between border-b px-6 py-4">
+      <div
+        className="flex cursor-pointer items-center justify-between border-b px-6 py-4 select-none"
+        onClick={() => setCollapsed((v) => !v)}
+      >
         <div className="flex items-center gap-2">
+          <div className="inline-flex size-7 items-center justify-center rounded-md border">
+            <HugeiconsIcon
+              icon={ArrowDown01Icon}
+              strokeWidth={2}
+              className={`text-muted-foreground size-3.5 shrink-0 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
+            />
+          </div>
           <CardTitle className="text-lg">{group.group_name}</CardTitle>
           {hasInstructions && (
             <button
@@ -858,7 +870,7 @@ function GroupSection({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           {completedCount > 0 && (
             <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
               <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
@@ -944,14 +956,18 @@ function GroupSection({
           )}
         </div>
       </div>
-      {group.group_description && (
-        <div className="border-b px-6 py-3">
-          <p className="text-muted-foreground text-sm">{group.group_description}</p>
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}>
+        <div className="overflow-hidden">
+          {group.group_description && (
+            <div className="border-b px-6 py-3">
+              <p className="text-muted-foreground text-sm">{group.group_description}</p>
+            </div>
+          )}
+          <CardContent className="p-6">
+            {children}
+          </CardContent>
         </div>
-      )}
-      <CardContent className="p-6">
-        {children}
-      </CardContent>
+      </div>
 
       {hasInstructions && (
         <Sheet open={instructionsOpen} onOpenChange={setInstructionsOpen}>
@@ -1159,6 +1175,7 @@ function DynamicField({
   const isComplete = responseStatus?.isComplete === true
   const isReadyForReview = responseStatus?.readyReview === true && !isComplete && !responseStatus?.revisionNeeded
   const isDimmed = isComplete || isReadyForReview
+  const [questionCollapsed, setQuestionCollapsed] = useState(isComplete)
   const isImageType = typeId === QUESTION_TYPE.IMAGE_UPLOAD
   const isSourceType = typeId === QUESTION_TYPE.SOURCE
   const hasImage = !!imageValue && Object.keys(imageValue).length > 0 && !!(imageValue.path || imageValue.url || imageValue.name)
@@ -1170,10 +1187,20 @@ function DynamicField({
 
   return (
     <div className="space-y-2" data-field-name={question.field_name}>
-      <div className="flex items-center justify-between">
+      <div
+        className={`flex items-center justify-between ${isComplete ? "cursor-pointer select-none" : ""}`}
+        onClick={isComplete ? () => setQuestionCollapsed((v) => !v) : undefined}
+      >
         <div className="flex items-center gap-1.5">
+          <div className={`inline-flex size-4 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
+            <HugeiconsIcon
+              icon={ArrowDown01Icon}
+              strokeWidth={2}
+              className={`size-2.5 shrink-0 transition-transform duration-200 ${isComplete ? "text-muted-foreground/60" : "text-muted-foreground/25"} ${questionCollapsed ? "-rotate-90" : ""}`}
+            />
+          </div>
           <span className={isDimmed ? "opacity-50" : ""}>
-            <Label className="text-muted-foreground text-xs font-medium">{question.field_label}</Label>
+            <Label className={`text-muted-foreground text-xs font-medium ${isComplete ? "cursor-pointer" : ""}`}>{question.field_label}</Label>
           </span>
           {hasComments && (
             <CommentBadge
@@ -1314,7 +1341,8 @@ function DynamicField({
         )}
       </div>
 
-      <div className={isDimmed ? "opacity-50" : ""}>
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${questionCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}>
+      <div className={`overflow-hidden ${isDimmed ? "opacity-50" : ""}`}>
       <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1492,6 +1520,7 @@ function DynamicField({
         </div>
       )}
 
+      </div>
       </div>
     </div>
   )

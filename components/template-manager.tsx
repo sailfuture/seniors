@@ -870,16 +870,22 @@ export function TemplateManager({
   }
 
   const flatList = buildFlatList()
+  const questionOrderMap = new Map<number, number>()
+  let orderCounter = 0
+  for (const item of flatList) {
+    if (item.kind === "group") orderCounter = 0
+    else if (item.kind === "question") questionOrderMap.set(item.q.id, ++orderCounter)
+  }
   const COL_COUNT = 4
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {(publishing || deletingGroupOverlay || deletingSection || saving || savingGroup) && createPortal(
+      {(publishing || deletingGroupOverlay || deletingSection || deletingQuestion || saving || savingGroup) && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3">
             <div className="size-8 animate-spin rounded-full border-4 border-muted-foreground/30 border-t-foreground" />
             <p className="text-sm font-medium">
-              {deletingSection ? "Deleting section..." : publishing ? "Publishing questions..." : deletingGroupOverlay ? "Deleting group..." : "Saving..."}
+              {deletingSection ? "Deleting section..." : deletingQuestion ? "Deleting question..." : publishing ? "Publishing questions..." : deletingGroupOverlay ? "Deleting group..." : "Saving..."}
             </p>
           </div>
         </div>,
@@ -1048,6 +1054,9 @@ export function TemplateManager({
                                     <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
                                       <HugeiconsIcon icon={DragDropIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-3.5 shrink-0" />
                                     </div>
+                                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium text-gray-400">
+                                      {questionOrderMap.get(q.id) ?? ""}
+                                    </span>
                                     <span className="text-sm font-medium">{q.field_label || q.field_name}</span>
                                   </div>
                                 </TableCell>

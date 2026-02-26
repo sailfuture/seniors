@@ -503,7 +503,7 @@ function BtSectionTableRows({
         <TableCell>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className={`text-sm font-medium ${locked ? "text-muted-foreground/40" : ""}`}>{row.section.section_title}</span>
+              <span className={`text-sm font-normal ${locked ? "text-muted-foreground/40" : ""}`}>{row.section.section_title}</span>
               {unreadCount > 0 && (
                 <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${unreadCount} unread comment${unreadCount !== 1 ? "s" : ""}`}>
                   <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-blue-500" />
@@ -599,7 +599,7 @@ function BtSectionTableRows({
           <TableRow
             key={group.id}
             className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} [&>td]:py-2.5 ${groupRowBg}`}
-            onClick={() => { if (!locked) onViewSummary(group.id) }}
+            onClick={() => { if (!locked) onRowClick(row.slug) }}
           >
             <TableCell>
               {isGroupComplete ? (

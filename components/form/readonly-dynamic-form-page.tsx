@@ -16,6 +16,7 @@ import {
   SentIcon,
   AlertCircleIcon,
   ArrowTurnBackwardIcon,
+  ArrowDown01Icon,
 } from "@hugeicons/core-free-icons"
 import {
   Dialog,
@@ -589,15 +590,15 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const relativeTime = formatRelativeTime(response?.last_edited)
 
         return (
-          <div
+          <CollapsibleQuestionCard
             key={q.id}
-            data-field-name={q.field_name}
-            className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan} ${qIsDimmed ? "opacity-50" : ""}`}
+            fieldName={q.field_name}
+            colSpan={colSpan}
+            isDimmed={qIsDimmed}
+            isComplete={qIsComplete}
+            label={q.field_label}
+            displayValue={displayValue}
           >
-            <div className="mb-1.5 flex items-center justify-between">
-              <Label className="text-muted-foreground text-xs font-medium">
-                {q.field_label}
-              </Label>
               <div className="flex items-center gap-2">
                 {relativeTime && (
                   <span className="text-muted-foreground/60 text-[11px]">{relativeTime}</span>
@@ -689,9 +690,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   )
                 })()}
               </div>
-            </div>
-            {displayValue}
-          </div>
+          </CollapsibleQuestionCard>
         )
       })
 
@@ -786,6 +785,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             const revisionCount = groupResponses.filter((r) => r.revisionNeeded).length
             const readyCount = groupResponses.filter((r) => r.readyReview && !r.isComplete && !r.revisionNeeded).length
             const blankCount = gQuestions.length - completedCount - revisionCount - readyCount
+            const allComplete = completedCount === gQuestions.length && gQuestions.length > 0
 
             const hasDisplayType = isGroupDisplayType(group[F.displayTypesId] as number | null | undefined)
             const groupComments = comments.filter(
@@ -793,104 +793,28 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             )
 
             return (
-              <Card key={group.id} className="overflow-hidden !pt-0 !gap-0">
-                <div className="border-b px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="min-w-0 flex-1 truncate text-lg">{group.group_name}</CardTitle>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {completedCount > 0 && (
-                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
-                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-green-600 text-[9px] font-bold text-white">{completedCount}</span>
-                        </div>
-                      )}
-                      {readyCount > 0 && (
-                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${readyCount} ready for review`}>
-                          <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
-                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{readyCount}</span>
-                        </div>
-                      )}
-                      {revisionCount > 0 && (
-                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${revisionCount} need revision`}>
-                          <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{revisionCount}</span>
-                        </div>
-                      )}
-                      {blankCount > 0 && (
-                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${blankCount} not started`}>
-                          <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
-                        </div>
-                      )}
-                      <TeacherComment
-                        fieldName="_section_comment"
-                        fieldLabel={group.group_name}
-                        fieldValue={group.group_description || undefined}
-                        comments={groupComments}
-                        onSubmit={async (_, note) => {
-                          const teacherName = session?.user?.name ?? "Teacher"
-                          const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
-                          const payload: Record<string, unknown> = {
-                            students_id: studentId,
-                            teachers_id: teachersId,
-                            field_name: "_section_comment",
-                            [F.sectionId]: sectionId,
-                            [F.customGroupId]: group.id,
-                            note,
-                            isOld: false,
-                            isComplete: false,
-                            teacher_name: teacherName,
-                          }
-                          const res = await fetch(cfg.commentsEndpoint, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(payload),
-                          })
-                          if (res.ok) {
-                            const newComment = await res.json()
-                            setComments((prev) => [...prev, { ...newComment, teacher_name: newComment.teacher_name || teacherName }])
-                          }
-                        }}
-                        onDelete={handleDelete}
-                        square
-                      />
-                      {readyCount > 0 && (
-                        <ConfirmAllButton
-                          readyCount={readyCount}
-                          onConfirmAll={async () => {
-                            const readyQuestions = gQuestions.filter((q) => {
-                              const r = responses.get(q.id)
-                              return r?.readyReview && !r?.isComplete && !r?.revisionNeeded
-                            })
-                            for (const q of readyQuestions) {
-                              const r = responses.get(q.id)
-                              if (r) await handleResponseReviewAction(r.id, q.id, "complete", undefined, true)
-                            }
-                            toast.success(`${readyQuestions.length} question${readyQuestions.length > 1 ? "s" : ""} confirmed`, { duration: 3000 })
-                          }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  {group.group_description && (
-                    <p className="text-muted-foreground mt-1 text-sm">{group.group_description}</p>
-                  )}
-                </div>
-                <CardContent className="p-6">
-                  {hasDisplayType ? (() => {
-                    const displayExpansion = group[F.displayTypesExpansion] as { id: number; columns?: number } | undefined
-                    const cols = displayExpansion?.columns ?? 4
-                    const colClass = cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : cols === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
-                    return cols === 1 ? renderQuestionList(gQuestions) : (
-                      <div className={`grid gap-3 ${colClass}`}>
-                        {renderQuestionList(gQuestions, true)}
-                      </div>
-                    )
-                  })() : (
-                    renderQuestionList(gQuestions)
-                  )}
-                </CardContent>
-              </Card>
+              <ReadonlyGroupCard
+                key={group.id}
+                group={group}
+                allComplete={allComplete}
+                completedCount={completedCount}
+                readyCount={readyCount}
+                revisionCount={revisionCount}
+                blankCount={blankCount}
+                groupComments={groupComments}
+                session={session}
+                studentId={studentId}
+                sectionId={sectionId}
+                cfg={cfg}
+                F={F}
+                setComments={setComments}
+                handleDelete={handleDelete}
+                handleResponseReviewAction={handleResponseReviewAction}
+                responses={responses}
+                gQuestions={gQuestions}
+                hasDisplayType={hasDisplayType}
+                renderQuestionList={renderQuestionList}
+              />
             )
           })}
         </div>
@@ -989,5 +913,219 @@ function PlagiarismScoresInline({ data }: { data: GptZeroResult }) {
         </>
       )}
     </span>
+  )
+}
+
+function CollapsibleQuestionCard({
+  fieldName,
+  colSpan,
+  isDimmed,
+  isComplete,
+  label,
+  displayValue,
+  children,
+}: {
+  fieldName: string
+  colSpan: string
+  isDimmed: boolean
+  isComplete: boolean
+  label: string
+  displayValue: React.ReactNode
+  children: React.ReactNode
+}) {
+  const [collapsed, setCollapsed] = useState(isComplete)
+
+  return (
+    <div
+      data-field-name={fieldName}
+      className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan} ${isDimmed ? "opacity-50" : ""}`}
+    >
+      <div
+        className={`mb-1.5 flex items-center justify-between ${isComplete ? "cursor-pointer select-none" : ""}`}
+        onClick={isComplete ? () => setCollapsed((v) => !v) : undefined}
+      >
+        <div className="flex items-center gap-1.5">
+          <div className={`inline-flex size-4 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
+            <HugeiconsIcon
+              icon={ArrowDown01Icon}
+              strokeWidth={2}
+              className={`size-2.5 shrink-0 transition-transform duration-200 ${isComplete ? "text-muted-foreground/60" : "text-muted-foreground/25"} ${collapsed ? "-rotate-90" : ""}`}
+            />
+          </div>
+          <Label className={`text-muted-foreground text-xs font-medium ${isComplete ? "cursor-pointer" : ""}`}>
+            {label}
+          </Label>
+        </div>
+        <div onClick={(e) => e.stopPropagation()}>
+          {children}
+        </div>
+      </div>
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}>
+        <div className="overflow-hidden">
+          {displayValue}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReadonlyGroupCard({
+  group,
+  allComplete,
+  completedCount,
+  readyCount,
+  revisionCount,
+  blankCount,
+  groupComments,
+  session,
+  studentId,
+  sectionId,
+  cfg,
+  F,
+  setComments,
+  handleDelete,
+  handleResponseReviewAction,
+  responses,
+  gQuestions,
+  hasDisplayType,
+  renderQuestionList,
+}: {
+  group: CustomGroup
+  allComplete: boolean
+  completedCount: number
+  readyCount: number
+  revisionCount: number
+  blankCount: number
+  groupComments: Comment[]
+  session: ReturnType<typeof useSession>["data"]
+  studentId: number
+  sectionId: number
+  cfg: FormApiConfig
+  F: FormApiConfig["fields"]
+  setComments: React.Dispatch<React.SetStateAction<Comment[]>>
+  handleDelete: (id: number) => Promise<void>
+  handleResponseReviewAction: (responseId: number, templateId: number, action: string, comment?: string, silent?: boolean) => Promise<void>
+  responses: Map<number, StudentResponse>
+  gQuestions: TemplateQuestion[]
+  hasDisplayType: boolean
+  renderQuestionList: (qs: TemplateQuestion[], flat?: boolean) => React.ReactNode
+}) {
+  const [collapsed, setCollapsed] = useState(allComplete)
+
+  return (
+    <Card className="overflow-hidden !pt-0 !gap-0">
+      <div
+        className="cursor-pointer border-b px-6 py-4 select-none"
+        onClick={() => setCollapsed((v) => !v)}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="inline-flex size-7 items-center justify-center rounded-md border">
+              <HugeiconsIcon
+                icon={ArrowDown01Icon}
+                strokeWidth={2}
+                className={`text-muted-foreground size-3.5 shrink-0 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
+              />
+            </div>
+            <CardTitle className="min-w-0 flex-1 truncate text-lg">{group.group_name}</CardTitle>
+          </div>
+          <div className="flex shrink-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {completedCount > 0 && (
+              <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
+                <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-green-600 text-[9px] font-bold text-white">{completedCount}</span>
+              </div>
+            )}
+            {readyCount > 0 && (
+              <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${readyCount} ready for review`}>
+                <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{readyCount}</span>
+              </div>
+            )}
+            {revisionCount > 0 && (
+              <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${revisionCount} need revision`}>
+                <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{revisionCount}</span>
+              </div>
+            )}
+            {blankCount > 0 && (
+              <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${blankCount} not started`}>
+                <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
+              </div>
+            )}
+            <TeacherComment
+              fieldName="_section_comment"
+              fieldLabel={group.group_name}
+              fieldValue={group.group_description || undefined}
+              comments={groupComments}
+              onSubmit={async (_, note) => {
+                const teacherName = session?.user?.name ?? "Teacher"
+                const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
+                const payload: Record<string, unknown> = {
+                  students_id: studentId,
+                  teachers_id: teachersId,
+                  field_name: "_section_comment",
+                  [F.sectionId]: sectionId,
+                  [F.customGroupId]: group.id,
+                  note,
+                  isOld: false,
+                  isComplete: false,
+                  teacher_name: teacherName,
+                }
+                const res = await fetch(cfg.commentsEndpoint, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                })
+                if (res.ok) {
+                  const newComment = await res.json()
+                  setComments((prev) => [...prev, { ...newComment, teacher_name: newComment.teacher_name || teacherName }])
+                }
+              }}
+              onDelete={handleDelete}
+              square
+            />
+            {readyCount > 0 && (
+              <ConfirmAllButton
+                readyCount={readyCount}
+                onConfirmAll={async () => {
+                  const readyQuestions = gQuestions.filter((q) => {
+                    const r = responses.get(q.id)
+                    return r?.readyReview && !r?.isComplete && !r?.revisionNeeded
+                  })
+                  for (const q of readyQuestions) {
+                    const r = responses.get(q.id)
+                    if (r) await handleResponseReviewAction(r.id, q.id, "complete", undefined, true)
+                  }
+                  toast.success(`${readyQuestions.length} question${readyQuestions.length > 1 ? "s" : ""} confirmed`, { duration: 3000 })
+                }}
+              />
+            )}
+          </div>
+        </div>
+        {!collapsed && group.group_description && (
+          <p className="text-muted-foreground mt-1 text-sm">{group.group_description}</p>
+        )}
+      </div>
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}>
+        <div className="overflow-hidden">
+          <CardContent className="p-6">
+            {hasDisplayType ? (() => {
+              const displayExpansion = group[F.displayTypesExpansion] as { id: number; columns?: number } | undefined
+              const cols = displayExpansion?.columns ?? 4
+              const colClass = cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : cols === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
+              return cols === 1 ? renderQuestionList(gQuestions) : (
+                <div className={`grid gap-3 ${colClass}`}>
+                  {renderQuestionList(gQuestions, true)}
+                </div>
+              )
+            })() : (
+              renderQuestionList(gQuestions)
+            )}
+          </CardContent>
+        </div>
+      </div>
+    </Card>
   )
 }

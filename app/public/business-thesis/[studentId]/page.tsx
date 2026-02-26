@@ -357,7 +357,7 @@ export default function PublicBusinessThesisPage({
 
           <SidebarInset className="bg-gray-50">
             <div className="w-full p-4 md:p-6 lg:p-8">
-              {sections.map((section) => {
+              {sections.map((section, sectionIdx) => {
                 const sectionTemplates = templates
                   .filter((q) => qSectionId(q) === section.id)
                   .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -396,7 +396,7 @@ export default function PublicBusinessThesisPage({
                       title={section.section_title}
                       description={desc}
                       photoUrl={photoUrl}
-                      sectionNumber={section.order ?? 0}
+                      sectionNumber={sectionIdx + 1}
                     />
 
                     <div className="mt-6 space-y-6">
