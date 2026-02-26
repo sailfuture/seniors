@@ -1055,7 +1055,7 @@ export function TemplateManager({
                                       <HugeiconsIcon icon={DragDropIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-3.5 shrink-0" />
                                     </div>
                                     <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium text-gray-400">
-                                      {questionOrderMap.get(q.id) ?? ""}
+                                      {q.id != null ? questionOrderMap.get(q.id) ?? "" : ""}
                                     </span>
                                     <span className="text-sm font-medium">{q.field_label || q.field_name}</span>
                                   </div>
