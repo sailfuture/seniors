@@ -998,7 +998,7 @@ function ReadonlyGroupCard({
   blankCount: number
   groupComments: Comment[]
   session: ReturnType<typeof useSession>["data"]
-  studentId: number
+  studentId: string
   sectionId: number
   cfg: FormApiConfig
   F: FormApiConfig["fields"]
