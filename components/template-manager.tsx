@@ -874,7 +874,7 @@ export function TemplateManager({
   let orderCounter = 0
   for (const item of flatList) {
     if (item.kind === "group") orderCounter = 0
-    else if (item.kind === "question") questionOrderMap.set(item.q.id, ++orderCounter)
+    else if (item.kind === "question" && item.q.id != null) questionOrderMap.set(item.q.id, ++orderCounter)
   }
   const COL_COUNT = 4
 
