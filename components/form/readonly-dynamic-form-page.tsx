@@ -1004,7 +1004,7 @@ function ReadonlyGroupCard({
   F: FormApiConfig["fields"]
   setComments: React.Dispatch<React.SetStateAction<Comment[]>>
   handleDelete: (id: number) => Promise<void>
-  handleResponseReviewAction: (responseId: number, templateId: number, action: string, comment?: string, silent?: boolean) => Promise<void>
+  handleResponseReviewAction: (responseId: number, templateId: number, action: "complete" | "revision" | "ready" | "clear", comment?: string, silent?: boolean) => Promise<void>
   responses: Map<number, StudentResponse>
   gQuestions: TemplateQuestion[]
   hasDisplayType: boolean

@@ -3,6 +3,13 @@
 import React from "react"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel"
+import {
   Table,
   TableBody,
   TableCell,
@@ -115,52 +122,58 @@ function GalleryDisplay({
   responseMap: Map<number, StudentResponse>
   mode: string
 }) {
-  const imageFields = ["gallery_image_1", "gallery_image_2", "gallery_image_3", "gallery_image_4"]
+  const slides = [
+    { image: "image_1", caption: "image_1_caption" },
+    { image: "image_2", caption: "image_2_caption" },
+    { image: "image_3", caption: "image_3_caption" },
+    { image: "image_4", caption: "image_4_caption" },
+  ]
 
-  const images = imageFields.map((field) => {
-    const q = questions.find((q) => q.field_name === field)
-    const url = getImageUrl(field, questions, responseMap)
-    const label = q?.public_display_title || q?.field_label || ""
-    return { url, label, field }
-  })
+  const items = slides.map((s) => ({
+    url: getImageUrl(s.image, questions, responseMap),
+    caption: getTextValue(s.caption, questions, responseMap),
+    field: s.image,
+  }))
 
-  const hasAnyImage = images.some((img) => img.url)
-  if (!hasAnyImage) {
+  const populated = items.filter((i) => i.url)
+
+  if (populated.length === 0) {
     return (
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {images.map((img) => (
-          <div
-            key={img.field}
-            className="flex min-h-[160px] items-center justify-center rounded-xl bg-gray-100"
-          />
+        {items.map((i) => (
+          <div key={i.field} className="flex aspect-square items-center justify-center rounded-xl bg-gray-100" />
         ))}
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-      {images.map((img) => (
-        <Card key={img.field} className="gap-0 border-gray-200 py-0 shadow-none">
-          <CardContent className="p-0">
-            {img.url ? (
+    <Carousel opts={{ align: "start", loop: populated.length > 1 }} className="w-full">
+      <CarouselContent className="-ml-3">
+        {populated.map((item) => (
+          <CarouselItem key={item.field} className="pl-3 basis-full sm:basis-1/2">
+            <div className="overflow-hidden rounded-xl border border-gray-200">
               <img
-                src={img.url}
-                alt={img.label || "Gallery image"}
-                className="aspect-square w-full rounded-t-xl object-cover"
+                src={item.url}
+                alt={item.caption || "Gallery image"}
+                className="aspect-[4/3] w-full object-cover"
               />
-            ) : (
-              <div className="flex aspect-square w-full items-center justify-center rounded-t-xl bg-gray-100" />
-            )}
-          </CardContent>
-          {img.label && (
-            <CardFooter className="border-t-0 bg-white px-3 py-2">
-              <p className="text-muted-foreground text-xs">{img.label}</p>
-            </CardFooter>
-          )}
-        </Card>
-      ))}
-    </div>
+              {item.caption && (
+                <div className="border-t border-gray-200 px-4 py-2.5">
+                  <p className="text-muted-foreground text-xs leading-relaxed">{item.caption}</p>
+                </div>
+              )}
+            </div>
+          </CarouselItem>
+        ))}
+      </CarouselContent>
+      {populated.length > 2 && (
+        <>
+          <CarouselPrevious className="-left-3" />
+          <CarouselNext className="-right-3" />
+        </>
+      )}
+    </Carousel>
   )
 }
 
