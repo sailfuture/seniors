@@ -262,6 +262,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           if (Array.isArray(data)) {
             const enriched = data
               .filter((c: Record<string, unknown>) => {
+                if (String(c.students_id) !== String(studentId)) return false
                 if (Number(c[F.sectionId]) !== sectionId) return false
                 const tid = c[F.templateId] as number | null | undefined
                 if (tid && excludedTemplateIds.has(tid)) return false

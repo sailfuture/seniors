@@ -58,6 +58,7 @@ export default function AdminLifeMapSectionPage({
               if (Array.isArray(data)) {
                 setSectionComments(
                   data.filter((c: Comment) =>
+                    String(c.students_id) === String(studentId) &&
                     c.field_name === "_section_comment" &&
                     Number(c.lifemap_sections_id) === match.id &&
                     !c.lifemap_custom_group_id

@@ -342,6 +342,7 @@ function useBtSectionCommentCounts(studentId: string | null, refreshKey: number)
 
         const map = new Map<number, number>()
         for (const c of data) {
+          if (String(c.students_id) !== String(studentId)) continue
           if (c.isComplete || c.isOld) continue
           if (c.businessthesis_template_id && excludedIds.has(c.businessthesis_template_id)) continue
           const sid = Number(c.businessthesis_sections_id)
@@ -403,6 +404,7 @@ function useSectionCommentCounts(studentId: string | null, refreshKey: number): 
 
         const map = new Map<number, number>()
         for (const c of data) {
+          if (String(c.students_id) !== String(studentId)) continue
           if (c.isComplete || c.isOld) continue
           if (c.lifemap_template_id && excludedIds.has(c.lifemap_template_id)) continue
           const sid = Number(c.lifemap_sections_id)

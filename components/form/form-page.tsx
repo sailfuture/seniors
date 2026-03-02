@@ -88,7 +88,7 @@ export function FormPage({ title, config, commentsEndpoint, sectionId: sectionId
         const res = await fetch(url)
         if (res.ok) {
           const data = await res.json()
-          if (Array.isArray(data)) setComments(data)
+          if (Array.isArray(data)) setComments(data.filter((c: Record<string, unknown>) => String(c.students_id) === String(studentId)))
         }
       } catch {
         // Silently fail

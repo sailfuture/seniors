@@ -48,6 +48,7 @@ export default function AdminBusinessThesisSectionPage({
               if (Array.isArray(data)) {
                 setSectionComments(
                   data.filter((c: Comment) =>
+                    String(c.students_id) === String(studentId) &&
                     c.field_name === "_section_comment" &&
                     Number(c.businessthesis_sections_id) === match.id &&
                     !c.businessthesis_custom_group_id

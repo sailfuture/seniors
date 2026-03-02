@@ -159,7 +159,7 @@ export default function AdminStudentLifeMapOverviewPage({
       const res = await fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`)
       if (res.ok) {
         const data = await res.json()
-        if (Array.isArray(data)) setComments(data)
+        if (Array.isArray(data)) setComments(data.filter((c: Comment) => String(c.students_id) === String(studentId)))
       }
     } catch { /* ignore */ }
   }, [studentId])

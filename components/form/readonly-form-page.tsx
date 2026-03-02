@@ -149,7 +149,7 @@ export function ReadOnlyFormPage({ title, subtitle, config, studentId, sectionId
           const data = await res.json()
           if (Array.isArray(data)) {
             const enriched = data
-              .filter((c: Record<string, unknown>) => !sectionId || Number(c.lifemap_sections_id) === sectionId)
+              .filter((c: Record<string, unknown>) => String(c.students_id) === String(studentId) && (!sectionId || Number(c.lifemap_sections_id) === sectionId))
               .map((c: Record<string, unknown>) => {
                 const teachers = c._teachers as { firstName?: string; lastName?: string }[] | undefined
                 const teacher = teachers?.[0]
