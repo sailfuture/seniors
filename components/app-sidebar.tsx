@@ -25,6 +25,7 @@ import {
   Link01Icon,
   Settings02Icon,
   ArrowLeft02Icon,
+  Image01Icon,
 } from "@hugeicons/core-free-icons"
 import Link from "next/link"
 import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
@@ -742,6 +743,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         )}
         <NavMain items={navItems} hideLabel={!!studentInfo} loading={sidebarLoading} />
+        {!isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Tools</SidebarGroupLabel>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  tooltip="Image Generation"
+                  isActive={pathname.startsWith("/image-generation")}
+                >
+                  <Link href="/image-generation">
+                    <HugeiconsIcon icon={Image01Icon} strokeWidth={2} />
+                    <span>Image Generation</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
         {publicPagesNav && (
           <SidebarGroup>
             <SidebarGroupLabel>Public Pages</SidebarGroupLabel>
