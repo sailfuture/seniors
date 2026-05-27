@@ -3,8 +3,10 @@ import { experimental_generateImage as generateImage } from "ai"
 import { getApiSession } from "@/lib/api-auth"
 import {
   CATEGORIES,
+  MARKETING_PLACEMENTS,
   MAX_IMAGES_PER_STUDENT,
   type ImageCategory,
+  type MarketingPlacement,
 } from "@/lib/image-generation-config"
 import { createImage, listImages, uploadImageToXano } from "@/lib/image-library-xano"
 
@@ -26,15 +28,27 @@ export async function POST(req: NextRequest) {
     prompt?: string
     category?: ImageCategory
     model?: string
+    placement?: MarketingPlacement
   }
 
-  const prompt = (body.prompt ?? "").trim()
+  const rawPrompt = (body.prompt ?? "").trim()
   const category = body.category && CATEGORIES[body.category] ? body.category : "audience"
   const model = body.model?.trim() || CATEGORIES[category].defaultModel
+  const placement =
+    category === "marketing" && body.placement && MARKETING_PLACEMENTS[body.placement]
+      ? MARKETING_PLACEMENTS[body.placement]
+      : null
 
-  if (!prompt) {
+  if (!rawPrompt) {
     return NextResponse.json({ error: "Missing prompt" }, { status: 400 })
   }
+
+  // If the prompt doesn't already reference the placement (i.e. student skipped brainstorm),
+  // prepend a short context line so the image is recognizably a marketing mock-up.
+  const prompt =
+    placement && !rawPrompt.toLowerCase().includes(placement.label.toLowerCase())
+      ? `Photorealistic mock-up of ${placement.contextHint}. The ad shows: ${rawPrompt}`
+      : rawPrompt
 
   try {
     const existing = await listImages(studentId)

@@ -1,4 +1,64 @@
-export type ImageCategory = "logo" | "product" | "audience"
+export type ImageCategory = "logo" | "product" | "marketing" | "audience"
+
+export type MarketingPlacement =
+  | "billboard"
+  | "flyer"
+  | "digital_ad"
+  | "ooh"
+  | "in_home"
+
+export interface PlacementConfig {
+  id: MarketingPlacement
+  label: string
+  description: string
+  /** Snippet describing the placement, woven into the brainstorm system prompt. */
+  contextHint: string
+  /** Used in the prompt placeholder so students know what to type. */
+  examplePrompt: string
+}
+
+export const MARKETING_PLACEMENTS: Record<MarketingPlacement, PlacementConfig> = {
+  billboard: {
+    id: "billboard",
+    label: "Billboard",
+    description: "Highway or city billboard, photographed in context.",
+    contextHint:
+      "a large highway or city billboard photographed in context (sky, road, surrounding buildings, realistic lighting)",
+    examplePrompt: "Driftwood Coffee — bold wordmark, warm cream, photographed at golden hour",
+  },
+  flyer: {
+    id: "flyer",
+    label: "8.5×11 Flyer",
+    description: "Printed flyer photographed in a real-world setting.",
+    contextHint:
+      "an 8.5x11 printed flyer photographed in a realistic setting (pinned to a community corkboard, held in hand, taped to a window, etc.)",
+    examplePrompt: "Friday night open-mic poster for Driftwood Coffee, with date, time, and address",
+  },
+  digital_ad: {
+    id: "digital_ad",
+    label: "Digital Ad",
+    description: "Ad displayed on a phone, laptop, or tablet screen.",
+    contextHint:
+      "a digital ad shown on a modern phone, laptop, or tablet screen, photographed in a realistic environment (cafe table, desk, on a couch)",
+    examplePrompt: "Instagram ad for a new launch — wave-icon water bottle, minimalist design",
+  },
+  ooh: {
+    id: "ooh",
+    label: "Other Out-of-Home",
+    description: "Transit shelter, subway, mall kiosk, wild-postings, etc.",
+    contextHint:
+      "an out-of-home ad placement other than a billboard or flyer (bus stop shelter, subway car wall, mall kiosk, wild-posting wall, airport gate)",
+    examplePrompt: "Bus stop shelter ad for a campus food delivery service, evening urban scene",
+  },
+  in_home: {
+    id: "in_home",
+    label: "In-Home",
+    description: "Branded merch in a styled home setting (mug, tee, framed print).",
+    contextHint:
+      "branded merchandise styled in a home environment (a branded mug on a kitchen counter, a t-shirt on a model in a living room, a framed poster on a wall, a tote bag on a chair)",
+    examplePrompt: "Branded ceramic mug for Driftwood Coffee on a sunlit kitchen counter",
+  },
+}
 
 export interface CategoryConfig {
   id: ImageCategory
@@ -8,6 +68,8 @@ export interface CategoryConfig {
   alternativeModels: { id: string; label: string }[]
   promptPlaceholder: string
   brainstormSystemPrompt: string
+  /** Optional sub-selector (used by the marketing tab to choose placement). */
+  hasPlacements?: boolean
 }
 
 export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
@@ -36,6 +98,19 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
       "e.g. A matte black water bottle photographed on a wet rock at sunrise, shallow depth of field, soft golden light",
     brainstormSystemPrompt:
       "You are a product photographer helping a high-school student write an image-generation prompt for a PRODUCT or business visual. Take the student's rough idea and expand it into a single polished prompt of 2-4 sentences. Include: the subject and any branding, environment/setting, camera framing and angle, lighting, materials and textures, and mood. Aim for photoreal unless the student asked otherwise. Output only the prompt — no preamble, no labels.",
+  },
+  marketing: {
+    id: "marketing",
+    label: "Marketing",
+    description: "Mock-ups of your brand or product in a real-world ad placement.",
+    defaultModel: "openai/gpt-image-2",
+    alternativeModels: [
+      { id: "openai/gpt-image-2", label: "GPT Image 2 (best for ads)" },
+    ],
+    promptPlaceholder: "What brand, product, or message should be featured?",
+    brainstormSystemPrompt:
+      "You are an art director helping a high-school student write an image-generation prompt for a MARKETING MOCK-UP. The image must show the student's brand, product, or message displayed inside a specific real-world ad placement (described in the user message). Expand the student's idea into a single polished prompt of 2-4 sentences. Always include: (1) the placement context — camera angle, environment, lighting, surroundings; (2) the brand/product/message shown on the ad creative itself, with any text in quotes; (3) typographic and color feel of the ad design; (4) overall mood. Make it photo-realistic. Output only the prompt — no preamble, no labels.",
+    hasPlacements: true,
   },
   audience: {
     id: "audience",

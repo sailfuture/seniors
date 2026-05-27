@@ -38,16 +38,27 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   CATEGORIES,
   GENERATION_TIPS,
+  MARKETING_PLACEMENTS,
   MAX_IMAGES_PER_STUDENT,
   type GeneratedImage,
   type ImageCategory,
+  type MarketingPlacement,
 } from "@/lib/image-generation-config"
 
-const CATEGORY_ORDER: ImageCategory[] = ["logo", "product", "audience"]
+const CATEGORY_ORDER: ImageCategory[] = ["logo", "product", "marketing", "audience"]
+
+const PLACEMENT_ORDER: MarketingPlacement[] = [
+  "billboard",
+  "flyer",
+  "digital_ad",
+  "ooh",
+  "in_home",
+]
 
 interface CategoryFormState {
   prompt: string
   model: string
+  placement: MarketingPlacement
 }
 
 export default function ImageGenerationPage() {
@@ -80,9 +91,10 @@ export default function ImageGenerationPage() {
 function StudentImageGeneration() {
   const [category, setCategory] = useState<ImageCategory>("logo")
   const [forms, setForms] = useState<Record<ImageCategory, CategoryFormState>>(() => ({
-    logo: { prompt: "", model: CATEGORIES.logo.defaultModel },
-    product: { prompt: "", model: CATEGORIES.product.defaultModel },
-    audience: { prompt: "", model: CATEGORIES.audience.defaultModel },
+    logo: { prompt: "", model: CATEGORIES.logo.defaultModel, placement: "billboard" },
+    product: { prompt: "", model: CATEGORIES.product.defaultModel, placement: "billboard" },
+    marketing: { prompt: "", model: CATEGORIES.marketing.defaultModel, placement: "billboard" },
+    audience: { prompt: "", model: CATEGORIES.audience.defaultModel, placement: "billboard" },
   }))
   const [brainstorming, setBrainstorming] = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -127,7 +139,11 @@ function StudentImageGeneration() {
       const res = await fetch("/api/image-generation/brainstorm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: original, category }),
+        body: JSON.stringify({
+          idea: original,
+          category,
+          placement: category === "marketing" ? current.placement : undefined,
+        }),
       })
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "")
@@ -175,6 +191,7 @@ function StudentImageGeneration() {
           prompt: current.prompt,
           category,
           model: current.model,
+          placement: category === "marketing" ? current.placement : undefined,
         }),
       })
       const data = await res.json()
@@ -216,7 +233,7 @@ function StudentImageGeneration() {
       </div>
 
       <Tabs value={category} onValueChange={(v) => setCategory(v as ImageCategory)}>
-        <TabsList className="grid w-full max-w-2xl grid-cols-3">
+        <TabsList className="grid w-full max-w-3xl grid-cols-4">
           {CATEGORY_ORDER.map((id) => (
             <TabsTrigger key={id} value={id}>
               {CATEGORIES[id].label}
@@ -233,8 +250,39 @@ function StudentImageGeneration() {
                   <CardDescription>{CATEGORIES[id].description}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
+                  {CATEGORIES[id].hasPlacements && (
+                    <div className="flex flex-col gap-2 sm:max-w-md">
+                      <Label htmlFor={`placement-${id}`}>Placement</Label>
+                      <Select
+                        value={forms[id].placement}
+                        onValueChange={(value) =>
+                          setForms((prev) => ({
+                            ...prev,
+                            [id]: { ...prev[id], placement: value as MarketingPlacement },
+                          }))
+                        }
+                        disabled={generating || brainstorming}
+                      >
+                        <SelectTrigger id={`placement-${id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PLACEMENT_ORDER.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {MARKETING_PLACEMENTS[p].label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-muted-foreground text-xs">
+                        {MARKETING_PLACEMENTS[forms[id].placement].description}
+                      </p>
+                    </div>
+                  )}
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor={`prompt-${id}`}>Prompt</Label>
+                    <Label htmlFor={`prompt-${id}`}>
+                      {CATEGORIES[id].hasPlacements ? "What's on the ad?" : "Prompt"}
+                    </Label>
                     <Textarea
                       id={`prompt-${id}`}
                       value={forms[id].prompt}
@@ -242,7 +290,11 @@ function StudentImageGeneration() {
                         const value = e.target.value
                         setForms((prev) => ({ ...prev, [id]: { ...prev[id], prompt: value } }))
                       }}
-                      placeholder={CATEGORIES[id].promptPlaceholder}
+                      placeholder={
+                        CATEGORIES[id].hasPlacements
+                          ? MARKETING_PLACEMENTS[forms[id].placement].examplePrompt
+                          : CATEGORIES[id].promptPlaceholder
+                      }
                       className="min-h-32"
                       disabled={brainstorming || generating}
                     />

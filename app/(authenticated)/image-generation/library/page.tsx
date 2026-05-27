@@ -25,6 +25,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "logo", label: "Logos" },
   { id: "product", label: "Products" },
+  { id: "marketing", label: "Marketing" },
   { id: "audience", label: "Other" },
 ]
 
@@ -103,7 +104,7 @@ export default function LibraryPage() {
       </div>
 
       <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
-        <TabsList className="grid w-full max-w-xl grid-cols-4">
+        <TabsList className="grid w-full max-w-2xl grid-cols-5">
           {FILTERS.map((f) => (
             <TabsTrigger key={f.id} value={f.id}>
               {f.label}
