@@ -10,6 +10,7 @@ import {
 } from "@/lib/image-generation-config"
 import { createImage, listImages, uploadImageToXano } from "@/lib/image-library-xano"
 import { fetchStudentBrand } from "@/lib/student-brand"
+import { editImageWithReference, fetchReferenceImage } from "@/lib/image-edit-gateway"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
     model?: string
     placement?: MarketingPlacement
     useBrand?: boolean
+    useLogo?: boolean
   }
 
   const rawPrompt = (body.prompt ?? "").trim()
@@ -45,7 +47,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing prompt" }, { status: 400 })
   }
 
-  const brand = body.useBrand ? await fetchStudentBrand(studentId) : null
+  const brand = body.useBrand || body.useLogo ? await fetchStudentBrand(studentId) : null
+  const useLogo = !!body.useLogo && !!brand?.primaryLogoUrl
 
   // If the prompt doesn't already reference the placement (student skipped brainstorm),
   // prepend a short context line so the image is recognizably a marketing mock-up.
@@ -80,9 +83,25 @@ export async function POST(req: NextRequest) {
   let imageBytes: Uint8Array
   let mediaType: string
   try {
-    const { image } = await generateImage({ model, prompt })
-    imageBytes = image.uint8Array
-    mediaType = image.mediaType ?? "image/png"
+    if (useLogo && brand?.primaryLogoUrl) {
+      const reference = await fetchReferenceImage(brand.primaryLogoUrl)
+      const promptWithLogoNote = `${prompt}\n\nThe attached reference image is the student's brand logo. Use it as the logo shown in the generated image — preserve its shape, colors, and proportions; do not redraw it.`
+      const result = await editImageWithReference({
+        model,
+        prompt: promptWithLogoNote,
+        reference: {
+          bytes: reference.bytes,
+          mediaType: reference.mediaType,
+          filename: "logo.png",
+        },
+      })
+      imageBytes = result.bytes
+      mediaType = result.mediaType
+    } else {
+      const { image } = await generateImage({ model, prompt })
+      imageBytes = image.uint8Array
+      mediaType = image.mediaType ?? "image/png"
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Image generation failed"
     return NextResponse.json({ error: message }, { status: 502 })

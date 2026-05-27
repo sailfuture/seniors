@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   const brand = await fetchStudentBrand(studentId)
   return NextResponse.json({
     hasContent: brand.hasContent,
-    hasLogo: brand.hasLogo,
+    hasLogo: !!brand.primaryLogoUrl,
+    logoUrl: brand.primaryLogoUrl,
   })
 }

@@ -61,6 +61,7 @@ interface CategoryFormState {
   model: string
   placement: MarketingPlacement
   useBrand: boolean
+  useLogo: boolean
 }
 
 export default function ImageGenerationPage() {
@@ -93,12 +94,14 @@ export default function ImageGenerationPage() {
 function StudentImageGeneration() {
   const [category, setCategory] = useState<ImageCategory>("logo")
   const [forms, setForms] = useState<Record<ImageCategory, CategoryFormState>>(() => ({
-    logo: { prompt: "", model: CATEGORIES.logo.defaultModel, placement: "billboard", useBrand: true },
-    product: { prompt: "", model: CATEGORIES.product.defaultModel, placement: "billboard", useBrand: true },
-    marketing: { prompt: "", model: CATEGORIES.marketing.defaultModel, placement: "billboard", useBrand: true },
-    audience: { prompt: "", model: CATEGORIES.audience.defaultModel, placement: "billboard", useBrand: true },
+    logo: { prompt: "", model: CATEGORIES.logo.defaultModel, placement: "billboard", useBrand: true, useLogo: false },
+    product: { prompt: "", model: CATEGORIES.product.defaultModel, placement: "billboard", useBrand: true, useLogo: false },
+    marketing: { prompt: "", model: CATEGORIES.marketing.defaultModel, placement: "billboard", useBrand: true, useLogo: true },
+    audience: { prompt: "", model: CATEGORIES.audience.defaultModel, placement: "billboard", useBrand: true, useLogo: false },
   }))
   const [brandAvailable, setBrandAvailable] = useState<boolean | null>(null)
+  const [logoAvailable, setLogoAvailable] = useState<boolean>(false)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [brainstorming, setBrainstorming] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -134,12 +137,19 @@ function StudentImageGeneration() {
   useEffect(() => {
     let cancelled = false
     fetch("/api/student/brand")
-      .then((r) => (r.ok ? r.json() : { hasContent: false }))
-      .then((data: { hasContent?: boolean }) => {
-        if (!cancelled) setBrandAvailable(!!data.hasContent)
+      .then((r) => (r.ok ? r.json() : { hasContent: false, hasLogo: false, logoUrl: null }))
+      .then((data: { hasContent?: boolean; hasLogo?: boolean; logoUrl?: string | null }) => {
+        if (cancelled) return
+        setBrandAvailable(!!data.hasContent)
+        setLogoAvailable(!!data.hasLogo)
+        setLogoUrl(data.logoUrl ?? null)
       })
       .catch(() => {
-        if (!cancelled) setBrandAvailable(false)
+        if (!cancelled) {
+          setBrandAvailable(false)
+          setLogoAvailable(false)
+          setLogoUrl(null)
+        }
       })
     return () => {
       cancelled = true
@@ -212,6 +222,7 @@ function StudentImageGeneration() {
           model: current.model,
           placement: category === "marketing" ? current.placement : undefined,
           useBrand: !!brandAvailable && current.useBrand,
+          useLogo: category === "marketing" && logoAvailable && current.useLogo,
         }),
       })
       const data = await res.json()
@@ -360,6 +371,37 @@ function StudentImageGeneration() {
                         <span className="text-muted-foreground text-xs">
                           Pulls in your colors, fonts, and brand voice from your business thesis.
                         </span>
+                      </span>
+                    </label>
+                  )}
+                  {id === "marketing" && logoAvailable && (
+                    <label className="flex items-start gap-2 text-sm">
+                      <Checkbox
+                        id={`use-logo-${id}`}
+                        checked={forms[id].useLogo}
+                        onCheckedChange={(checked) =>
+                          setForms((prev) => ({
+                            ...prev,
+                            [id]: { ...prev[id], useLogo: !!checked },
+                          }))
+                        }
+                        disabled={generating || brainstorming}
+                      />
+                      <span className="flex flex-col">
+                        <span>Include my actual logo in the image</span>
+                        <span className="text-muted-foreground text-xs">
+                          Uses the logo you uploaded to your business thesis as a reference, so the real mark appears on the ad. May take longer than a normal generation.
+                        </span>
+                        {logoUrl && (
+                          <span className="mt-2 inline-flex">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={logoUrl}
+                              alt="Your brand logo"
+                              className="bg-muted size-16 rounded-md border object-contain"
+                            />
+                          </span>
+                        )}
                       </span>
                     </label>
                   )}
