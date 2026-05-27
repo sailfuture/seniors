@@ -15,11 +15,11 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
     id: "logo",
     label: "Logo",
     description: "Brand marks, wordmarks, and logo concepts with clean type.",
-    defaultModel: "openai/gpt-5-image-mini",
+    defaultModel: "openai/gpt-image-2",
     alternativeModels: [
-      { id: "openai/gpt-5-image-mini", label: "GPT-5 Image Mini (text accuracy)" },
-      { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image" },
-      { id: "black-forest-labs/flux.2-pro", label: "FLUX.2 Pro" },
+      { id: "openai/gpt-image-2", label: "GPT Image 2 (text accuracy)" },
+      { id: "google/gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image" },
+      { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image (preview)" },
     ],
     promptPlaceholder:
       "e.g. A modern wordmark logo for a coffee shop called 'Driftwood', warm cream background, hand-drawn serif type",
@@ -30,11 +30,11 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
     id: "product",
     label: "Product / Business Visual",
     description: "High-quality photographic visuals of products, packaging, or scenes.",
-    defaultModel: "black-forest-labs/flux.2-pro",
+    defaultModel: "google/gemini-2.5-flash-image",
     alternativeModels: [
-      { id: "black-forest-labs/flux.2-pro", label: "FLUX.2 Pro (photoreal)" },
-      { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image" },
-      { id: "openai/gpt-5-image-mini", label: "GPT-5 Image Mini" },
+      { id: "google/gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image (photoreal)" },
+      { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image (preview)" },
+      { id: "openai/gpt-image-2", label: "GPT Image 2" },
     ],
     promptPlaceholder:
       "e.g. A matte black water bottle photographed on a wet rock at sunrise, shallow depth of field, soft golden light",
@@ -48,8 +48,8 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
     defaultModel: "google/gemini-3.1-flash-image-preview",
     alternativeModels: [
       { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image (default)" },
-      { id: "black-forest-labs/flux.2-pro", label: "FLUX.2 Pro" },
-      { id: "openai/gpt-5-image-mini", label: "GPT-5 Image Mini" },
+      { id: "google/gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image" },
+      { id: "openai/gpt-image-2", label: "GPT Image 2" },
     ],
     promptPlaceholder:
       "e.g. A college student studying in a sunlit campus cafe, laptop open, friends laughing in the background",
@@ -58,7 +58,7 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
   },
 }
 
-export const BRAINSTORM_MODEL = "google/gemini-3-flash"
+export const BRAINSTORM_MODEL = "openai/gpt-5-nano"
 
 export interface XanoFileMetadata {
   access?: string

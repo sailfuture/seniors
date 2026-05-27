@@ -116,27 +116,42 @@ function StudentImageGeneration() {
     if (!current.prompt.trim() || brainstorming || generating) return
     setError(null)
     setBrainstorming(true)
+    const original = current.prompt
     try {
       const res = await fetch("/api/image-generation/brainstorm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: current.prompt, category }),
+        body: JSON.stringify({ idea: original, category }),
       })
       if (!res.ok || !res.body) {
-        setError(`Brainstorm failed (${res.status})`)
+        const text = await res.text().catch(() => "")
+        setError(`Brainstorm failed (${res.status})${text ? `: ${text}` : ""}`)
         return
       }
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let assembled = ""
-      setPrompt("")
+      let cleared = false
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        assembled += decoder.decode(value, { stream: true })
+        const chunk = decoder.decode(value, { stream: true })
+        if (!chunk) continue
+        if (!cleared) {
+          cleared = true
+          assembled = chunk
+        } else {
+          assembled += chunk
+        }
         setForms((prev) => ({ ...prev, [category]: { ...prev[category], prompt: assembled } }))
       }
+      if (!cleared) {
+        // Stream ended with no content — keep the original prompt.
+        setError("Brainstorm returned no content")
+      }
     } catch (err) {
+      // Restore the original prompt on any failure.
+      setForms((prev) => ({ ...prev, [category]: { ...prev[category], prompt: original } }))
       setError(err instanceof Error ? err.message : "Brainstorm failed")
     } finally {
       setBrainstorming(false)
