@@ -18,8 +18,6 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
     defaultModel: "openai/gpt-image-2",
     alternativeModels: [
       { id: "openai/gpt-image-2", label: "GPT Image 2 (text accuracy)" },
-      { id: "google/gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image" },
-      { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image (preview)" },
     ],
     promptPlaceholder:
       "e.g. A modern wordmark logo for a coffee shop called 'Driftwood', warm cream background, hand-drawn serif type",
@@ -30,11 +28,9 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
     id: "product",
     label: "Product / Business Visual",
     description: "High-quality photographic visuals of products, packaging, or scenes.",
-    defaultModel: "google/gemini-2.5-flash-image",
+    defaultModel: "openai/gpt-image-2",
     alternativeModels: [
-      { id: "google/gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image (photoreal)" },
-      { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image (preview)" },
-      { id: "openai/gpt-image-2", label: "GPT Image 2" },
+      { id: "openai/gpt-image-2", label: "GPT Image 2 (photoreal)" },
     ],
     promptPlaceholder:
       "e.g. A matte black water bottle photographed on a wet rock at sunrise, shallow depth of field, soft golden light",
@@ -45,10 +41,8 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
     id: "audience",
     label: "Other",
     description: "Target audience personas, brand reference images, lifestyle scenes, mood boards, and anything else.",
-    defaultModel: "google/gemini-3.1-flash-image-preview",
+    defaultModel: "openai/gpt-image-2",
     alternativeModels: [
-      { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image (default)" },
-      { id: "google/gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image" },
       { id: "openai/gpt-image-2", label: "GPT Image 2" },
     ],
     promptPlaceholder:
@@ -59,6 +53,17 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
 }
 
 export const BRAINSTORM_MODEL = "openai/gpt-5-nano"
+
+export const MAX_IMAGES_PER_STUDENT = 50
+
+export const GENERATION_TIPS = [
+  "Sketching the concept…",
+  "Choosing a color palette…",
+  "Composing the scene…",
+  "Refining the details…",
+  "Polishing the final image…",
+  "Saving to your library…",
+]
 
 export interface XanoFileMetadata {
   access?: string

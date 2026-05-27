@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { experimental_generateImage as generateImage } from "ai"
 import { getApiSession } from "@/lib/api-auth"
-import { CATEGORIES, type ImageCategory } from "@/lib/image-generation-config"
-import { createImage, uploadImageToXano } from "@/lib/image-library-xano"
+import {
+  CATEGORIES,
+  MAX_IMAGES_PER_STUDENT,
+  type ImageCategory,
+} from "@/lib/image-generation-config"
+import { createImage, listImages, uploadImageToXano } from "@/lib/image-library-xano"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -30,6 +34,23 @@ export async function POST(req: NextRequest) {
 
   if (!prompt) {
     return NextResponse.json({ error: "Missing prompt" }, { status: 400 })
+  }
+
+  try {
+    const existing = await listImages(studentId)
+    if (existing.length >= MAX_IMAGES_PER_STUDENT) {
+      return NextResponse.json(
+        {
+          error: `You've reached the ${MAX_IMAGES_PER_STUDENT}-image limit for this class. Talk to your teacher if you need more.`,
+          used: existing.length,
+          limit: MAX_IMAGES_PER_STUDENT,
+        },
+        { status: 429 },
+      )
+    }
+  } catch {
+    // If the quota check fails, fall through and let the generation attempt run.
+    // Better to occasionally over-allow than to block legitimate use on a Xano hiccup.
   }
 
   let imageBytes: Uint8Array

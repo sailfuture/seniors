@@ -1,11 +1,18 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSession } from "next-auth/react"
+import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Image01Icon, MagicWand01Icon, Download01Icon, ArrowRight02Icon } from "@hugeicons/core-free-icons"
+import {
+  Image01Icon,
+  MagicWand01Icon,
+  Download01Icon,
+  ArrowRight02Icon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -30,6 +37,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 import {
   CATEGORIES,
+  GENERATION_TIPS,
+  MAX_IMAGES_PER_STUDENT,
   type GeneratedImage,
   type ImageCategory,
 } from "@/lib/image-generation-config"
@@ -78,39 +87,36 @@ function StudentImageGeneration() {
   const [brainstorming, setBrainstorming] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [recent, setRecent] = useState<GeneratedImage[]>([])
-  const [recentLoading, setRecentLoading] = useState(true)
+  const [allImages, setAllImages] = useState<GeneratedImage[]>([])
+  const [imagesLoading, setImagesLoading] = useState(true)
 
-  const loadRecent = useCallback(async () => {
-    setRecentLoading(true)
+  const recent = useMemo(() => allImages.slice(0, 8), [allImages])
+  const used = allImages.length
+  const remaining = Math.max(0, MAX_IMAGES_PER_STUDENT - used)
+  const atLimit = remaining === 0
+
+  const loadImages = useCallback(async () => {
+    setImagesLoading(true)
     try {
       const res = await fetch("/api/image-generation/library")
       if (!res.ok) {
-        setRecent([])
+        setAllImages([])
         return
       }
       const data = (await res.json()) as GeneratedImage[]
-      setRecent(Array.isArray(data) ? data.slice(0, 8) : [])
+      setAllImages(Array.isArray(data) ? data : [])
     } catch {
-      setRecent([])
+      setAllImages([])
     } finally {
-      setRecentLoading(false)
+      setImagesLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    loadRecent()
-  }, [loadRecent])
+    loadImages()
+  }, [loadImages])
 
-  const config = CATEGORIES[category]
   const current = forms[category]
-
-  const setPrompt = (value: string) => {
-    setForms((prev) => ({ ...prev, [category]: { ...prev[category], prompt: value } }))
-  }
-  const setModel = (value: string) => {
-    setForms((prev) => ({ ...prev, [category]: { ...prev[category], model: value } }))
-  }
 
   const handleBrainstorm = async () => {
     if (!current.prompt.trim() || brainstorming || generating) return
@@ -146,11 +152,9 @@ function StudentImageGeneration() {
         setForms((prev) => ({ ...prev, [category]: { ...prev[category], prompt: assembled } }))
       }
       if (!cleared) {
-        // Stream ended with no content — keep the original prompt.
         setError("Brainstorm returned no content")
       }
     } catch (err) {
-      // Restore the original prompt on any failure.
       setForms((prev) => ({ ...prev, [category]: { ...prev[category], prompt: original } }))
       setError(err instanceof Error ? err.message : "Brainstorm failed")
     } finally {
@@ -159,9 +163,10 @@ function StudentImageGeneration() {
   }
 
   const handleGenerate = async () => {
-    if (!current.prompt.trim() || generating || brainstorming) return
+    if (!current.prompt.trim() || generating || brainstorming || atLimit) return
     setError(null)
     setGenerating(true)
+    const generationToast = toast.loading("Generating image — this can take 15–40 seconds.")
     try {
       const res = await fetch("/api/image-generation/generate", {
         method: "POST",
@@ -174,15 +179,20 @@ function StudentImageGeneration() {
       })
       const data = await res.json()
       if (!res.ok && res.status !== 207) {
-        setError(data?.error ?? `Generate failed (${res.status})`)
+        const message = data?.error ?? `Generate failed (${res.status})`
+        setError(message)
+        toast.error(message, { id: generationToast })
         return
       }
       if (data?.warning) {
         setError(`Saved image, but library write failed: ${data.warning}`)
       }
-      await loadRecent()
+      toast.success("Image ready — saved to your library.", { id: generationToast })
+      await loadImages()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generate failed")
+      const message = err instanceof Error ? err.message : "Generate failed"
+      setError(message)
+      toast.error(message, { id: generationToast })
     } finally {
       setGenerating(false)
     }
@@ -194,7 +204,12 @@ function StudentImageGeneration() {
         <div className="bg-primary/10 flex size-10 items-center justify-center rounded-lg">
           <HugeiconsIcon icon={Image01Icon} strokeWidth={2} className="text-primary size-5" />
         </div>
-        <h1 className="text-2xl font-bold">Image Generation</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h1 className="text-2xl font-bold">Image Generation</h1>
+          <span className="text-muted-foreground text-sm">
+            {used} of {MAX_IMAGES_PER_STUDENT} images used
+          </span>
+        </div>
         <p className="text-muted-foreground">
           Generate logos, product visuals, and audience images for your business. All images are saved to your library.
         </p>
@@ -211,69 +226,90 @@ function StudentImageGeneration() {
 
         {CATEGORY_ORDER.map((id) => (
           <TabsContent key={id} value={id} className="mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>{CATEGORIES[id].label}</CardTitle>
-                <CardDescription>{CATEGORIES[id].description}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor={`prompt-${id}`}>Prompt</Label>
-                  <Textarea
-                    id={`prompt-${id}`}
-                    value={forms[id].prompt}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setForms((prev) => ({ ...prev, [id]: { ...prev[id], prompt: value } }))
-                    }}
-                    placeholder={CATEGORIES[id].promptPlaceholder}
-                    className="min-h-32"
-                    disabled={brainstorming || generating}
-                  />
-                </div>
-                <div className="flex flex-col gap-2 sm:max-w-md">
-                  <Label htmlFor={`model-${id}`}>Model</Label>
-                  <Select
-                    value={forms[id].model}
-                    onValueChange={(value) =>
-                      setForms((prev) => ({ ...prev, [id]: { ...prev[id], model: value } }))
-                    }
-                    disabled={generating || brainstorming}
+            <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{CATEGORIES[id].label}</CardTitle>
+                  <CardDescription>{CATEGORIES[id].description}</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor={`prompt-${id}`}>Prompt</Label>
+                    <Textarea
+                      id={`prompt-${id}`}
+                      value={forms[id].prompt}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setForms((prev) => ({ ...prev, [id]: { ...prev[id], prompt: value } }))
+                      }}
+                      placeholder={CATEGORIES[id].promptPlaceholder}
+                      className="min-h-32"
+                      disabled={brainstorming || generating}
+                    />
+                  </div>
+                  {CATEGORIES[id].alternativeModels.length > 1 && (
+                    <div className="flex flex-col gap-2 sm:max-w-md">
+                      <Label htmlFor={`model-${id}`}>Model</Label>
+                      <Select
+                        value={forms[id].model}
+                        onValueChange={(value) =>
+                          setForms((prev) => ({ ...prev, [id]: { ...prev[id], model: value } }))
+                        }
+                        disabled={generating || brainstorming}
+                      >
+                        <SelectTrigger id={`model-${id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CATEGORIES[id].alternativeModels.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {atLimit && (
+                    <p className="text-destructive text-sm">
+                      You&apos;ve reached the {MAX_IMAGES_PER_STUDENT}-image class limit. Ask your teacher if you need more.
+                    </p>
+                  )}
+                  {error && id === category && (
+                    <p className="text-destructive text-sm">{error}</p>
+                  )}
+                </CardContent>
+                <CardFooter className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleBrainstorm}
+                    disabled={!current.prompt.trim() || brainstorming || generating || id !== category}
                   >
-                    <SelectTrigger id={`model-${id}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES[id].alternativeModels.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {error && id === category && (
-                  <p className="text-destructive text-sm">{error}</p>
-                )}
-              </CardContent>
-              <CardFooter className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  onClick={handleBrainstorm}
-                  disabled={!current.prompt.trim() || brainstorming || generating || id !== category}
-                >
-                  <HugeiconsIcon icon={MagicWand01Icon} strokeWidth={2} className="size-4" />
-                  {brainstorming && id === category ? "Brainstorming…" : "Help me write a prompt"}
-                </Button>
-                <Button
-                  onClick={handleGenerate}
-                  disabled={!current.prompt.trim() || generating || brainstorming || id !== category}
-                >
-                  <HugeiconsIcon icon={Image01Icon} strokeWidth={2} className="size-4" />
-                  {generating && id === category ? "Generating…" : "Generate image"}
-                </Button>
-              </CardFooter>
-            </Card>
+                    {brainstorming && id === category ? (
+                      <HugeiconsIcon icon={Loading03Icon} strokeWidth={2} className="size-4 animate-spin" />
+                    ) : (
+                      <HugeiconsIcon icon={MagicWand01Icon} strokeWidth={2} className="size-4" />
+                    )}
+                    {brainstorming && id === category ? "Polishing your prompt…" : "Help me write a prompt"}
+                  </Button>
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={
+                      !current.prompt.trim() || generating || brainstorming || id !== category || atLimit
+                    }
+                  >
+                    {generating && id === category ? (
+                      <HugeiconsIcon icon={Loading03Icon} strokeWidth={2} className="size-4 animate-spin" />
+                    ) : (
+                      <HugeiconsIcon icon={Image01Icon} strokeWidth={2} className="size-4" />
+                    )}
+                    {generating && id === category ? "Generating…" : "Generate image"}
+                  </Button>
+                </CardFooter>
+              </Card>
+
+              {generating && id === category && <GenerationPreview />}
+            </div>
           </TabsContent>
         ))}
       </Tabs>
@@ -289,7 +325,7 @@ function StudentImageGeneration() {
             <HugeiconsIcon icon={ArrowRight02Icon} strokeWidth={2} className="size-4" />
           </Link>
         </div>
-        {recentLoading ? (
+        {imagesLoading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="aspect-square w-full rounded-md" />
@@ -306,6 +342,47 @@ function StudentImageGeneration() {
         )}
       </section>
     </div>
+  )
+}
+
+function GenerationPreview() {
+  const [tipIndex, setTipIndex] = useState(0)
+  const startRef = useRef(Date.now())
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    const tipTimer = setInterval(() => {
+      setTipIndex((i) => (i + 1) % GENERATION_TIPS.length)
+    }, 3500)
+    const elapsedTimer = setInterval(() => {
+      setElapsed(Math.round((Date.now() - startRef.current) / 1000))
+    }, 1000)
+    return () => {
+      clearInterval(tipTimer)
+      clearInterval(elapsedTimer)
+    }
+  }, [])
+
+  return (
+    <Card className="lg:w-72">
+      <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
+        <div className="bg-muted relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-md">
+          <div className="bg-muted-foreground/10 absolute inset-0 animate-pulse" />
+          <HugeiconsIcon
+            icon={Loading03Icon}
+            strokeWidth={2}
+            className="text-muted-foreground relative size-10 animate-spin"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-medium">{GENERATION_TIPS[tipIndex]}</p>
+          <p className="text-muted-foreground text-xs">{elapsed}s elapsed</p>
+        </div>
+        <p className="text-muted-foreground text-xs">
+          Feel free to keep working — we&apos;ll save the image to your library when it&apos;s ready.
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
