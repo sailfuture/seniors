@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Checkbox } from "@/components/ui/checkbox"
 
 import {
   CATEGORIES,
@@ -59,6 +60,7 @@ interface CategoryFormState {
   prompt: string
   model: string
   placement: MarketingPlacement
+  useBrand: boolean
 }
 
 export default function ImageGenerationPage() {
@@ -91,11 +93,12 @@ export default function ImageGenerationPage() {
 function StudentImageGeneration() {
   const [category, setCategory] = useState<ImageCategory>("logo")
   const [forms, setForms] = useState<Record<ImageCategory, CategoryFormState>>(() => ({
-    logo: { prompt: "", model: CATEGORIES.logo.defaultModel, placement: "billboard" },
-    product: { prompt: "", model: CATEGORIES.product.defaultModel, placement: "billboard" },
-    marketing: { prompt: "", model: CATEGORIES.marketing.defaultModel, placement: "billboard" },
-    audience: { prompt: "", model: CATEGORIES.audience.defaultModel, placement: "billboard" },
+    logo: { prompt: "", model: CATEGORIES.logo.defaultModel, placement: "billboard", useBrand: true },
+    product: { prompt: "", model: CATEGORIES.product.defaultModel, placement: "billboard", useBrand: true },
+    marketing: { prompt: "", model: CATEGORIES.marketing.defaultModel, placement: "billboard", useBrand: true },
+    audience: { prompt: "", model: CATEGORIES.audience.defaultModel, placement: "billboard", useBrand: true },
   }))
+  const [brandAvailable, setBrandAvailable] = useState<boolean | null>(null)
   const [brainstorming, setBrainstorming] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -128,6 +131,21 @@ function StudentImageGeneration() {
     loadImages()
   }, [loadImages])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/student/brand")
+      .then((r) => (r.ok ? r.json() : { hasContent: false }))
+      .then((data: { hasContent?: boolean }) => {
+        if (!cancelled) setBrandAvailable(!!data.hasContent)
+      })
+      .catch(() => {
+        if (!cancelled) setBrandAvailable(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const current = forms[category]
 
   const handleBrainstorm = async () => {
@@ -143,6 +161,7 @@ function StudentImageGeneration() {
           idea: original,
           category,
           placement: category === "marketing" ? current.placement : undefined,
+          useBrand: !!brandAvailable && current.useBrand,
         }),
       })
       if (!res.ok || !res.body) {
@@ -192,6 +211,7 @@ function StudentImageGeneration() {
           category,
           model: current.model,
           placement: category === "marketing" ? current.placement : undefined,
+          useBrand: !!brandAvailable && current.useBrand,
         }),
       })
       const data = await res.json()
@@ -321,6 +341,32 @@ function StudentImageGeneration() {
                         </SelectContent>
                       </Select>
                     </div>
+                  )}
+                  {brandAvailable && (
+                    <label className="flex items-start gap-2 text-sm">
+                      <Checkbox
+                        id={`use-brand-${id}`}
+                        checked={forms[id].useBrand}
+                        onCheckedChange={(checked) =>
+                          setForms((prev) => ({
+                            ...prev,
+                            [id]: { ...prev[id], useBrand: !!checked },
+                          }))
+                        }
+                        disabled={generating || brainstorming}
+                      />
+                      <span className="flex flex-col">
+                        <span>Use my brand identity</span>
+                        <span className="text-muted-foreground text-xs">
+                          Pulls in your colors, fonts, and brand voice from your business thesis.
+                        </span>
+                      </span>
+                    </label>
+                  )}
+                  {brandAvailable === false && (
+                    <p className="text-muted-foreground text-xs">
+                      Tip: fill in the branding section of your business thesis to automatically include your brand colors, fonts, and voice in every generation.
+                    </p>
                   )}
                   {atLimit && (
                     <p className="text-destructive text-sm">

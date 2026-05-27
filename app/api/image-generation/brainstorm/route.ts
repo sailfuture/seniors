@@ -8,6 +8,7 @@ import {
   type ImageCategory,
   type MarketingPlacement,
 } from "@/lib/image-generation-config"
+import { fetchStudentBrand } from "@/lib/student-brand"
 
 export const runtime = "nodejs"
 
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
     idea?: string
     category?: ImageCategory
     placement?: MarketingPlacement
+    useBrand?: boolean
   }
   const idea = (body.idea ?? "").trim()
   const category = body.category && CATEGORIES[body.category] ? body.category : "audience"
@@ -33,14 +35,25 @@ export async function POST(req: NextRequest) {
     return new Response("Missing idea", { status: 400 })
   }
 
-  const userPrompt = placement
-    ? `Placement: ${placement.label} — ${placement.contextHint}.\n\nStudent's rough idea for what should be on the ad:\n\n${idea}`
-    : `Student's rough idea:\n\n${idea}`
+  const brand = body.useBrand && user.students_id ? await fetchStudentBrand(user.students_id) : null
+
+  const parts: string[] = []
+  if (placement) {
+    parts.push(`Placement: ${placement.label} — ${placement.contextHint}.`)
+  }
+  if (brand?.hasContent) {
+    parts.push(`Student's brand identity (use these in the prompt):\n${brand.textBlock}`)
+  }
+  parts.push(
+    placement
+      ? `Student's rough idea for what should be on the ad:\n\n${idea}`
+      : `Student's rough idea:\n\n${idea}`,
+  )
 
   const result = streamText({
     model: BRAINSTORM_MODEL,
     system: CATEGORIES[category].brainstormSystemPrompt,
-    prompt: userPrompt,
+    prompt: parts.join("\n\n"),
   })
 
   return result.toTextStreamResponse()

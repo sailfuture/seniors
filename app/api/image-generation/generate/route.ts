@@ -9,6 +9,7 @@ import {
   type MarketingPlacement,
 } from "@/lib/image-generation-config"
 import { createImage, listImages, uploadImageToXano } from "@/lib/image-library-xano"
+import { fetchStudentBrand } from "@/lib/student-brand"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
     category?: ImageCategory
     model?: string
     placement?: MarketingPlacement
+    useBrand?: boolean
   }
 
   const rawPrompt = (body.prompt ?? "").trim()
@@ -43,12 +45,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing prompt" }, { status: 400 })
   }
 
-  // If the prompt doesn't already reference the placement (i.e. student skipped brainstorm),
+  const brand = body.useBrand ? await fetchStudentBrand(studentId) : null
+
+  // If the prompt doesn't already reference the placement (student skipped brainstorm),
   // prepend a short context line so the image is recognizably a marketing mock-up.
-  const prompt =
+  const withPlacement =
     placement && !rawPrompt.toLowerCase().includes(placement.label.toLowerCase())
       ? `Photorealistic mock-up of ${placement.contextHint}. The ad shows: ${rawPrompt}`
       : rawPrompt
+
+  // If brand context is on and isn't already woven into the prompt, prepend it.
+  const prompt =
+    brand?.hasContent && !withPlacement.toLowerCase().includes("brand")
+      ? `${withPlacement}\n\nBrand identity: ${brand.textBlock.replace(/\n/g, " ")}`
+      : withPlacement
 
   try {
     const existing = await listImages(studentId)
