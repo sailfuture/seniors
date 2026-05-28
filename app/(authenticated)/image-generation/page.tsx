@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSession } from "next-auth/react"
@@ -115,6 +115,7 @@ function StudentImageGeneration() {
   const [brandDetails, setBrandDetails] = useState<BrandPanelData | null>(null)
   const [brainstorming, setBrainstorming] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [allImages, setAllImages] = useState<GeneratedImage[]>([])
   const [imagesLoading, setImagesLoading] = useState(true)
@@ -245,6 +246,7 @@ function StudentImageGeneration() {
     if (!current.prompt.trim() || generating || brainstorming || atLimit) return
     setError(null)
     setGenerating(true)
+    setGenerationStartedAt(Date.now())
     const generationToast = toast.loading("Generating image — this can take 15–40 seconds.")
     try {
       const res = await fetch("/api/image-generation/generate", {
@@ -277,6 +279,7 @@ function StudentImageGeneration() {
       toast.error(message, { id: generationToast })
     } finally {
       setGenerating(false)
+      setGenerationStartedAt(null)
     }
   }
 
@@ -493,7 +496,9 @@ function StudentImageGeneration() {
                 </CardFooter>
               </Card>
 
-              {generating && id === category && <GenerationOverlay />}
+              {generating && id === category && generationStartedAt && (
+                <GenerationOverlay startedAt={generationStartedAt} />
+              )}
             </div>
           </TabsContent>
         ))}
@@ -521,23 +526,24 @@ function StudentImageGeneration() {
   )
 }
 
-function GenerationOverlay() {
-  const [tipIndex, setTipIndex] = useState(0)
-  const startRef = useRef(Date.now())
-  const [elapsed, setElapsed] = useState(0)
+function GenerationOverlay({ startedAt }: { startedAt: number }) {
+  const [tipIndex, setTipIndex] = useState(() =>
+    Math.floor((Date.now() - startedAt) / 3500) % GENERATION_TIPS.length,
+  )
+  const [elapsed, setElapsed] = useState(() => Math.round((Date.now() - startedAt) / 1000))
 
   useEffect(() => {
     const tipTimer = setInterval(() => {
-      setTipIndex((i) => (i + 1) % GENERATION_TIPS.length)
+      setTipIndex(Math.floor((Date.now() - startedAt) / 3500) % GENERATION_TIPS.length)
     }, 3500)
     const elapsedTimer = setInterval(() => {
-      setElapsed(Math.round((Date.now() - startRef.current) / 1000))
+      setElapsed(Math.round((Date.now() - startedAt) / 1000))
     }, 1000)
     return () => {
       clearInterval(tipTimer)
       clearInterval(elapsedTimer)
     }
-  }, [])
+  }, [startedAt])
 
   return (
     <div
