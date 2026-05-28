@@ -15,5 +15,10 @@ export async function GET(req: NextRequest) {
     hasContent: brand.hasContent,
     hasLogo: !!brand.primaryLogoUrl,
     logoUrl: brand.primaryLogoUrl,
+    logoUrls: brand.logoUrls,
+    colors: brand.colors,
+    fonts: brand.fonts,
+    moods: brand.moods,
+    otherNotes: brand.otherNotes,
   })
 }

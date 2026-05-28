@@ -22,6 +22,11 @@ interface XanoFileBlob {
   name?: string
 }
 
+export interface BrandColor {
+  name: string
+  hex: string
+}
+
 export interface StudentBrand {
   /** A formatted block of brand context ready to inject into an LLM prompt. */
   textBlock: string
@@ -31,6 +36,14 @@ export interface StudentBrand {
   logoUrls: string[]
   /** Convenience: first logo url, or null. */
   primaryLogoUrl: string | null
+  /** Parsed brand colors (name + hex) for display. */
+  colors: BrandColor[]
+  /** Typography choices (font names). */
+  fonts: string[]
+  /** Brand mood / voice descriptions. */
+  moods: string[]
+  /** Any other notes we couldn't classify. */
+  otherNotes: string[]
 }
 
 const EMPTY_BRAND: StudentBrand = {
@@ -38,6 +51,21 @@ const EMPTY_BRAND: StudentBrand = {
   hasContent: false,
   logoUrls: [],
   primaryLogoUrl: null,
+  colors: [],
+  fonts: [],
+  moods: [],
+  otherNotes: [],
+}
+
+function parseColor(text: string): BrandColor | null {
+  const hexMatch = text.match(/#[0-9a-f]{3,8}/i)
+  if (!hexMatch) return null
+  // Try to extract a friendly name from "Name: Warm beige Code:#9d886a"
+  const nameMatch = text.match(/name[:\s]+([^#\n]+?)(?:\s*code\s*[:=]|\s*#|$)/i)
+  let name = nameMatch?.[1]?.trim() ?? ""
+  // Strip trailing punctuation
+  name = name.replace(/[,:;|]+$/, "").trim()
+  return { name: name || "Brand color", hex: hexMatch[0].toLowerCase() }
 }
 
 function resolveFileUrl(blob: XanoFileBlob | null | undefined): string | null {
@@ -57,10 +85,10 @@ export async function fetchStudentBrand(studentId: string): Promise<StudentBrand
     const items = (await res.json()) as XanoBrandElement[]
     if (!Array.isArray(items)) return EMPTY_BRAND
 
-    const colors: string[] = []
+    const colors: BrandColor[] = []
     const fonts: string[] = []
     const moods: string[] = []
-    const other: string[] = []
+    const otherNotes: string[] = []
     const logoUrls: string[] = []
 
     for (const item of items) {
@@ -71,22 +99,27 @@ export async function fetchStudentBrand(studentId: string): Promise<StudentBrand
       const text = (item.student_response ?? "").trim()
       if (!text) continue
 
-      const looksLikeColor = /#[0-9a-f]{3,8}/i.test(text) || /^name[:\s]/i.test(text)
+      const parsedColor = parseColor(text)
+      if (parsedColor) {
+        colors.push(parsedColor)
+        continue
+      }
+
       const looksLikeFont =
         text.length < 40 && !text.includes(" ") && !text.includes(":") && !text.includes("#")
       const looksLikeMood = text.length > 60
 
-      if (looksLikeColor) colors.push(text)
-      else if (looksLikeFont) fonts.push(text)
+      if (looksLikeFont) fonts.push(text)
       else if (looksLikeMood) moods.push(text)
-      else other.push(text)
+      else otherNotes.push(text)
     }
 
     const lines: string[] = []
-    if (colors.length) lines.push(`Brand colors: ${colors.join("; ")}`)
+    if (colors.length)
+      lines.push(`Brand colors: ${colors.map((c) => `${c.name} (${c.hex})`).join("; ")}`)
     if (fonts.length) lines.push(`Typography: ${fonts.join(", ")}`)
     if (moods.length) lines.push(`Brand mood and voice: ${moods.join(" ")}`)
-    if (other.length) lines.push(`Other brand notes: ${other.join("; ")}`)
+    if (otherNotes.length) lines.push(`Other brand notes: ${otherNotes.join("; ")}`)
     if (logoUrls.length) lines.push("(Student has uploaded a brand logo.)")
 
     const textBlock = lines.join("\n")
@@ -95,6 +128,10 @@ export async function fetchStudentBrand(studentId: string): Promise<StudentBrand
       hasContent: textBlock.length > 0,
       logoUrls,
       primaryLogoUrl: logoUrls[0] ?? null,
+      colors,
+      fonts,
+      moods,
+      otherNotes,
     }
   } catch {
     return EMPTY_BRAND

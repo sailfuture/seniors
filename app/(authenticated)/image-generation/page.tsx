@@ -48,6 +48,14 @@ import {
 
 const CATEGORY_ORDER: ImageCategory[] = ["logo", "product", "marketing", "audience"]
 
+interface BrandPanelData {
+  colors: { name: string; hex: string }[]
+  fonts: string[]
+  moods: string[]
+  otherNotes: string[]
+  logoUrls: string[]
+}
+
 const PLACEMENT_ORDER: MarketingPlacement[] = [
   "billboard",
   "flyer",
@@ -102,6 +110,7 @@ function StudentImageGeneration() {
   const [brandAvailable, setBrandAvailable] = useState<boolean | null>(null)
   const [logoAvailable, setLogoAvailable] = useState<boolean>(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [brandDetails, setBrandDetails] = useState<BrandPanelData | null>(null)
   const [brainstorming, setBrainstorming] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -137,18 +146,41 @@ function StudentImageGeneration() {
   useEffect(() => {
     let cancelled = false
     fetch("/api/student/brand")
-      .then((r) => (r.ok ? r.json() : { hasContent: false, hasLogo: false, logoUrl: null }))
-      .then((data: { hasContent?: boolean; hasLogo?: boolean; logoUrl?: string | null }) => {
-        if (cancelled) return
-        setBrandAvailable(!!data.hasContent)
-        setLogoAvailable(!!data.hasLogo)
-        setLogoUrl(data.logoUrl ?? null)
-      })
+      .then((r) => (r.ok ? r.json() : { hasContent: false }))
+      .then(
+        (data: {
+          hasContent?: boolean
+          hasLogo?: boolean
+          logoUrl?: string | null
+          logoUrls?: string[]
+          colors?: { name: string; hex: string }[]
+          fonts?: string[]
+          moods?: string[]
+          otherNotes?: string[]
+        }) => {
+          if (cancelled) return
+          setBrandAvailable(!!data.hasContent)
+          setLogoAvailable(!!data.hasLogo)
+          setLogoUrl(data.logoUrl ?? null)
+          if (data.hasContent) {
+            setBrandDetails({
+              colors: data.colors ?? [],
+              fonts: data.fonts ?? [],
+              moods: data.moods ?? [],
+              otherNotes: data.otherNotes ?? [],
+              logoUrls: data.logoUrls ?? [],
+            })
+          } else {
+            setBrandDetails(null)
+          }
+        },
+      )
       .catch(() => {
         if (!cancelled) {
           setBrandAvailable(false)
           setLogoAvailable(false)
           setLogoUrl(null)
+          setBrandDetails(null)
         }
       })
     return () => {
@@ -262,6 +294,8 @@ function StudentImageGeneration() {
           Generate logos, product visuals, and audience images for your business. All images are saved to your library.
         </p>
       </div>
+
+      {brandDetails && <BrandPanel brand={brandDetails} />}
 
       <Tabs value={category} onValueChange={(v) => setCategory(v as ImageCategory)}>
         <TabsList className="grid w-full max-w-3xl grid-cols-4">
@@ -520,6 +554,115 @@ function GenerationPreview() {
         </div>
         <p className="text-muted-foreground text-xs">
           Feel free to keep working — we&apos;ll save the image to your library when it&apos;s ready.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function BrandPanel({ brand }: { brand: BrandPanelData }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Your brand identity</CardTitle>
+        <CardDescription>
+          Pulled from your business thesis. Generations will use these by default.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {brand.logoUrls.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+              Logo
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {brand.logoUrls.map((url) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={url}
+                  src={url}
+                  alt="Brand logo"
+                  className="bg-muted size-20 rounded-md border object-contain p-1"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {brand.colors.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+              Colors
+            </span>
+            <div className="flex flex-wrap gap-3">
+              {brand.colors.map((c, i) => (
+                <div key={`${c.hex}-${i}`} className="flex items-center gap-2">
+                  <span
+                    className="size-8 rounded-md border"
+                    style={{ backgroundColor: c.hex }}
+                    aria-label={`${c.name} swatch`}
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm">{c.name}</span>
+                    <span className="text-muted-foreground font-mono text-xs">{c.hex}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {brand.fonts.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+              Typography
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {brand.fonts.map((f) => (
+                <span
+                  key={f}
+                  className="bg-muted text-sm rounded-md border px-3 py-1"
+                  style={{ fontFamily: f }}
+                >
+                  {f}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {brand.moods.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+              Brand mood & voice
+            </span>
+            {brand.moods.map((m, i) => (
+              <p key={i} className="text-muted-foreground text-sm">
+                {m}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {brand.otherNotes.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+              Other notes
+            </span>
+            {brand.otherNotes.map((n, i) => (
+              <p key={i} className="text-muted-foreground text-sm">
+                {n}
+              </p>
+            ))}
+          </div>
+        )}
+
+        <p className="text-muted-foreground text-xs">
+          Edit these in your{" "}
+          <Link href="/business-thesis" className="text-primary hover:underline">
+            business thesis
+          </Link>
+          .
         </p>
       </CardContent>
     </Card>
