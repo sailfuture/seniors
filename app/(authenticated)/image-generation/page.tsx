@@ -316,8 +316,6 @@ function StudentImageGeneration() {
         </div>
       </div>
 
-      {brandDetails && <BrandPanel brand={brandDetails} />}
-
       <Tabs value={category} onValueChange={(v) => setCategory(v as ImageCategory)}>
         <TabsList className="grid w-full grid-cols-4">
           {CATEGORY_ORDER.map((id) => (
@@ -514,6 +512,8 @@ function StudentImageGeneration() {
         ))}
       </Tabs>
 
+      {brandDetails && <BrandPanel brand={brandDetails} />}
+
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Recent generations</h2>
         {imagesLoading ? (
@@ -586,7 +586,7 @@ function BrandPanel({ brand }: { brand: BrandPanelData }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Your brand identity</CardTitle>
+        <CardTitle>Brand Identity</CardTitle>
         <CardDescription>
           Pulled from your business thesis. Generations will use these by default.
         </CardDescription>
