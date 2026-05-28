@@ -10,7 +10,11 @@ import {
 } from "@/lib/image-generation-config"
 import { createImage, listImages, uploadImageToXano } from "@/lib/image-library-xano"
 import { fetchStudentBrand } from "@/lib/student-brand"
-import { editImageWithReference, fetchReferenceImage } from "@/lib/image-edit-gateway"
+import {
+  editImageWithReference,
+  fetchReferenceImage,
+  LOGO_REFERENCE_MODEL,
+} from "@/lib/image-edit-gateway"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -82,17 +86,20 @@ export async function POST(req: NextRequest) {
 
   let imageBytes: Uint8Array
   let mediaType: string
+  let modelUsed = model
   try {
     if (useLogo && brand?.primaryLogoUrl) {
+      modelUsed = LOGO_REFERENCE_MODEL
       const reference = await fetchReferenceImage(brand.primaryLogoUrl)
       const promptWithLogoNote = `${prompt}\n\nThe attached reference image is the student's brand logo. Use it as the logo shown in the generated image — preserve its shape, colors, and proportions; do not redraw it.`
       const result = await editImageWithReference({
-        model,
+        // Force a multimodal model that supports image input + image output.
+        // The category default (e.g. gpt-image-2) is image-only and can't accept a reference image.
+        model: LOGO_REFERENCE_MODEL,
         prompt: promptWithLogoNote,
         reference: {
           bytes: reference.bytes,
           mediaType: reference.mediaType,
-          filename: "logo.png",
         },
       })
       imageBytes = result.bytes
@@ -122,7 +129,7 @@ export async function POST(req: NextRequest) {
     const record = await createImage({
       students_id: studentId,
       category,
-      model,
+      model: modelUsed,
       prompt,
       image: fileMetadata,
     })
@@ -134,7 +141,7 @@ export async function POST(req: NextRequest) {
         warning: message,
         students_id: studentId,
         category,
-        model,
+        model: modelUsed,
         prompt,
         image: fileMetadata,
       },
