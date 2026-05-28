@@ -61,11 +61,11 @@ export async function POST(req: NextRequest) {
       ? `Photorealistic mock-up of ${placement.contextHint}. The ad shows: ${rawPrompt}`
       : rawPrompt
 
-  // If brand context is on and isn't already woven into the prompt, prepend it.
-  const prompt =
-    brand?.hasContent && !withPlacement.toLowerCase().includes("brand")
-      ? `${withPlacement}\n\nBrand identity: ${brand.textBlock.replace(/\n/g, " ")}`
-      : withPlacement
+  // Append brand context whenever it's available — the model benefits from the
+  // explicit colors/fonts/voice even if the prompt already says "brand".
+  const prompt = brand?.hasContent
+    ? `${withPlacement}\n\nBrand identity to use:\n${brand.textBlock}`
+    : withPlacement
 
   try {
     const existing = await listImages(studentId)
