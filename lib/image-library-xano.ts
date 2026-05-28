@@ -20,6 +20,15 @@ function base(): string {
 
 const recordsEndpoint = () => `${base()}/senior_generated_images`
 const uploadEndpoint = () => `${base()}/upload/image`
+const deleteEndpoint = (id: number | string) => {
+  // The delete endpoint may live in a different Xano endpoint group than create/list.
+  // Override via XANO_GENERATED_IMAGES_DELETE_BASE if so.
+  const overrideBase = process.env.XANO_GENERATED_IMAGES_DELETE_BASE
+  if (overrideBase) {
+    return `${overrideBase.replace(/\/$/, "")}/senior_generated_images/${id}`
+  }
+  return `${recordsEndpoint()}/${id}`
+}
 
 export async function uploadImageToXano(
   bytes: Uint8Array,
@@ -61,9 +70,10 @@ export async function createImage(
 }
 
 export async function deleteImage(id: number | string): Promise<void> {
-  const res = await fetch(`${recordsEndpoint()}/${id}`, { method: "DELETE" })
+  const res = await fetch(deleteEndpoint(id), { method: "DELETE" })
   if (!res.ok && res.status !== 404) {
-    throw new Error(`Xano delete failed: ${res.status}`)
+    const text = await res.text().catch(() => "")
+    throw new Error(`Xano delete failed: ${res.status} ${text}`)
   }
 }
 
