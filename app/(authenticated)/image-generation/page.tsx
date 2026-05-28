@@ -308,7 +308,7 @@ function StudentImageGeneration() {
 
         {CATEGORY_ORDER.map((id) => (
           <TabsContent key={id} value={id} className="mt-4">
-            <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+            <div className="relative">
               <Card>
                 <CardHeader>
                   <CardTitle>{CATEGORIES[id].label}</CardTitle>
@@ -482,7 +482,7 @@ function StudentImageGeneration() {
                 </CardFooter>
               </Card>
 
-              {generating && id === category && <GenerationPreview />}
+              {generating && id === category && <GenerationOverlay />}
             </div>
           </TabsContent>
         ))}
@@ -519,7 +519,7 @@ function StudentImageGeneration() {
   )
 }
 
-function GenerationPreview() {
+function GenerationOverlay() {
   const [tipIndex, setTipIndex] = useState(0)
   const startRef = useRef(Date.now())
   const [elapsed, setElapsed] = useState(0)
@@ -538,9 +538,13 @@ function GenerationPreview() {
   }, [])
 
   return (
-    <Card className="lg:w-72">
-      <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
-        <div className="bg-muted relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-md">
+    <div
+      role="status"
+      aria-live="polite"
+      className="bg-background/85 absolute inset-0 z-10 flex items-center justify-center rounded-xl backdrop-blur-sm"
+    >
+      <div className="flex max-w-sm flex-col items-center gap-4 p-6 text-center">
+        <div className="bg-muted relative flex size-24 items-center justify-center overflow-hidden rounded-md">
           <div className="bg-muted-foreground/10 absolute inset-0 animate-pulse" />
           <HugeiconsIcon
             icon={Loading03Icon}
@@ -555,8 +559,8 @@ function GenerationPreview() {
         <p className="text-muted-foreground text-xs">
           Feel free to keep working — we&apos;ll save the image to your library when it&apos;s ready.
         </p>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
