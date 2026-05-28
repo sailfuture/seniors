@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { TeacherComment } from "./teacher-comment"
+import { BlurredFitImage } from "./blurred-fit-image"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -64,11 +65,7 @@ function ReadOnlyField({
     return (
       <div className="space-y-2">
         {url ? (
-          <img
-            src={url}
-            alt={label}
-            className="h-40 w-full rounded-lg border object-cover"
-          />
+          <BlurredFitImage src={url} alt={label} className="rounded-lg border" />
         ) : (
           <div className="text-muted-foreground flex h-32 items-center justify-center rounded-lg border border-dashed text-sm">
             No image uploaded

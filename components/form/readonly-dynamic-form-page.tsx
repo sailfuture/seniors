@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { TeacherComment } from "./teacher-comment"
+import { BlurredFitImage } from "./blurred-fit-image"
 import type { Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
@@ -523,7 +524,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         if (isImage) {
           const url = getImageUrl(imageValue)
           displayValue = url ? (
-            <img src={url} alt={q.field_label} className="h-40 w-full rounded-lg border object-cover" />
+            <BlurredFitImage src={url} alt={q.field_label} className="rounded-lg border" />
           ) : (
             <div className="text-muted-foreground flex h-32 items-center justify-center rounded-lg border border-dashed text-sm">
               No image uploaded

@@ -24,6 +24,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { ImageUploadIcon } from "@hugeicons/core-free-icons"
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
+import { BlurredFitImage } from "./blurred-fit-image"
 import { useSaveContext } from "@/lib/save-context"
 
 interface FormFieldRendererProps {
@@ -298,11 +299,7 @@ function ImageUploadField({
       />
       {preview ? (
         <div className="group relative overflow-hidden rounded-lg border">
-          <img
-            src={preview}
-            alt={field.label ?? "Upload"}
-            className="h-40 w-full object-cover"
-          />
+          <BlurredFitImage src={preview} alt={field.label ?? "Upload"} />
           {uploading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/40">
               <div className="flex items-center gap-2 rounded-md bg-white/90 px-3 py-1.5 text-xs font-medium text-black">

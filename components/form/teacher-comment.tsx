@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
+import { BlurredFitImage } from "./blurred-fit-image"
 
 function getRelativeTime(date: Date): string {
   const now = Date.now()
@@ -182,8 +183,8 @@ export function TeacherComment({
             <div className="space-y-3 px-6 py-4">
               <p className="text-sm font-semibold">{fieldLabel}</p>
               {imageUrl ? (
-                <a href={imageUrl} target="_blank" rel="noopener noreferrer">
-                  <img src={imageUrl} alt={fieldLabel} className="h-40 w-full rounded-lg border object-cover" />
+                <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="block">
+                  <BlurredFitImage src={imageUrl} alt={fieldLabel} className="rounded-lg border" />
                 </a>
               ) : displayAnswer ? (
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
