@@ -284,12 +284,7 @@ function StudentImageGeneration() {
         <div className="bg-primary/10 flex size-10 items-center justify-center rounded-lg">
           <HugeiconsIcon icon={Image01Icon} strokeWidth={2} className="text-primary size-5" />
         </div>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-2xl font-bold">Image Generation</h1>
-          <span className="text-muted-foreground text-sm">
-            {used} of {MAX_IMAGES_PER_STUDENT} images used
-          </span>
-        </div>
+        <h1 className="text-2xl font-bold">Image Generation</h1>
         <p className="text-muted-foreground">
           Generate logos, product visuals, and audience images for your business. All images are saved to your library.
         </p>
@@ -298,7 +293,7 @@ function StudentImageGeneration() {
       {brandDetails && <BrandPanel brand={brandDetails} />}
 
       <Tabs value={category} onValueChange={(v) => setCategory(v as ImageCategory)}>
-        <TabsList className="grid w-full max-w-3xl grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4">
           {CATEGORY_ORDER.map((id) => (
             <TabsTrigger key={id} value={id}>
               {CATEGORIES[id].label}
@@ -453,7 +448,7 @@ function StudentImageGeneration() {
                     <p className="text-destructive text-sm">{error}</p>
                   )}
                 </CardContent>
-                <CardFooter className="flex flex-wrap gap-2">
+                <CardFooter className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="outline"
                     onClick={handleBrainstorm}
@@ -466,6 +461,9 @@ function StudentImageGeneration() {
                     )}
                     {brainstorming && id === category ? "Polishing your prompt…" : "Help me write a prompt"}
                   </Button>
+                  <span className="text-muted-foreground ml-auto text-sm">
+                    {used} of {MAX_IMAGES_PER_STUDENT} images used
+                  </span>
                   <Button
                     onClick={handleGenerate}
                     disabled={
@@ -491,13 +489,12 @@ function StudentImageGeneration() {
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Recent generations</h2>
-          <Link
-            href="/image-generation/library"
-            className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
-          >
-            View library
-            <HugeiconsIcon icon={ArrowRight02Icon} strokeWidth={2} className="size-4" />
-          </Link>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/image-generation/library">
+              View library
+              <HugeiconsIcon icon={ArrowRight02Icon} strokeWidth={2} className="size-4" />
+            </Link>
+          </Button>
         </div>
         {imagesLoading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
