@@ -37,6 +37,16 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 import {
   CATEGORIES,
@@ -683,27 +693,69 @@ function BrandPanel({ brand }: { brand: BrandPanelData }) {
 
 function RecentTile({ image }: { image: GeneratedImage }) {
   return (
-    <div className="group bg-muted relative aspect-square overflow-hidden rounded-md border">
-      <Image
-        src={image.image.url}
-        alt={image.prompt}
-        fill
-        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-        className="object-cover"
-        unoptimized
-      />
-      <a
-        href={image.image.url}
-        download
-        target="_blank"
-        rel="noopener noreferrer"
-        className="absolute inset-0 flex items-end bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100"
-      >
-        <span className="bg-background/90 text-foreground inline-flex items-center gap-1 rounded px-2 py-1 text-xs">
-          <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-3" />
-          Download
-        </span>
-      </a>
-    </div>
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          aria-label="View image details"
+          className="group bg-muted focus-visible:ring-ring relative aspect-square cursor-pointer overflow-hidden rounded-md border focus:outline-none focus-visible:ring-2"
+        >
+          <Image
+            src={image.image.url}
+            alt={image.prompt}
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            className="object-cover transition-transform group-hover:scale-105"
+            unoptimized
+          />
+          <span className="absolute inset-x-0 bottom-0 flex items-end justify-end bg-gradient-to-t from-black/50 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
+            <span className="bg-background/90 text-foreground inline-flex items-center gap-1 rounded px-2 py-1 text-xs">
+              View details
+            </span>
+          </span>
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {CATEGORIES[image.category]?.label ?? image.category}
+          </DialogTitle>
+          <DialogDescription className="flex items-center gap-2">
+            <Badge variant="secondary">{image.model}</Badge>
+            {image.created_at && (
+              <span className="text-muted-foreground text-xs">
+                {new Date(image.created_at).toLocaleString()}
+              </span>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="bg-muted relative aspect-square w-full overflow-hidden rounded-md">
+          <Image
+            src={image.image.url}
+            alt={image.prompt}
+            fill
+            sizes="(max-width: 768px) 100vw, 672px"
+            className="object-contain"
+            unoptimized
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            Prompt
+          </span>
+          <p className="bg-muted max-h-48 overflow-y-auto whitespace-pre-wrap rounded-md border p-3 text-sm">
+            {image.prompt}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button asChild>
+            <a href={image.image.url} download target="_blank" rel="noopener noreferrer">
+              <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4" />
+              Download
+            </a>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
