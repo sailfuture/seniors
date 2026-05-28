@@ -1,17 +1,34 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSession } from "next-auth/react"
+import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Image01Icon, Download01Icon, ArrowLeft02Icon } from "@hugeicons/core-free-icons"
+import {
+  Image01Icon,
+  Download01Icon,
+  ArrowLeft02Icon,
+  Delete02Icon,
+} from "@hugeicons/core-free-icons"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 import {
   CATEGORIES,
@@ -64,6 +81,30 @@ export default function LibraryPage() {
     }
   }, [status, role])
 
+  const handleDelete = useCallback(async (image: GeneratedImage) => {
+    const optimisticId = String(image.id)
+    setImages((prev) => prev.filter((i) => String(i.id) !== optimisticId))
+    const t = toast.loading("Deleting image…")
+    try {
+      const res = await fetch(`/api/image-generation/library/${optimisticId}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error ?? `Delete failed (${res.status})`)
+      }
+      toast.success("Image deleted.", { id: t })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Delete failed"
+      // Restore on failure.
+      setImages((prev) => {
+        if (prev.some((i) => String(i.id) === optimisticId)) return prev
+        return [image, ...prev]
+      })
+      toast.error(message, { id: t })
+    }
+  }, [])
+
   const filtered = useMemo(
     () => (filter === "all" ? images : images.filter((i) => i.category === filter)),
     [images, filter],
@@ -100,7 +141,9 @@ export default function LibraryPage() {
           <HugeiconsIcon icon={Image01Icon} strokeWidth={2} className="text-primary size-5" />
         </div>
         <h1 className="text-2xl font-bold">Image Library</h1>
-        <p className="text-muted-foreground">All the images you&apos;ve generated, ready to download.</p>
+        <p className="text-muted-foreground">
+          All the images you&apos;ve generated, ready to download.
+        </p>
       </div>
 
       <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
@@ -128,9 +171,9 @@ export default function LibraryPage() {
             : "No images in this category."}
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((img) => (
-            <LibraryCard key={String(img.id)} image={img} />
+            <LibraryCard key={String(img.id)} image={img} onDelete={handleDelete} />
           ))}
         </div>
       )}
@@ -138,9 +181,15 @@ export default function LibraryPage() {
   )
 }
 
-function LibraryCard({ image }: { image: GeneratedImage }) {
+function LibraryCard({
+  image,
+  onDelete,
+}: {
+  image: GeneratedImage
+  onDelete: (img: GeneratedImage) => void
+}) {
   return (
-    <Card className="overflow-hidden pt-0">
+    <Card className="flex h-full flex-col overflow-hidden pt-0">
       <div className="bg-muted relative aspect-square">
         <Image
           src={image.image.url}
@@ -151,20 +200,44 @@ function LibraryCard({ image }: { image: GeneratedImage }) {
           unoptimized
         />
       </div>
-      <CardContent className="flex flex-col gap-2 pt-4">
+      <CardContent className="flex flex-1 flex-col gap-2 pt-4">
         <div className="flex items-center gap-2">
           <Badge variant="secondary">{CATEGORIES[image.category]?.label ?? image.category}</Badge>
           <span className="text-muted-foreground truncate text-xs">{image.model}</span>
         </div>
         <p className="line-clamp-3 text-sm">{image.prompt}</p>
       </CardContent>
-      <CardFooter>
-        <Button asChild variant="outline" size="sm" className="w-full">
+      <CardFooter className="flex gap-2">
+        <Button asChild variant="outline" size="sm" className="flex-1">
           <a href={image.image.url} download target="_blank" rel="noopener noreferrer">
             <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4" />
             Download
           </a>
         </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              aria-label="Delete image"
+            >
+              <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this image?</AlertDialogTitle>
+              <AlertDialogDescription>
+                The image will be removed from your library. This counts against your generation quota and cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => onDelete(image)}>Delete</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardFooter>
     </Card>
   )

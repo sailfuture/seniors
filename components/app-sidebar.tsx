@@ -26,6 +26,7 @@ import {
   Settings02Icon,
   ArrowLeft02Icon,
   Image01Icon,
+  Folder01Icon,
 } from "@hugeicons/core-free-icons"
 import Link from "next/link"
 import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
@@ -751,11 +752,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <SidebarMenuButton
                   asChild
                   tooltip="Image Generation"
-                  isActive={pathname.startsWith("/image-generation")}
+                  isActive={
+                    pathname === "/image-generation" ||
+                    (pathname.startsWith("/image-generation") &&
+                      !pathname.startsWith("/image-generation/library"))
+                  }
                 >
                   <Link href="/image-generation">
                     <HugeiconsIcon icon={Image01Icon} strokeWidth={2} />
                     <span>Image Generation</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  tooltip="Image Library"
+                  isActive={pathname.startsWith("/image-generation/library")}
+                >
+                  <Link href="/image-generation/library">
+                    <HugeiconsIcon icon={Folder01Icon} strokeWidth={2} />
+                    <span>Image Library</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
