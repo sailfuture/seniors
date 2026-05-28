@@ -128,22 +128,26 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex flex-col gap-2">
-        <Link
-          href="/image-generation"
-          className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1 text-sm"
-        >
-          <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
-          Back to generator
-        </Link>
-        <div className="bg-primary/10 flex size-10 items-center justify-center rounded-lg">
-          <HugeiconsIcon icon={Image01Icon} strokeWidth={2} className="text-primary size-5" />
-        </div>
+    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      <div>
         <h1 className="text-2xl font-bold">Image Library</h1>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground mt-1 text-sm">
           All the images you&apos;ve generated, ready to download.
         </p>
+        <div className="mt-3 flex items-center justify-between">
+          <Button variant="outline" size="sm" className="gap-2" asChild>
+            <Link href="/image-generation">
+              <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
+              Back to generator
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" asChild>
+            <Link href="/dashboard">
+              <HugeiconsIcon icon={Image01Icon} strokeWidth={2} className="size-4" />
+              Dashboard
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>

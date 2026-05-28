@@ -11,7 +11,9 @@ import {
   MagicWand01Icon,
   Download01Icon,
   ArrowRight02Icon,
+  ArrowLeft02Icon,
   Loading03Icon,
+  Folder01Icon,
 } from "@hugeicons/core-free-icons"
 
 import { Button } from "@/components/ui/button"
@@ -279,15 +281,26 @@ function StudentImageGeneration() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex flex-col gap-2">
-        <div className="bg-primary/10 flex size-10 items-center justify-center rounded-lg">
-          <HugeiconsIcon icon={Image01Icon} strokeWidth={2} className="text-primary size-5" />
-        </div>
+    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      <div>
         <h1 className="text-2xl font-bold">Image Generation</h1>
-        <p className="text-muted-foreground">
-          Generate logos, product visuals, and audience images for your business. All images are saved to your library.
+        <p className="text-muted-foreground mt-1 text-sm">
+          Generate logos, product visuals, and marketing mockups for your business.
         </p>
+        <div className="mt-3 flex items-center justify-between">
+          <Button variant="outline" size="sm" className="gap-2" asChild>
+            <Link href="/dashboard">
+              <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
+              Dashboard
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" asChild>
+            <Link href="/image-generation/library">
+              <HugeiconsIcon icon={Folder01Icon} strokeWidth={2} className="size-4" />
+              View Library
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {brandDetails && <BrandPanel brand={brandDetails} />}
@@ -487,15 +500,7 @@ function StudentImageGeneration() {
       </Tabs>
 
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Recent generations</h2>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/image-generation/library">
-              View library
-              <HugeiconsIcon icon={ArrowRight02Icon} strokeWidth={2} className="size-4" />
-            </Link>
-          </Button>
-        </div>
+        <h2 className="text-lg font-semibold">Recent generations</h2>
         {imagesLoading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
