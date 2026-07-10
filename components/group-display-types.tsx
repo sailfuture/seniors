@@ -1,14 +1,7 @@
 "use client"
 
 import React from "react"
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Table,
   TableBody,
@@ -22,6 +15,7 @@ interface TemplateQuestion {
   id: number
   field_name: string
   field_label: string
+  sortOrder?: number
   question_types_id?: number | null
   _question_types?: { id: number; type: string; noInput?: boolean }
   public_display_title?: string
@@ -114,6 +108,50 @@ export function GroupDisplayRenderer({
 
 // ── Gallery (type 3) ──
 
+const QUESTION_TYPE_SHORT_TEXT = 2
+
+interface GallerySlide {
+  imageQ: TemplateQuestion
+  titleQ: TemplateQuestion | null
+  descQs: TemplateQuestion[]
+}
+
+// Slides are derived from the group's questions in sort order rather than
+// fixed field names: field names are auto-generated on duplication (e.g.
+// image_2_copy_17721534...) and can collide across questions, so they can't
+// be relied on. Each image upload starts a slide; a short-text question
+// labeled like a name/title attaches to the next image, any other short
+// text attaches to the previous image as its description. Questions of any
+// other type (e.g. a long response) become intro text above the grid.
+function buildGallerySlides(questions: TemplateQuestion[]): {
+  slides: GallerySlide[]
+  intro: TemplateQuestion[]
+} {
+  const sorted = [...questions].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+  const slides: GallerySlide[] = []
+  const intro: TemplateQuestion[] = []
+  let pendingTitle: TemplateQuestion | null = null
+  let current: GallerySlide | null = null
+
+  for (const q of sorted) {
+    const typeId = q.question_types_id ?? q._question_types?.id ?? null
+    if (typeId === QUESTION_TYPE_IMAGE) {
+      current = { imageQ: q, titleQ: pendingTitle, descQs: [] }
+      pendingTitle = null
+      slides.push(current)
+    } else if (typeId === QUESTION_TYPE_SHORT_TEXT) {
+      if (/name|title/i.test(q.field_label)) {
+        pendingTitle = q
+      } else if (current) {
+        current.descQs.push(q)
+      }
+    } else {
+      intro.push(q)
+    }
+  }
+  return { slides, intro }
+}
+
 function GalleryDisplay({
   questions,
   responseMap,
@@ -122,58 +160,79 @@ function GalleryDisplay({
   responseMap: Map<number, StudentResponse>
   mode: string
 }) {
-  const slides = [
-    { image: "image_1", caption: "image_1_caption" },
-    { image: "image_2", caption: "image_2_caption" },
-    { image: "image_3", caption: "image_3_caption" },
-    { image: "image_4", caption: "image_4_caption" },
-  ]
+  const { slides, intro } = buildGallerySlides(questions)
 
-  const items = slides.map((s) => ({
-    url: getImageUrl(s.image, questions, responseMap),
-    caption: getTextValue(s.caption, questions, responseMap),
-    field: s.image,
-  }))
+  const introBlocks = intro
+    .map((q) => ({
+      key: q.id,
+      label: q.public_display_title || q.field_label,
+      text: (responseMap.get(q.id)?.student_response ?? "").trim(),
+    }))
+    .filter((b) => b.text)
+
+  const items = slides.map((s) => {
+    const imgResponse = responseMap.get(s.imageQ.id)
+    const src = imgResponse?.image_response?.path || imgResponse?.image_response?.url
+    return {
+      key: s.imageQ.id,
+      url: src ? resolveImageUrl(src) : "",
+      title: s.titleQ ? (responseMap.get(s.titleQ.id)?.student_response ?? "").trim() : "",
+      descriptions: s.descQs
+        .map((q) => (responseMap.get(q.id)?.student_response ?? "").trim())
+        .filter(Boolean),
+    }
+  })
 
   const populated = items.filter((i) => i.url)
+  const gridCols = "grid-cols-1 sm:grid-cols-2" + (populated.length >= 3 ? " lg:grid-cols-3" : "")
 
-  if (populated.length === 0) {
-    return (
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {items.map((i) => (
-          <div key={i.field} className="flex aspect-square items-center justify-center rounded-xl bg-gray-100" />
+  if (introBlocks.length === 0 && items.length === 0) return null
+
+  const grid =
+    populated.length > 0 ? (
+      <div className={`grid items-stretch gap-4 ${gridCols}`}>
+        {populated.map((item) => (
+          <div key={item.key} className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <img
+              src={item.url}
+              alt={item.title || item.descriptions[0] || "Gallery image"}
+              className="aspect-[4/3] w-full object-cover"
+            />
+            {(item.title || item.descriptions.length > 0) && (
+              <div className="flex flex-1 flex-col gap-1 border-t border-gray-200 px-4 py-3">
+                {item.title && (
+                  <p className="text-lg font-semibold tracking-tight">{item.title}</p>
+                )}
+                {item.descriptions.map((d, i) => (
+                  <p key={i} className="text-muted-foreground text-sm leading-relaxed">
+                    {d}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
         ))}
       </div>
-    )
-  }
+    ) : items.length > 0 ? (
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+        {items.map((i) => (
+          <div key={i.key} className="flex aspect-[4/3] items-center justify-center rounded-xl bg-gray-100" />
+        ))}
+      </div>
+    ) : null
 
   return (
-    <Carousel opts={{ align: "start", loop: populated.length > 1 }} className="w-full">
-      <CarouselContent className="-ml-3">
-        {populated.map((item) => (
-          <CarouselItem key={item.field} className="pl-3 basis-full sm:basis-1/2">
-            <div className="overflow-hidden rounded-xl border border-gray-200">
-              <img
-                src={item.url}
-                alt={item.caption || "Gallery image"}
-                className="aspect-[4/3] w-full object-cover"
-              />
-              {item.caption && (
-                <div className="border-t border-gray-200 px-4 py-2.5">
-                  <p className="text-muted-foreground text-xs leading-relaxed">{item.caption}</p>
-                </div>
-              )}
-            </div>
-          </CarouselItem>
-        ))}
-      </CarouselContent>
-      {populated.length > 2 && (
-        <>
-          <CarouselPrevious className="-left-3" />
-          <CarouselNext className="-right-3" />
-        </>
-      )}
-    </Carousel>
+    <div className="space-y-5">
+      {introBlocks.map((b) => (
+        <div key={b.key}>
+          <h4 className="text-muted-foreground text-sm font-medium">{b.label}</h4>
+          <p className="text-foreground mt-1 whitespace-pre-wrap text-base font-medium leading-snug">
+            {b.text}
+          </p>
+        </div>
+      ))}
+      {grid}
+    </div>
   )
 }
 
@@ -184,6 +243,7 @@ interface MapEntity {
   logoUrl: string
   x: number
   y: number
+  isMine?: boolean
 }
 
 function CompetitorMapDisplay({
@@ -221,6 +281,7 @@ function CompetitorMapDisplay({
       logoUrl: getImageUrl("my_company_logo", questions, responseMap),
       x: parseFloat(getTextValue("mycompany_x_coordinate", questions, responseMap)) || 0,
       y: parseFloat(getTextValue("mycompany_y_coordinate", questions, responseMap)) || 0,
+      isMine: true,
     },
   ]
 
@@ -236,7 +297,7 @@ function CompetitorMapDisplay({
   return (
     <div className="space-y-5">
       {/* Map */}
-      <div className="relative w-full overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: "3.5 / 1" }}>
+      <div className="relative w-full overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: "3 / 1" }}>
         {/* Corner quadrant labels */}
         <span className="absolute left-3 top-2 z-10 text-[11px] text-muted-foreground/60">
           Low {yAxisLabel} / Low {xAxisLabel}
@@ -263,34 +324,43 @@ function CompetitorMapDisplay({
           {yAxisLabel}
         </div>
 
-        {/* Entities plotted on chart */}
-        {hasData && entities.filter((e) => e.name).map((entity, idx) => {
-          const xPercent = Math.max(5, Math.min(95, entity.x))
-          const yPercent = Math.max(5, Math.min(95, entity.y))
+        {/* Entities plotted on chart. Positions are clamped in px so a chip
+            at an extreme coordinate stays fully inside the box and clear of
+            the corner labels, while mid-range coordinates keep their true
+            percentage position (clamp only bites near the edges). */}
+        {hasData && entities.map((entity, idx) => {
+          if (!entity.name) return null
+          const xPercent = Math.max(0, Math.min(100, entity.x))
+          const yPercent = Math.max(0, Math.min(100, entity.y))
           return (
             <div
               key={idx}
-              className="absolute -translate-x-1/2 translate-y-1/2"
+              className="absolute z-10 -translate-x-1/2 translate-y-1/2"
               style={{
-                left: `${xPercent}%`,
-                bottom: `${yPercent}%`,
+                left: `clamp(96px, ${xPercent}%, calc(100% - 96px))`,
+                bottom: `clamp(44px, ${yPercent}%, calc(100% - 44px))`,
               }}
             >
-              <div className="flex flex-col items-center gap-0.5">
+              <div
+                title={entity.name}
+                className={`flex max-w-[170px] items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 shadow-sm ${
+                  entity.isMine ? "border-gray-900 bg-gray-900" : "border-gray-200 bg-white"
+                }`}
+              >
                 {entity.logoUrl ? (
-                  <div className="size-9 overflow-hidden rounded-full border border-gray-200 bg-white shadow-sm">
+                  <div className="size-6 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
                     <img
                       src={entity.logoUrl}
                       alt={entity.name}
-                      className="size-full object-cover"
+                      className="size-full object-contain"
                     />
                   </div>
                 ) : (
-                  <div className="flex size-9 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-600 shadow-sm">
+                  <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-600">
                     {entity.name.charAt(0).toUpperCase()}
                   </div>
                 )}
-                <span className="max-w-[90px] truncate text-[10px] font-medium text-gray-600">
+                <span className={`truncate text-xs font-medium ${entity.isMine ? "text-white" : "text-gray-700"}`}>
                   {entity.name}
                 </span>
               </div>
@@ -309,8 +379,8 @@ function CompetitorMapDisplay({
               <CardContent className="p-3">
                 <div className="flex items-center gap-3">
                   {entity.logoUrl ? (
-                    <div className="size-8 shrink-0 overflow-hidden rounded-full border border-gray-200">
-                      <img src={entity.logoUrl} alt={entity.name || label} className="size-full object-cover" />
+                    <div className="size-8 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
+                      <img src={entity.logoUrl} alt={entity.name || label} className="size-full object-contain" />
                     </div>
                   ) : (
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500">
