@@ -173,6 +173,41 @@ function isShortType(typeId: number | null): boolean {
     typeId === QUESTION_TYPE.DATE
 }
 
+function parseHexColor(value: string): string | null {
+  const match = value.trim().match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/)
+  if (!match) return null
+  return `#${match[1].toUpperCase()}`
+}
+
+function parseFontStyle(value: string): React.CSSProperties {
+  const lower = value.toLowerCase()
+  const style: React.CSSProperties = {}
+
+  let family: string = value
+  if (/(^|\s|-)sans(\s|-|$|serif)/.test(lower)) family = `${value}, sans-serif`
+  else if (/(^|\s|-)mono(space)?(\s|-|$)/.test(lower)) family = `${value}, ui-monospace, monospace`
+  else if (/(^|\s|-)serif(\s|-|$)/.test(lower)) family = `${value}, serif`
+  else if (/(script|cursive|handwritten)/.test(lower)) family = `${value}, cursive`
+  style.fontFamily = family
+
+  if (/black|heavy|extra[-\s]?bold/.test(lower)) style.fontWeight = 800
+  else if (/semi[-\s]?bold|demi[-\s]?bold/.test(lower)) style.fontWeight = 600
+  else if (/bold/.test(lower)) style.fontWeight = 700
+  else if (/extra[-\s]?light|ultra[-\s]?light/.test(lower)) style.fontWeight = 200
+  else if (/light/.test(lower)) style.fontWeight = 300
+  else if (/thin/.test(lower)) style.fontWeight = 100
+  else if (/medium/.test(lower)) style.fontWeight = 500
+
+  if (/italic|oblique/.test(lower)) style.fontStyle = "italic"
+
+  if (/outline/.test(lower)) {
+    style.WebkitTextStroke = "1.5px currentColor"
+    style.color = "transparent"
+  }
+
+  return style
+}
+
 export default function PublicLifeMapPage({
   params,
 }: {
@@ -742,7 +777,7 @@ function QuestionBlock({
         <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
       )}
       <div className="mt-2 flex-1">
-        <ResponseDisplay typeId={typeId} response={response} />
+        <ResponseDisplay typeId={typeId} response={response} fieldLabel={question.field_label} />
       </div>
     </div>
   )
@@ -751,9 +786,11 @@ function QuestionBlock({
 function ResponseDisplay({
   typeId,
   response,
+  fieldLabel,
 }: {
   typeId: number | null
   response: StudentResponse
+  fieldLabel?: string
 }) {
   const text = response.student_response ?? ""
 
@@ -846,6 +883,43 @@ function ResponseDisplay({
   }
 
   if (!text) return <p className="text-muted-foreground text-sm italic">—</p>
+
+  const hex = parseHexColor(text)
+  if (hex) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div
+          className="aspect-[3/2] w-full rounded-lg border border-gray-200 shadow-sm"
+          style={{ backgroundColor: hex }}
+        />
+        <p className="text-foreground text-sm font-bold tracking-wider uppercase">{hex}</p>
+      </div>
+    )
+  }
+
+  if (fieldLabel && /font/i.test(fieldLabel)) {
+    const fontStyle = parseFontStyle(text)
+    const isPrimary = /primary/i.test(fieldLabel)
+    return (
+      <div className="space-y-3">
+        {isPrimary ? (
+          <>
+            <p className="text-foreground text-4xl leading-tight" style={fontStyle}>Header 1</p>
+            <p className="text-foreground text-2xl leading-tight" style={fontStyle}>Header 2</p>
+          </>
+        ) : (
+          <>
+            <p className="text-muted-foreground text-xs uppercase tracking-wide" style={fontStyle}>Sub-Text</p>
+            <p className="text-foreground text-base leading-relaxed" style={fontStyle}>
+              Body — The quick brown fox jumps over the lazy dog.
+            </p>
+          </>
+        )}
+        <p className="text-muted-foreground/70 mt-2 border-t border-gray-100 pt-2 text-xs italic">{text}</p>
+      </div>
+    )
+  }
+
   return (
     <p className="text-foreground whitespace-pre-wrap text-base font-medium leading-snug">
       {text}
