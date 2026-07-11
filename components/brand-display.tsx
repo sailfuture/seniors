@@ -454,23 +454,45 @@ export function FontPreview({ text, fieldLabel }: { text: string; fieldLabel: st
   useGoogleFont(family)
   const fontStyle = parseFontStyle(text, family || undefined)
   const isPrimary = /primary/i.test(fieldLabel)
+  const displayName = family || text
+  const rawDiffers = !!family && text.trim().toLowerCase() !== family.toLowerCase()
 
   return (
-    <div className="space-y-3">
-      {isPrimary ? (
-        <>
-          <p className="text-foreground text-4xl leading-tight" style={fontStyle}>Header 1</p>
-          <p className="text-foreground text-2xl leading-tight" style={fontStyle}>Header 2</p>
-        </>
-      ) : (
-        <>
-          <p className="text-muted-foreground text-xs uppercase tracking-wide" style={fontStyle}>Sub-Text</p>
+    <div>
+      {/* Typeface name leads, set in the typeface itself */}
+      <p className="text-foreground text-3xl font-semibold tracking-tight sm:text-4xl" style={fontStyle}>
+        {displayName}
+      </p>
+      <p className="text-muted-foreground mt-1 text-[11px] font-medium uppercase tracking-[0.14em]">
+        {isPrimary ? "Primary typeface · Headlines" : "Secondary typeface · Body"}
+        {rawDiffers && <span className="text-muted-foreground/60 normal-case tracking-normal"> — “{text}”</span>}
+      </p>
+
+      {/* Character specimen */}
+      <div className="mt-4 flex items-start gap-5 border-t border-gray-100 pt-4">
+        <span className="text-foreground shrink-0 text-6xl leading-none" style={fontStyle}>
+          Aa
+        </span>
+        <div className="text-muted-foreground min-w-0 space-y-0.5 text-[13px] leading-relaxed break-words" style={fontStyle}>
+          <p>ABCDEFGHIJKLMNOPQRSTUVWXYZ</p>
+          <p>abcdefghijklmnopqrstuvwxyz</p>
+          <p>0123456789 !?&amp;</p>
+        </div>
+      </div>
+
+      {/* Usage sample */}
+      <div className="mt-4 space-y-1.5 border-t border-gray-100 pt-3.5">
+        {isPrimary ? (
+          <>
+            <p className="text-foreground text-2xl leading-tight" style={fontStyle}>Header 1</p>
+            <p className="text-foreground text-lg leading-tight" style={fontStyle}>Header 2</p>
+          </>
+        ) : (
           <p className="text-foreground text-base leading-relaxed" style={fontStyle}>
-            Body — The quick brown fox jumps over the lazy dog.
+            The quick brown fox jumps over the lazy dog.
           </p>
-        </>
-      )}
-      <p className="text-muted-foreground/70 mt-2 border-t border-gray-100 pt-2 text-xs italic">{text}</p>
+        )}
+      </div>
     </div>
   )
 }
