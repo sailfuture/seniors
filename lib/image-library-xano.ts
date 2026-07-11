@@ -51,7 +51,11 @@ export async function listImages(studentId: string): Promise<GeneratedImage[]> {
   const res = await fetch(url.toString(), { cache: "no-store" })
   if (!res.ok) throw new Error(`Xano list failed: ${res.status}`)
   const data = (await res.json()) as GeneratedImage[]
-  return Array.isArray(data) ? data : []
+  if (!Array.isArray(data)) return []
+  // The Xano endpoint ignores the students_id query param and returns every
+  // student's records, so enforce the scope here. This also backs the delete
+  // route's ownership check — do not remove without fixing the Xano query.
+  return data.filter((img) => String(img.students_id ?? "") === String(studentId))
 }
 
 export async function createImage(
