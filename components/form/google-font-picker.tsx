@@ -87,6 +87,7 @@ export function GoogleFontPicker({
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(0)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const trimmed = value.trim()
   const exactMatch = useMemo(
@@ -115,7 +116,8 @@ export function GoogleFontPicker({
     <div ref={wrapRef} className="relative">
       <InputGroup>
         <InputGroupInput
-          className={disabled ? "" : "font-semibold"}
+          ref={inputRef}
+          className={`pr-8 ${disabled ? "" : "font-semibold"}`}
           style={exactMatch ? { fontFamily: `"${exactMatch}", sans-serif` } : undefined}
           placeholder={placeholder || "Search Google Fonts or type a font name..."}
           value={value}
@@ -152,6 +154,32 @@ export function GoogleFontPicker({
           aria-autocomplete="list"
         />
       </InputGroup>
+      {!disabled && (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={open ? "Close font list" : "Browse fonts"}
+          // preventDefault keeps the input from blurring before the toggle
+          onMouseDown={(e) => {
+            e.preventDefault()
+            setOpen((o) => !o)
+            inputRef.current?.focus()
+          }}
+          className="text-muted-foreground hover:text-foreground absolute right-2 top-1/2 -translate-y-1/2 transition-colors"
+        >
+          <svg
+            className={`size-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      )}
 
       {open && !disabled && visible.length > 0 && (
         <div className="bg-popover text-popover-foreground absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-md border shadow-md">

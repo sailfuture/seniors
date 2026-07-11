@@ -60,6 +60,7 @@ import { CommentBadge } from "./comment-badge"
 import { BlurredFitImage } from "./blurred-fit-image"
 import { ImageCropDialog } from "./image-crop-dialog"
 import { GoogleFontPicker } from "./google-font-picker"
+import { BrandColorInput } from "./brand-color-input"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
@@ -1194,6 +1195,13 @@ function DynamicField({
   const isReadyForReview = responseStatus?.readyReview === true && !isComplete && !responseStatus?.revisionNeeded
   const isDimmed = isComplete || isReadyForReview
   const [questionCollapsed, setQuestionCollapsed] = useState(isComplete)
+
+  // Keep the collapse in sync with completion: reopening a completed answer
+  // must expand it immediately (previously it stayed stuck collapsed with no
+  // way to open it until a page refresh).
+  useEffect(() => {
+    setQuestionCollapsed(isComplete)
+  }, [isComplete])
   const isImageType = typeId === QUESTION_TYPE.IMAGE_UPLOAD
   const isSourceType = typeId === QUESTION_TYPE.SOURCE
   const hasImage = !!imageValue && Object.keys(imageValue).length > 0 && !!(imageValue.path || imageValue.url || imageValue.name)
@@ -1392,6 +1400,14 @@ function DynamicField({
       {typeId === QUESTION_TYPE.SHORT_RESPONSE && (
         /\bfont\b/i.test(question.field_label) ? (
           <GoogleFontPicker
+            value={value}
+            onChange={onChange}
+            onBlur={onBlur}
+            disabled={isDimmed}
+            placeholder={question.placeholder}
+          />
+        ) : /colou?r/i.test(question.field_label) ? (
+          <BrandColorInput
             value={value}
             onChange={onChange}
             onBlur={onBlur}
