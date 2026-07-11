@@ -2,6 +2,8 @@
 
 import React from "react"
 import { Card, CardContent } from "@/components/ui/card"
+import { useBrandTheme, inkFor } from "@/components/brand-display"
+import { ZoomableImage } from "@/components/zoomable-image"
 import {
   Table,
   TableBody,
@@ -31,6 +33,7 @@ interface StudentResponse {
 }
 
 const QUESTION_TYPE_IMAGE = 4
+const QUESTION_TYPE_CURRENCY = 3
 
 function resolveImageUrl(path: string | undefined): string {
   if (!path) return ""
@@ -193,10 +196,11 @@ function GalleryDisplay({
       <div className={`grid items-stretch gap-4 ${gridCols}`}>
         {populated.map((item) => (
           <div key={item.key} className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <img
+            <ZoomableImage
               src={item.url}
               alt={item.title || item.descriptions[0] || "Gallery image"}
-              className="aspect-[4/3] w-full object-cover"
+              imgClassName="aspect-[4/3] w-full object-cover"
+              caption={item.title || item.descriptions[0]}
             />
             {(item.title || item.descriptions.length > 0) && (
               <div className="flex flex-1 flex-col gap-1 border-t border-gray-200 px-4 py-3">
@@ -254,6 +258,9 @@ function CompetitorMapDisplay({
   responseMap: Map<number, StudentResponse>
   mode: string
 }) {
+  const brand = useBrandTheme()
+  const myChipBg = brand.primary ?? "#111827"
+  const myChipInk = inkFor(myChipBg)
   const xAxisLabel = getTextValue("x_axis_label", questions, responseMap) || "X Axis"
   const yAxisLabel = getTextValue("y_axis_label", questions, responseMap) || "Y Axis"
 
@@ -344,8 +351,9 @@ function CompetitorMapDisplay({
               <div
                 title={entity.name}
                 className={`flex max-w-[170px] items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 shadow-sm ${
-                  entity.isMine ? "border-gray-900 bg-gray-900" : "border-gray-200 bg-white"
+                  entity.isMine ? "" : "border-gray-200 bg-white"
                 }`}
+                style={entity.isMine ? { background: myChipBg, borderColor: myChipBg } : undefined}
               >
                 {entity.logoUrl ? (
                   <div className="size-6 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
@@ -360,7 +368,10 @@ function CompetitorMapDisplay({
                     {entity.name.charAt(0).toUpperCase()}
                   </div>
                 )}
-                <span className={`truncate text-xs font-medium ${entity.isMine ? "text-white" : "text-gray-700"}`}>
+                <span
+                  className={`truncate text-xs font-medium ${entity.isMine ? "" : "text-gray-700"}`}
+                  style={entity.isMine ? { color: myChipInk } : undefined}
+                >
                   {entity.name}
                 </span>
               </div>
@@ -450,6 +461,7 @@ function GoogleBudgetDisplay({
   questions: TemplateQuestion[]
   responseMap: Map<number, StudentResponse>
 }) {
+  const brand = useBrandTheme()
   const sheetUrl = getTextValue("google_sheet_url", questions, responseMap)
   const summary = getTextValue("google_sheet_summary", questions, responseMap)
   const embedUrl = toGoogleEmbedUrl(sheetUrl)
@@ -458,8 +470,9 @@ function GoogleBudgetDisplay({
     (q) => q.field_name !== "google_sheet_url" && q.field_name !== "google_sheet_summary"
   )
 
-  type Section = { header: string; rows: { label: string; value: string }[] }
+  type Section = { header: string; rows: { label: string; value: string; typeId: number | null }[] }
   const sections: Section[] = []
+  const statTiles: { label: string; value: string }[] = []
   let current: Section | null = null
 
   for (const q of tableQuestions) {
@@ -470,13 +483,20 @@ function GoogleBudgetDisplay({
     } else {
       const value = getTextValue(q.field_name, questions, responseMap)
       const label = q.public_display_title || q.field_label
+      const typeId = q.question_types_id ?? q._question_types?.id ?? null
+      // Currency questions render as stat tiles instead of table rows
+      if (typeId === QUESTION_TYPE_CURRENCY) {
+        statTiles.push({ label, value })
+        continue
+      }
       if (!current) {
         current = { header: "", rows: [] }
         sections.push(current)
       }
-      current.rows.push({ label, value })
+      current.rows.push({ label, value, typeId })
     }
   }
+  const populatedSections = sections.filter((s) => s.rows.length > 0 || s.header)
 
   return (
     <div className="space-y-0">
@@ -495,10 +515,29 @@ function GoogleBudgetDisplay({
         </div>
       )}
 
-      {sections.length > 0 && (
+      {statTiles.length > 0 && (
+        <div className="grid gap-3 border-t px-5 py-4 sm:grid-cols-2 lg:grid-cols-3">
+          {statTiles.map((tile, i) => (
+            <div key={i} className="rounded-lg border border-gray-200 p-3.5">
+              <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
+                {tile.label}
+              </p>
+              <p className="text-foreground mt-1 text-2xl font-bold tracking-tight tabular-nums">
+                {formatUSD(tile.value)}
+              </p>
+              <div
+                className="mt-2.5 h-0.5 rounded"
+                style={{ background: brand.primary ?? "#E5E7EB" }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {populatedSections.length > 0 && (
         <div className="border-t">
           <Table>
-            {sections.map((section, sIdx) => (
+            {populatedSections.map((section, sIdx) => (
               <React.Fragment key={sIdx}>
                 {section.header && (
                   <TableHeader>
@@ -513,7 +552,9 @@ function GoogleBudgetDisplay({
                   {section.rows.map((row, rIdx) => (
                     <TableRow key={rIdx}>
                       <TableCell className="text-muted-foreground w-1/3 text-sm">{row.label}</TableCell>
-                      <TableCell className="whitespace-pre-wrap text-sm font-semibold">{row.value || "—"}</TableCell>
+                      <TableCell className="whitespace-pre-wrap text-sm font-semibold">
+                        {row.typeId === QUESTION_TYPE_CURRENCY ? formatUSD(row.value) : row.value || "—"}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

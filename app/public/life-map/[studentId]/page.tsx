@@ -25,6 +25,8 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { GroupDisplayRenderer, isGroupDisplayType, DISPLAY_TYPE, getGoogleSheetUrl, GoogleSheetOpenButton } from "@/components/group-display-types"
+import { ColorSwatch, FontPreview, parseBrandColor, parseExactHex } from "@/components/brand-display"
+import { ZoomableImage } from "@/components/zoomable-image"
 import { icons as lucideIcons } from "lucide-react"
 
 const XANO_BASE =
@@ -171,41 +173,6 @@ function isShortType(typeId: number | null): boolean {
     typeId === QUESTION_TYPE.DROPDOWN ||
     typeId === QUESTION_TYPE.URL ||
     typeId === QUESTION_TYPE.DATE
-}
-
-function parseHexColor(value: string): string | null {
-  const match = value.trim().match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/)
-  if (!match) return null
-  return `#${match[1].toUpperCase()}`
-}
-
-function parseFontStyle(value: string): React.CSSProperties {
-  const lower = value.toLowerCase()
-  const style: React.CSSProperties = {}
-
-  let family: string = value
-  if (/(^|\s|-)sans(\s|-|$|serif)/.test(lower)) family = `${value}, sans-serif`
-  else if (/(^|\s|-)mono(space)?(\s|-|$)/.test(lower)) family = `${value}, ui-monospace, monospace`
-  else if (/(^|\s|-)serif(\s|-|$)/.test(lower)) family = `${value}, serif`
-  else if (/(script|cursive|handwritten)/.test(lower)) family = `${value}, cursive`
-  style.fontFamily = family
-
-  if (/black|heavy|extra[-\s]?bold/.test(lower)) style.fontWeight = 800
-  else if (/semi[-\s]?bold|demi[-\s]?bold/.test(lower)) style.fontWeight = 600
-  else if (/bold/.test(lower)) style.fontWeight = 700
-  else if (/extra[-\s]?light|ultra[-\s]?light/.test(lower)) style.fontWeight = 200
-  else if (/light/.test(lower)) style.fontWeight = 300
-  else if (/thin/.test(lower)) style.fontWeight = 100
-  else if (/medium/.test(lower)) style.fontWeight = 500
-
-  if (/italic|oblique/.test(lower)) style.fontStyle = "italic"
-
-  if (/outline/.test(lower)) {
-    style.WebkitTextStroke = "1.5px currentColor"
-    style.color = "transparent"
-  }
-
-  return style
 }
 
 export default function PublicLifeMapPage({
@@ -389,9 +356,19 @@ export default function PublicLifeMapPage({
           <SidebarInset className="bg-gray-50">
             <div className="w-full p-4 md:p-6 lg:p-8">
               {sections.map((section, sectionIdx) => {
-                const sectionTemplates = templates
+                const allSectionTemplates = templates
                   .filter((q) => q.lifemap_sections_id === section.id)
                   .sort((a, b) => a.sortOrder - b.sortOrder)
+                // A student-uploaded "Section Background" image overrides the
+                // template's section photo and never renders as content.
+                const backgroundQ = allSectionTemplates.find(
+                  (q) =>
+                    (q.question_types_id ?? q._question_types?.id) === QUESTION_TYPE.IMAGE_UPLOAD &&
+                    /section\s*background/i.test(q.field_label)
+                )
+                const backgroundResp = backgroundQ ? responseMap.get(backgroundQ.id) : undefined
+                const studentBg = backgroundResp?.image_response?.path || backgroundResp?.image_response?.url
+                const sectionTemplates = allSectionTemplates.filter((q) => q !== backgroundQ)
                 const sectionGroups = groups
                   .filter((g) => g.lifemap_sections_id === section.id)
                   .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -409,9 +386,11 @@ export default function PublicLifeMapPage({
                 }
 
                 const desc = section.section_description || section.description || ""
-                const photoUrl = section.photo?.path
-                  ? resolveImageUrl(section.photo.path)
-                  : null
+                const photoUrl = studentBg
+                  ? resolveImageUrl(studentBg)
+                  : section.photo?.path
+                    ? resolveImageUrl(section.photo.path)
+                    : null
 
                 return (
                   <section
@@ -726,11 +705,13 @@ function QuestionBlock({
     return (
       <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
         <CardContent className="flex-1 p-0">
-          <img
+          <ZoomableImage
             src={resolveImageUrl(imgSrc)}
             alt={title || "Student upload"}
-            className="h-full w-full rounded-t-xl object-cover"
-            style={{ minHeight: compact ? "200px" : "280px" }}
+            className="rounded-t-xl"
+            imgClassName="h-full w-full object-cover"
+            imgStyle={{ minHeight: compact ? "200px" : "280px" }}
+            caption={title || description}
           />
         </CardContent>
         {(title || description) && (
@@ -803,11 +784,12 @@ function ResponseDisplay({
     return (
       <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
         <CardContent className="flex-1 p-0">
-          <img
+          <ZoomableImage
             src={resolveImageUrl(src)}
             alt="Student upload"
-            className="h-full w-full rounded-xl object-cover"
-            style={{ minHeight: "200px" }}
+            className="rounded-xl"
+            imgClassName="h-full w-full object-cover"
+            imgStyle={{ minHeight: "200px" }}
           />
         </CardContent>
       </Card>
@@ -884,40 +866,14 @@ function ResponseDisplay({
 
   if (!text) return <p className="text-muted-foreground text-sm italic">—</p>
 
-  const hex = parseHexColor(text)
-  if (hex) {
-    return (
-      <div className="flex flex-col gap-2">
-        <div
-          className="aspect-[3/2] w-full rounded-lg border border-gray-200 shadow-sm"
-          style={{ backgroundColor: hex }}
-        />
-        <p className="text-foreground text-sm font-bold tracking-wider uppercase">{hex}</p>
-      </div>
-    )
+  const brandColor =
+    fieldLabel && /colou?r/i.test(fieldLabel) ? parseBrandColor(text) : parseExactHex(text)
+  if (brandColor) {
+    return <ColorSwatch color={brandColor} rawText={text} />
   }
 
   if (fieldLabel && /font/i.test(fieldLabel)) {
-    const fontStyle = parseFontStyle(text)
-    const isPrimary = /primary/i.test(fieldLabel)
-    return (
-      <div className="space-y-3">
-        {isPrimary ? (
-          <>
-            <p className="text-foreground text-4xl leading-tight" style={fontStyle}>Header 1</p>
-            <p className="text-foreground text-2xl leading-tight" style={fontStyle}>Header 2</p>
-          </>
-        ) : (
-          <>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide" style={fontStyle}>Sub-Text</p>
-            <p className="text-foreground text-base leading-relaxed" style={fontStyle}>
-              Body — The quick brown fox jumps over the lazy dog.
-            </p>
-          </>
-        )}
-        <p className="text-muted-foreground/70 mt-2 border-t border-gray-100 pt-2 text-xs italic">{text}</p>
-      </div>
-    )
+    return <FontPreview text={text} fieldLabel={fieldLabel} />
   }
 
   return (

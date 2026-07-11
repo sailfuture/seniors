@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useRef, useState } from "react"
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +25,18 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { GroupDisplayRenderer, isGroupDisplayType, DISPLAY_TYPE, getGoogleSheetUrl, GoogleSheetOpenButton } from "@/components/group-display-types"
+import {
+  ColorSwatch,
+  FontPreview,
+  parseBrandColor,
+  parseExactHex,
+  deriveBrandTheme,
+  BrandThemeProvider,
+  useBrandTheme,
+  useGoogleFont,
+  inkFor,
+} from "@/components/brand-display"
+import { ZoomableImage } from "@/components/zoomable-image"
 import { icons as lucideIcons } from "lucide-react"
 
 const BT_BASE =
@@ -70,6 +82,13 @@ function qSectionId(q: TemplateQuestion): number {
 function qGroupId(q: TemplateQuestion): number | null {
   const v = q.businessthesis_custom_group_id ?? q.lifemap_custom_group_id
   return v != null ? Number(v) || null : null
+}
+
+// An image question labeled like "Section Background Image" supplies the
+// section's hero backdrop instead of rendering as content.
+function isSectionBackgroundQuestion(q: TemplateQuestion): boolean {
+  const typeId = q.question_types_id ?? q._question_types?.id ?? null
+  return typeId === QUESTION_TYPE.IMAGE_UPLOAD && /section\s*background/i.test(q.field_label)
 }
 
 interface StudentResponse {
@@ -159,6 +178,7 @@ function getInitials(name: string): string {
 }
 
 function GroupIcon({ name }: { name: string }) {
+  const brand = useBrandTheme()
   const pascalName = name
     .split(/[-_ ]+/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -167,7 +187,11 @@ function GroupIcon({ name }: { name: string }) {
   if (!Icon) return null
   return (
     <div className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-gray-100 bg-white">
-      <Icon className="size-4 text-gray-600" strokeWidth={1.5} />
+      <Icon
+        className="size-4 text-gray-600"
+        strokeWidth={1.5}
+        style={brand.hasBrand ? { color: brand.primaryInk } : undefined}
+      />
     </div>
   )
 }
@@ -178,41 +202,6 @@ function isShortType(typeId: number | null): boolean {
     typeId === QUESTION_TYPE.DROPDOWN ||
     typeId === QUESTION_TYPE.URL ||
     typeId === QUESTION_TYPE.DATE
-}
-
-function parseHexColor(value: string): string | null {
-  const match = value.trim().match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/)
-  if (!match) return null
-  return `#${match[1].toUpperCase()}`
-}
-
-function parseFontStyle(value: string): React.CSSProperties {
-  const lower = value.toLowerCase()
-  const style: React.CSSProperties = {}
-
-  let family: string = value
-  if (/(^|\s|-)sans(\s|-|$|serif)/.test(lower)) family = `${value}, sans-serif`
-  else if (/(^|\s|-)mono(space)?(\s|-|$)/.test(lower)) family = `${value}, ui-monospace, monospace`
-  else if (/(^|\s|-)serif(\s|-|$)/.test(lower)) family = `${value}, serif`
-  else if (/(script|cursive|handwritten)/.test(lower)) family = `${value}, cursive`
-  style.fontFamily = family
-
-  if (/black|heavy|extra[-\s]?bold/.test(lower)) style.fontWeight = 800
-  else if (/semi[-\s]?bold|demi[-\s]?bold/.test(lower)) style.fontWeight = 600
-  else if (/bold/.test(lower)) style.fontWeight = 700
-  else if (/extra[-\s]?light|ultra[-\s]?light/.test(lower)) style.fontWeight = 200
-  else if (/light/.test(lower)) style.fontWeight = 300
-  else if (/thin/.test(lower)) style.fontWeight = 100
-  else if (/medium/.test(lower)) style.fontWeight = 500
-
-  if (/italic|oblique/.test(lower)) style.fontStyle = "italic"
-
-  if (/outline/.test(lower)) {
-    style.WebkitTextStroke = "1.5px currentColor"
-    style.color = "transparent"
-  }
-
-  return style
 }
 
 export default function PublicBusinessThesisPage({
@@ -307,6 +296,15 @@ export default function PublicBusinessThesisPage({
     responseMap.set(rTemplateId(r), r)
   }
 
+  const brand = useMemo(() => {
+    const map = new Map<number, StudentResponse>()
+    for (const r of responses) map.set(rTemplateId(r), r)
+    return deriveBrandTheme(templates, map)
+  }, [templates, responses])
+
+  useGoogleFont(brand.primaryFont)
+  useGoogleFont(brand.secondaryFont)
+
   if (loading) {
     return (
       <div className="bg-background flex min-h-screen items-center justify-center">
@@ -319,6 +317,7 @@ export default function PublicBusinessThesisPage({
   }
 
   return (
+    <BrandThemeProvider theme={brand}>
     <div className="[--header-height:calc(var(--spacing)*14)]">
       <SidebarProvider className="flex flex-col">
         <header className="bg-background sticky top-0 z-50 flex w-full items-center border-b">
@@ -359,7 +358,9 @@ export default function PublicBusinessThesisPage({
                     </Avatar>
                     <div className="flex min-w-0 flex-col">
                       <span className="text-sm font-semibold">{studentName}</span>
-                      <span className="text-muted-foreground text-xs">Business Thesis</span>
+                      <span className="text-muted-foreground truncate text-xs">
+                        {brand.companyName || "Business Thesis"}
+                      </span>
                     </div>
                   </div>
                   <Separator />
@@ -380,7 +381,12 @@ export default function PublicBusinessThesisPage({
                           isActive={isActive}
                           tooltip={s.section_title}
                         >
-                          <span className={isActive ? "font-semibold" : ""}>{s.section_title}</span>
+                          <span
+                            className={isActive ? "font-semibold" : ""}
+                            style={isActive && brand.hasBrand ? { color: brand.primaryInk } : undefined}
+                          >
+                            {s.section_title}
+                          </span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     )
@@ -392,10 +398,15 @@ export default function PublicBusinessThesisPage({
 
           <SidebarInset className="bg-gray-50">
             <div className="w-full p-4 md:p-6 lg:p-8">
+              <DeckCover studentName={studentName} />
               {sections.map((section, sectionIdx) => {
-                const sectionTemplates = templates
+                const allSectionTemplates = templates
                   .filter((q) => qSectionId(q) === section.id)
                   .sort((a, b) => a.sortOrder - b.sortOrder)
+                const backgroundQ = allSectionTemplates.find(isSectionBackgroundQuestion)
+                const backgroundResp = backgroundQ ? responseMap.get(backgroundQ.id) : undefined
+                const studentBg = backgroundResp?.image_response?.path || backgroundResp?.image_response?.url
+                const sectionTemplates = allSectionTemplates.filter((q) => !isSectionBackgroundQuestion(q))
                 const sectionGroups = groups
                   .filter((g) => g.businessthesis_sections_id === section.id)
                   .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -414,9 +425,11 @@ export default function PublicBusinessThesisPage({
                 }
 
                 const desc = section.description || ""
-                const photoUrl = section.photo?.path
-                  ? resolveImageUrl(section.photo.path)
-                  : null
+                const photoUrl = studentBg
+                  ? resolveImageUrl(studentBg)
+                  : section.photo?.path
+                    ? resolveImageUrl(section.photo.path)
+                    : null
 
                 return (
                   <section
@@ -432,6 +445,7 @@ export default function PublicBusinessThesisPage({
                       description={desc}
                       photoUrl={photoUrl}
                       sectionNumber={sectionIdx + 1}
+                      sectionCount={sections.length}
                     />
 
                     <div className="mt-6 space-y-6">
@@ -518,6 +532,91 @@ export default function PublicBusinessThesisPage({
         </div>
       </SidebarProvider>
     </div>
+    </BrandThemeProvider>
+  )
+}
+
+const HERO_PATTERN: React.CSSProperties = {
+  backgroundImage: `url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.85' fill-rule='evenodd'%3E%3Cpath d='M5 0h1L0 6V5zM6 5v1H5z'/%3E%3C/g%3E%3C/svg%3E")`,
+  mixBlendMode: "screen",
+}
+
+function heroGradient(stops: [string, string, string], angle: number): string {
+  return `linear-gradient(${angle}deg, ${stops[0]} 0%, ${stops[1]} 50%, ${stops[2]} 100%)`
+}
+
+function heroOverlay(stops: [string, string, string], angle: number): string {
+  // hex8 alpha: F5 ≈ 0.96, D9 ≈ 0.85, F0 ≈ 0.94
+  return `linear-gradient(${angle}deg, ${stops[0]}F5 0%, ${stops[1]}D9 50%, ${stops[2]}F0 100%)`
+}
+
+function DeckCover({ studentName }: { studentName: string }) {
+  const brand = useBrandTheme()
+  if (!brand.companyName && !brand.logoUrl) return null
+
+  const titleFont = brand.primaryFont ? { fontFamily: `"${brand.primaryFont}", inherit` } : undefined
+  const taglineFont = brand.secondaryFont ? { fontFamily: `"${brand.secondaryFont}", inherit` } : undefined
+  const monogramBg = brand.accent ?? "#1f2937"
+
+  return (
+    <div className="relative mb-8 overflow-hidden rounded-2xl">
+      {brand.coverImageUrl && (
+        <img
+          src={brand.coverImageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+      <div className="absolute inset-0" style={HERO_PATTERN} />
+      <div
+        className="absolute inset-0"
+        style={{
+          background: brand.coverImageUrl
+            ? heroOverlay(brand.heroStops, 135)
+            : heroGradient(brand.heroStops, 135),
+        }}
+      />
+      <div className="relative z-10 px-6 py-12 md:px-12 md:py-16">
+        <div className="flex items-center gap-5">
+          {brand.logoUrl ? (
+            <div className="size-16 shrink-0 overflow-hidden rounded-full border-2 border-white/40 bg-white shadow-lg md:size-20">
+              <img src={brand.logoUrl} alt={brand.companyName || "Company logo"} className="size-full object-contain p-1" />
+            </div>
+          ) : (
+            <div
+              className="flex size-16 shrink-0 items-center justify-center rounded-full border-2 border-white/40 text-3xl font-bold shadow-lg md:size-20"
+              style={{ background: monogramBg, color: inkFor(monogramBg) }}
+            >
+              {(brand.companyName || "?").charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/60">
+              Senior Business Thesis
+            </p>
+            <h1
+              className="mt-1 text-3xl font-bold tracking-tight text-white md:text-5xl"
+              style={titleFont}
+            >
+              {brand.companyName || "Business Thesis"}
+            </h1>
+          </div>
+        </div>
+        {brand.tagline && (
+          <p className="mt-5 max-w-2xl text-base text-white/85 md:text-lg" style={taglineFont}>
+            {brand.tagline}
+          </p>
+        )}
+        {studentName && <p className="mt-2 text-sm text-white/60">by {studentName}</p>}
+      </div>
+      {brand.palette.length > 0 && (
+        <div className="relative z-10 flex h-1.5">
+          {brand.palette.map((c, i) => (
+            <span key={i} className="flex-1" style={{ background: c }} />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -526,72 +625,65 @@ function SectionHero({
   description,
   photoUrl,
   sectionNumber,
+  sectionCount,
 }: {
   title: string
   description: string
   photoUrl: string | null
   sectionNumber: number
+  sectionCount: number
 }) {
+  const brand = useBrandTheme()
   const gradientAngles = [135, 160, 45, 200, 100, 320, 170]
   const angle = gradientAngles[(sectionNumber - 1) % gradientAngles.length]
-  const palette = {
-    solid: `linear-gradient(${angle}deg, #040810 0%, #0f1f52 50%, #040810 100%)`,
-    overlay: `linear-gradient(${angle}deg, rgba(4,8,16,0.96) 0%, rgba(15,31,82,0.85) 50%, rgba(4,8,16,0.94) 100%)`,
-  }
 
-  const badge = (
-    <span className="mb-3 inline-block rounded bg-white/20 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-white">
-      Section {sectionNumber}
-    </span>
-  )
-
-  const patternOverlay: React.CSSProperties = {
-    backgroundImage: `url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.85' fill-rule='evenodd'%3E%3Cpath d='M5 0h1L0 6V5zM6 5v1H5z'/%3E%3C/g%3E%3C/svg%3E")`,
-    mixBlendMode: "screen",
-  }
-
-  if (photoUrl) {
-    return (
-      <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-xl sm:min-h-[340px]">
-        <img
-          src={photoUrl}
-          alt={title}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0" style={patternOverlay} />
-        <div
-          className="absolute inset-0"
-          style={{ background: palette.overlay }}
-        />
-        <div className="relative z-10 px-6 py-8 text-center md:px-12 lg:px-16">
-          {badge}
-          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            {title}
-          </h2>
-          {description && (
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-snug text-white/80 sm:text-base sm:leading-normal">
-              {description}
-            </p>
-          )}
-        </div>
-      </div>
-    )
-  }
+  const titleFont = brand.primaryFont ? { fontFamily: `"${brand.primaryFont}", inherit` } : undefined
+  const accentBar = brand.accent ?? "rgba(255,255,255,0.45)"
+  const num = String(sectionNumber).padStart(2, "0")
+  const total = String(sectionCount).padStart(2, "0")
 
   return (
-    <div className="relative flex min-h-[200px] items-center justify-center overflow-hidden rounded-xl sm:min-h-[240px]">
-      <div
-        className="absolute inset-0"
-        style={{ background: palette.solid }}
-      />
-      <div className="absolute inset-0" style={patternOverlay} />
-      <div className="relative z-10 px-6 py-8 text-center md:px-12 lg:px-16">
-        {badge}
-        <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+    <div className={`relative flex items-end overflow-hidden rounded-2xl ${photoUrl ? "min-h-[300px] sm:min-h-[380px]" : "min-h-[240px] sm:min-h-[300px]"}`}>
+      {photoUrl ? (
+        <>
+          <img
+            src={photoUrl}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="absolute inset-0" style={{ background: heroOverlay(brand.heroStops, angle) }} />
+        </>
+      ) : (
+        <div className="absolute inset-0" style={{ background: heroGradient(brand.heroStops, angle) }} />
+      )}
+      <div className="absolute inset-0" style={HERO_PATTERN} />
+      {/* bottom vignette anchors the text zone */}
+      <div className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
+      {/* oversized ghost numeral */}
+      <span
+        aria-hidden
+        className="absolute -top-7 right-3 select-none text-[8.5rem] font-black leading-none tracking-tighter text-white/[0.07] sm:-top-10 sm:text-[12rem]"
+        style={titleFont}
+      >
+        {num}
+      </span>
+
+      <div className="relative z-10 w-full px-7 pb-8 pt-24 md:px-10 md:pb-10">
+        <div className="flex items-center gap-3">
+          <span className="h-px w-10 shrink-0" style={{ background: accentBar }} />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70 tabular-nums">
+            Section {num} <span className="text-white/35">— {total}</span>
+          </span>
+        </div>
+        <h2
+          className="mt-3 max-w-3xl text-balance text-4xl font-bold tracking-tight text-white sm:text-5xl"
+          style={titleFont}
+        >
           {title}
         </h2>
         {description && (
-          <p className="mx-auto mt-3 max-w-2xl text-sm leading-snug text-white/70 sm:text-base sm:leading-normal">
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
             {description}
           </p>
         )}
@@ -641,6 +733,7 @@ function GroupCard({
   questions: TemplateQuestion[]
   responseMap: Map<number, StudentResponse>
 }) {
+  const brand = useBrandTheme()
   const regularQuestions = questions.filter((q) => (q.question_types_id ?? q._question_types?.id) !== QUESTION_TYPE.SOURCE)
   const sourceQuestions = questions.filter((q) => (q.question_types_id ?? q._question_types?.id) === QUESTION_TYPE.SOURCE)
   const sourceEntries = sourceQuestions
@@ -690,7 +783,8 @@ function GroupCard({
                       href={r.source_link.startsWith("http") ? r.source_link : `https://${r.source_link}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 underline break-all hover:text-blue-800"
+                      className="text-blue-600 underline break-all hover:opacity-80"
+                      style={brand.hasBrand ? { color: brand.primaryInk } : undefined}
                     >
                       {r.source_link}
                     </a>
@@ -731,11 +825,13 @@ function QuestionBlock({
     return (
       <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
         <CardContent className="flex-1 p-0">
-          <img
+          <ZoomableImage
             src={resolveImageUrl(imgSrc)}
             alt={title || "Student upload"}
-            className="h-full w-full rounded-t-xl object-cover"
-            style={{ minHeight: compact ? "200px" : "280px" }}
+            className="rounded-t-xl"
+            imgClassName="h-full w-full object-cover"
+            imgStyle={{ minHeight: compact ? "200px" : "280px" }}
+            caption={title || description}
           />
         </CardContent>
         {(title || description) && (
@@ -797,6 +893,8 @@ function ResponseDisplay({
   response: StudentResponse
   fieldLabel?: string
 }) {
+  const brand = useBrandTheme()
+  const linkStyle = brand.hasBrand ? { color: brand.primaryInk } : undefined
   const text = response.student_response ?? ""
 
   if (typeId === QUESTION_TYPE.IMAGE_UPLOAD) {
@@ -808,11 +906,12 @@ function ResponseDisplay({
     return (
       <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
         <CardContent className="flex-1 p-0">
-          <img
+          <ZoomableImage
             src={resolveImageUrl(src)}
             alt="Student upload"
-            className="h-full w-full rounded-xl object-cover"
-            style={{ minHeight: "200px" }}
+            className="rounded-xl"
+            imgClassName="h-full w-full object-cover"
+            imgStyle={{ minHeight: "200px" }}
           />
         </CardContent>
       </Card>
@@ -826,7 +925,8 @@ function ResponseDisplay({
         href={text.startsWith("http") ? text : `https://${text}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600 underline decoration-blue-600/30 underline-offset-4 transition-colors hover:text-blue-800 hover:decoration-blue-800/50"
+        className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600 underline decoration-current/30 underline-offset-4 transition-opacity hover:opacity-80"
+        style={linkStyle}
       >
         {text}
         <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -850,7 +950,10 @@ function ResponseDisplay({
   if (typeId === QUESTION_TYPE.DROPDOWN) {
     if (!text) return <p className="text-muted-foreground text-sm italic">—</p>
     return (
-      <span className="text-foreground inline-block rounded-full border border-gray-300 px-4 py-1.5 text-sm font-medium">
+      <span
+        className="text-foreground inline-block rounded-full border border-gray-300 px-4 py-1.5 text-sm font-medium"
+        style={brand.hasBrand ? { borderColor: brand.primaryInk, color: brand.primaryInk } : undefined}
+      >
         {text}
       </span>
     )
@@ -868,7 +971,7 @@ function ResponseDisplay({
         <div>
           <p className="text-muted-foreground text-[11px] uppercase tracking-wide">Source Link</p>
           {sl ? (
-            <a href={sl.startsWith("http") ? sl : `https://${sl}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 underline break-all hover:text-blue-800">{sl}</a>
+            <a href={sl.startsWith("http") ? sl : `https://${sl}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 underline break-all hover:opacity-80" style={linkStyle}>{sl}</a>
           ) : <p className="text-muted-foreground text-sm">—</p>}
         </div>
         <div>
@@ -889,40 +992,14 @@ function ResponseDisplay({
 
   if (!text) return <p className="text-muted-foreground text-sm italic">—</p>
 
-  const hex = parseHexColor(text)
-  if (hex) {
-    return (
-      <div className="flex flex-col gap-2">
-        <div
-          className="aspect-[3/2] w-full rounded-lg border border-gray-200 shadow-sm"
-          style={{ backgroundColor: hex }}
-        />
-        <p className="text-foreground text-sm font-bold tracking-wider uppercase">{hex}</p>
-      </div>
-    )
+  const brandColor =
+    fieldLabel && /colou?r/i.test(fieldLabel) ? parseBrandColor(text) : parseExactHex(text)
+  if (brandColor) {
+    return <ColorSwatch color={brandColor} rawText={text} />
   }
 
   if (fieldLabel && /font/i.test(fieldLabel)) {
-    const fontStyle = parseFontStyle(text)
-    const isPrimary = /primary/i.test(fieldLabel)
-    return (
-      <div className="space-y-3">
-        {isPrimary ? (
-          <>
-            <p className="text-foreground text-4xl leading-tight" style={fontStyle}>Header 1</p>
-            <p className="text-foreground text-2xl leading-tight" style={fontStyle}>Header 2</p>
-          </>
-        ) : (
-          <>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide" style={fontStyle}>Sub-Text</p>
-            <p className="text-foreground text-base leading-relaxed" style={fontStyle}>
-              Body — The quick brown fox jumps over the lazy dog.
-            </p>
-          </>
-        )}
-        <p className="text-muted-foreground/70 mt-2 border-t border-gray-100 pt-2 text-xs italic">{text}</p>
-      </div>
-    )
+    return <FontPreview text={text} fieldLabel={fieldLabel} />
   }
 
   return (
