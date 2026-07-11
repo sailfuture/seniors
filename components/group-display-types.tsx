@@ -34,6 +34,7 @@ interface StudentResponse {
 
 const QUESTION_TYPE_IMAGE = 4
 const QUESTION_TYPE_CURRENCY = 3
+const QUESTION_TYPE_LONG_TEXT = 1
 
 function resolveImageUrl(path: string | undefined): string {
   if (!path) return ""
@@ -230,7 +231,7 @@ function GalleryDisplay({
       {introBlocks.map((b) => (
         <div key={b.key}>
           <h4 className="text-muted-foreground text-sm font-medium">{b.label}</h4>
-          <p className="text-foreground mt-1 whitespace-pre-wrap text-base font-medium leading-snug">
+          <p className="text-foreground mt-1 whitespace-pre-wrap text-base font-normal leading-snug">
             {b.text}
           </p>
         </div>
@@ -473,6 +474,7 @@ function GoogleBudgetDisplay({
   type Section = { header: string; rows: { label: string; value: string; typeId: number | null }[] }
   const sections: Section[] = []
   const statTiles: { label: string; value: string }[] = []
+  const narratives: { label: string; value: string }[] = []
   let current: Section | null = null
 
   for (const q of tableQuestions) {
@@ -487,6 +489,11 @@ function GoogleBudgetDisplay({
       // Currency questions render as stat tiles instead of table rows
       if (typeId === QUESTION_TYPE_CURRENCY) {
         statTiles.push({ label, value })
+        continue
+      }
+      // Long-form answers read as prose blocks after the summary, not table rows
+      if (typeId === QUESTION_TYPE_LONG_TEXT) {
+        if (value) narratives.push({ label, value })
         continue
       }
       if (!current) {
@@ -564,16 +571,30 @@ function GoogleBudgetDisplay({
         </div>
       )}
 
-      {summary && (() => {
-        const summaryQ = questions.find((q) => q.field_name === "google_sheet_summary")
-        const label = summaryQ?.public_display_title || summaryQ?.field_label || "Summary"
-        return (
-          <div className="border-t px-5 py-4">
-            <p className="text-muted-foreground mb-1 text-xs font-medium">{label}</p>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{summary}</p>
-          </div>
-        )
-      })()}
+      {(summary || narratives.length > 0) && (
+        <div className="space-y-5 border-t px-5 py-4">
+          {summary && (() => {
+            const summaryQ = questions.find((q) => q.field_name === "google_sheet_summary")
+            const label = summaryQ?.public_display_title || summaryQ?.field_label || "Summary"
+            return (
+              <div>
+                <h4 className="text-muted-foreground text-sm font-medium">{label}</h4>
+                <p className="text-foreground mt-1 whitespace-pre-wrap text-base font-normal leading-snug">
+                  {summary}
+                </p>
+              </div>
+            )
+          })()}
+          {narratives.map((n, i) => (
+            <div key={i}>
+              <h4 className="text-muted-foreground text-sm font-medium">{n.label}</h4>
+              <p className="text-foreground mt-1 whitespace-pre-wrap text-base font-normal leading-snug">
+                {n.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

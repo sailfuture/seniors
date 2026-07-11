@@ -519,11 +519,6 @@ function SectionHero({
     </span>
   )
 
-  const patternOverlay: React.CSSProperties = {
-    backgroundImage: `url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.85' fill-rule='evenodd'%3E%3Cpath d='M5 0h1L0 6V5zM6 5v1H5z'/%3E%3C/g%3E%3C/svg%3E")`,
-    mixBlendMode: "screen",
-  }
-
   if (photoUrl) {
     return (
       <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-xl sm:min-h-[340px]">
@@ -532,7 +527,6 @@ function SectionHero({
           alt={title}
           className="absolute inset-0 h-full w-full object-cover"
         />
-        <div className="absolute inset-0" style={patternOverlay} />
         <div
           className="absolute inset-0"
           style={{ background: palette.overlay }}
@@ -558,7 +552,6 @@ function SectionHero({
         className="absolute inset-0"
         style={{ background: palette.solid }}
       />
-      <div className="absolute inset-0" style={patternOverlay} />
       <div className="relative z-10 px-6 py-8 text-center md:px-12 lg:px-16">
         {badge}
         <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
@@ -877,7 +870,7 @@ function ResponseDisplay({
   }
 
   return (
-    <p className="text-foreground whitespace-pre-wrap text-base font-medium leading-snug">
+    <p className="text-foreground whitespace-pre-wrap text-base font-normal leading-snug">
       {text}
     </p>
   )

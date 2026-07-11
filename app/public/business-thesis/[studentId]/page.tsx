@@ -398,7 +398,7 @@ export default function PublicBusinessThesisPage({
 
           <SidebarInset className="bg-gray-50">
             <div className="w-full p-4 md:p-6 lg:p-8">
-              <DeckCover studentName={studentName} />
+              <DeckCover studentName={studentName} studentImage={studentImage} />
               {sections.map((section, sectionIdx) => {
                 const allSectionTemplates = templates
                   .filter((q) => qSectionId(q) === section.id)
@@ -445,7 +445,6 @@ export default function PublicBusinessThesisPage({
                       description={desc}
                       photoUrl={photoUrl}
                       sectionNumber={sectionIdx + 1}
-                      sectionCount={sections.length}
                     />
 
                     <div className="mt-6 space-y-6">
@@ -536,11 +535,6 @@ export default function PublicBusinessThesisPage({
   )
 }
 
-const HERO_PATTERN: React.CSSProperties = {
-  backgroundImage: `url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.85' fill-rule='evenodd'%3E%3Cpath d='M5 0h1L0 6V5zM6 5v1H5z'/%3E%3C/g%3E%3C/svg%3E")`,
-  mixBlendMode: "screen",
-}
-
 function heroGradient(stops: [string, string, string], angle: number): string {
   return `linear-gradient(${angle}deg, ${stops[0]} 0%, ${stops[1]} 50%, ${stops[2]} 100%)`
 }
@@ -550,7 +544,7 @@ function heroOverlay(stops: [string, string, string], angle: number): string {
   return `linear-gradient(${angle}deg, ${stops[0]}F5 0%, ${stops[1]}D9 50%, ${stops[2]}F0 100%)`
 }
 
-function DeckCover({ studentName }: { studentName: string }) {
+function DeckCover({ studentName, studentImage }: { studentName: string; studentImage?: string }) {
   const brand = useBrandTheme()
   if (!brand.companyName && !brand.logoUrl) return null
 
@@ -567,7 +561,6 @@ function DeckCover({ studentName }: { studentName: string }) {
           className="absolute inset-0 h-full w-full object-cover"
         />
       )}
-      <div className="absolute inset-0" style={HERO_PATTERN} />
       <div
         className="absolute inset-0"
         style={{
@@ -582,6 +575,12 @@ function DeckCover({ studentName }: { studentName: string }) {
             <div className="size-16 shrink-0 overflow-hidden rounded-full border-2 border-white/40 bg-white shadow-lg md:size-20">
               <img src={brand.logoUrl} alt={brand.companyName || "Company logo"} className="size-full object-contain p-1" />
             </div>
+          ) : studentImage ? (
+            <img
+              src={studentImage}
+              alt={studentName || "Student"}
+              className="size-16 shrink-0 rounded-full border-2 border-white/40 object-cover shadow-lg md:size-20"
+            />
           ) : (
             <div
               className="flex size-16 shrink-0 items-center justify-center rounded-full border-2 border-white/40 text-3xl font-bold shadow-lg md:size-20"
@@ -625,13 +624,11 @@ function SectionHero({
   description,
   photoUrl,
   sectionNumber,
-  sectionCount,
 }: {
   title: string
   description: string
   photoUrl: string | null
   sectionNumber: number
-  sectionCount: number
 }) {
   const brand = useBrandTheme()
   const gradientAngles = [135, 160, 45, 200, 100, 320, 170]
@@ -640,7 +637,6 @@ function SectionHero({
   const titleFont = brand.primaryFont ? { fontFamily: `"${brand.primaryFont}", inherit` } : undefined
   const accentBar = brand.accent ?? "rgba(255,255,255,0.45)"
   const num = String(sectionNumber).padStart(2, "0")
-  const total = String(sectionCount).padStart(2, "0")
 
   return (
     <div className={`relative flex items-end overflow-hidden rounded-2xl ${photoUrl ? "min-h-[300px] sm:min-h-[380px]" : "min-h-[240px] sm:min-h-[300px]"}`}>
@@ -657,7 +653,6 @@ function SectionHero({
       ) : (
         <div className="absolute inset-0" style={{ background: heroGradient(brand.heroStops, angle) }} />
       )}
-      <div className="absolute inset-0" style={HERO_PATTERN} />
       {/* bottom vignette anchors the text zone */}
       <div className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
       {/* oversized ghost numeral */}
@@ -673,7 +668,7 @@ function SectionHero({
         <div className="flex items-center gap-3">
           <span className="h-px w-10 shrink-0" style={{ background: accentBar }} />
           <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70 tabular-nums">
-            Section {num} <span className="text-white/35">— {total}</span>
+            Section {num}
           </span>
         </div>
         <h2
@@ -755,7 +750,13 @@ function GroupCard({
         <div className="grid items-stretch gap-5 md:grid-cols-6">
           {regularQuestions.map((q) => {
             const typeId = q.question_types_id ?? q._question_types?.id ?? null
-            const colSpan = getQuestionColSpan(q.width as number | null | undefined, isShortType(typeId))
+            // Brand color questions render as a compact palette: 3 swatches per row
+            const isColorQuestion =
+              typeId === QUESTION_TYPE.SHORT_RESPONSE && /colou?r/i.test(q.field_label)
+            const colSpan =
+              !q.width && isColorQuestion
+                ? "md:col-span-2"
+                : getQuestionColSpan(q.width as number | null | undefined, isShortType(typeId))
             return (
               <div key={q.id} className={`${colSpan} flex flex-col`}>
                 <QuestionBlock
@@ -1003,7 +1004,7 @@ function ResponseDisplay({
   }
 
   return (
-    <p className="text-foreground whitespace-pre-wrap text-base font-medium leading-snug">
+    <p className="text-foreground whitespace-pre-wrap text-base font-normal leading-snug">
       {text}
     </p>
   )
