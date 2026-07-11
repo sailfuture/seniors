@@ -40,6 +40,9 @@ const STUDENTS_ENDPOINT =
 const LM_RESPONSES_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/lifemap_responses"
 
+const LM_TEMPLATE_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/lifeplan_template"
+
 function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
 }
@@ -96,9 +99,19 @@ interface StudentRosterProps {
   basePath: string
   publicBaseUrl?: string
   responsesEndpoint?: string
+  templateEndpoint?: string
+  templateIdField?: string
 }
 
-export function StudentRoster({ title, description, basePath, publicBaseUrl, responsesEndpoint = LM_RESPONSES_ENDPOINT }: StudentRosterProps) {
+export function StudentRoster({
+  title,
+  description,
+  basePath,
+  publicBaseUrl,
+  responsesEndpoint = LM_RESPONSES_ENDPOINT,
+  templateEndpoint = LM_TEMPLATE_ENDPOINT,
+  templateIdField = "lifemap_template_id",
+}: StudentRosterProps) {
   const router = useRouter()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
@@ -108,9 +121,10 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, res
 
   const fetchData = useCallback(async () => {
     try {
-      const [studentsRes, reviewsRes] = await Promise.all([
+      const [studentsRes, reviewsRes, templateRes] = await Promise.all([
         fetch(STUDENTS_ENDPOINT),
         fetch(responsesEndpoint),
+        fetch(templateEndpoint),
       ])
 
       if (studentsRes.ok) {
@@ -123,12 +137,27 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, res
         setCollapsedGroups(new Set(nonBatch2026))
       }
 
+      // Only questions that still exist on the form can produce review work;
+      // responses on archived/unpublished questions are unreachable in the
+      // section view and must not badge the roster.
+      const liveTemplateIds = new Set<number>()
+      if (templateRes.ok) {
+        const templates = await templateRes.json()
+        if (Array.isArray(templates)) {
+          for (const t of templates as { id: number; isArchived?: boolean; isPublished?: boolean }[]) {
+            if (!t.isArchived && t.isPublished) liveTemplateIds.add(t.id)
+          }
+        }
+      }
+
       if (reviewsRes.ok) {
         const responses = await reviewsRes.json()
         if (Array.isArray(responses)) {
           const counts = new Map<string, number>()
           for (const r of responses) {
+            if (r.isArchived) continue
             if (!r.readyReview || r.isComplete || r.revisionNeeded) continue
+            if (!liveTemplateIds.has(Number(r[templateIdField]))) continue
             const sid = String(r.students_id)
             counts.set(sid, (counts.get(sid) ?? 0) + 1)
           }
@@ -140,7 +169,7 @@ export function StudentRoster({ title, description, basePath, publicBaseUrl, res
     } finally {
       setLoading(false)
     }
-  }, [responsesEndpoint])
+  }, [responsesEndpoint, templateEndpoint, templateIdField])
 
   useEffect(() => {
     fetchData()

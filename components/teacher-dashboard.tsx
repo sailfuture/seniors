@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MapsIcon, BookOpen02Icon } from "@hugeicons/core-free-icons"
 import { LIFEMAP_API_CONFIG, BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
@@ -12,6 +13,7 @@ export function TeacherDashboard() {
   const [lmQuestions, setLmQuestions] = useState(0)
   const [btSections, setBtSections] = useState(0)
   const [btQuestions, setBtQuestions] = useState(0)
+  const [countsLoading, setCountsLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
@@ -24,7 +26,7 @@ export function TeacherDashboard() {
       setLmQuestions((lmTpl as { isArchived?: boolean }[]).filter((q) => !q.isArchived).length)
       setBtSections(btSec.length)
       setBtQuestions((btTpl as { isArchived?: boolean }[]).filter((q) => !q.isArchived).length)
-    }).catch(() => {})
+    }).catch(() => {}).finally(() => setCountsLoading(false))
   }, [])
 
   return (
@@ -48,7 +50,11 @@ export function TeacherDashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground text-sm">{lmSections} sections &middot; {lmQuestions} questions</p>
+              {countsLoading ? (
+                <Skeleton className="h-5 w-44" />
+              ) : (
+                <p className="text-muted-foreground text-sm">{lmSections} sections &middot; {lmQuestions} questions</p>
+              )}
             </CardContent>
           </Card>
         </Link>
@@ -64,7 +70,11 @@ export function TeacherDashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground text-sm">{btSections} sections &middot; {btQuestions} questions</p>
+              {countsLoading ? (
+                <Skeleton className="h-5 w-44" />
+              ) : (
+                <p className="text-muted-foreground text-sm">{btSections} sections &middot; {btQuestions} questions</p>
+              )}
             </CardContent>
           </Card>
         </Link>

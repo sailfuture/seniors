@@ -405,6 +405,20 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           body: JSON.stringify(patch),
         })
         if (res.ok) {
+          // Notify the sidebar badges of the state transition
+          const prevResp = responses.get(templateId)
+          const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)
+          const nowReady = patch.readyReview && !patch.isComplete && !patch.revisionNeeded
+          const wasRevision = !!prevResp?.revisionNeeded
+          const nowRevision = patch.revisionNeeded
+          const eventName = `${cfg.eventPrefix ?? ""}review-update`
+          if (nowReady !== wasReady) {
+            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: nowReady ? 1 : -1 } }))
+          }
+          if (nowRevision !== wasRevision) {
+            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: nowRevision ? 1 : -1, type: "revision" } }))
+          }
+
           setResponses((prev) => {
             const next = new Map(prev)
             const existing = next.get(templateId)
@@ -448,7 +462,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         if (!silent) toast.error("Failed to update status")
       }
     },
-    [session, studentId, sectionId, questions, cfg, F]
+    [session, studentId, sectionId, questions, responses, cfg, F]
   )
 
   if (loading) {

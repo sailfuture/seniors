@@ -198,7 +198,7 @@ function useSectionReviewCounts(studentId: string | null, refreshKey: number): {
             if (r.readyReview && !r.isComplete && !r.revisionNeeded) {
               ready.set(sid, (ready.get(sid) ?? 0) + 1)
             }
-            if (r.revisionNeeded) {
+            if (r.revisionNeeded && !r.isComplete) {
               revision.set(sid, (revision.get(sid) ?? 0) + 1)
             }
           }
@@ -274,7 +274,7 @@ function useBtSectionReviewCounts(studentId: string | null, refreshKey: number):
             if (r.readyReview && !r.isComplete && !r.revisionNeeded) {
               ready.set(sid, (ready.get(sid) ?? 0) + 1)
             }
-            if (r.revisionNeeded) {
+            if (r.revisionNeeded && !r.isComplete) {
               revision.set(sid, (revision.get(sid) ?? 0) + 1)
             }
           }
