@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect } from "react"
+import { GOOGLE_FONTS } from "@/lib/google-fonts"
 
 // ── Color parsing ──────────────────────────────────────────────────────────
 
@@ -153,15 +154,34 @@ const FONT_NOISE_WORDS = new Set([
   "name",
 ])
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 /**
- * Pull a plausible font family out of a free-text answer, e.g.
- * "dark navy blue cooper Hewitt, stretched like star wars intro"
- * → "Cooper Hewitt". Only the part before the first comma/slash/newline is
- * considered; weight, style, and color words are dropped; the remainder is
- * title-cased for the Google Fonts URL.
+ * Pull a plausible font family out of a free-text answer. Known Google Fonts
+ * win verbatim — first an exact match, then the longest catalog name found in
+ * the text — so families containing weight-like words ("Shadows Into Light",
+ * "Archivo Black", "Black Ops One") are never mangled. Only unknown answers
+ * fall back to stripping weight/style/color words, e.g. "dark navy blue
+ * cooper Hewitt, stretched like star wars intro" → "Cooper Hewitt".
  */
 export function extractFontFamily(raw: string): string {
-  const first = raw.split(/[,/\n]/)[0]
+  const text = raw.trim()
+  if (!text) return ""
+
+  const exact = GOOGLE_FONTS.find((f) => f.toLowerCase() === text.toLowerCase())
+  if (exact) return exact
+
+  let contained = ""
+  for (const f of GOOGLE_FONTS) {
+    if (f.length > contained.length && new RegExp(`\\b${escapeRegExp(f)}\\b`, "i").test(text)) {
+      contained = f
+    }
+  }
+  if (contained) return contained
+
+  const first = text.split(/[,/\n]/)[0]
   const words = first
     .replace(/[^a-zA-Z0-9 '-]/g, " ")
     .split(/\s+/)
@@ -481,17 +501,10 @@ export function FontPreview({ text, fieldLabel }: { text: string; fieldLabel: st
       </div>
 
       {/* Usage sample */}
-      <div className="mt-4 space-y-1.5 border-t border-gray-100 pt-3.5">
-        {isPrimary ? (
-          <>
-            <p className="text-foreground text-2xl leading-tight" style={fontStyle}>Header 1</p>
-            <p className="text-foreground text-lg leading-tight" style={fontStyle}>Header 2</p>
-          </>
-        ) : (
-          <p className="text-foreground text-base leading-relaxed" style={fontStyle}>
-            The quick brown fox jumps over the lazy dog.
-          </p>
-        )}
+      <div className="mt-4 border-t border-gray-100 pt-3.5">
+        <p className="text-foreground text-base leading-relaxed" style={fontStyle}>
+          The quick brown fox jumps over the lazy dog.
+        </p>
       </div>
     </div>
   )

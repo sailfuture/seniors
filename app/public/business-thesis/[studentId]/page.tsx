@@ -407,12 +407,7 @@ export default function PublicBusinessThesisPage({
                         isActive={activeSection === "cover"}
                         tooltip="Cover"
                       >
-                        <span
-                          className={activeSection === "cover" ? "font-semibold" : ""}
-                          style={activeSection === "cover" && brand.hasBrand ? { color: brand.primaryInk } : undefined}
-                        >
-                          Cover
-                        </span>
+                        <span className={activeSection === "cover" ? "font-semibold" : ""}>Cover</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
@@ -426,12 +421,7 @@ export default function PublicBusinessThesisPage({
                           isActive={isActive}
                           tooltip={s.section_title}
                         >
-                          <span
-                            className={isActive ? "font-semibold" : ""}
-                            style={isActive && brand.hasBrand ? { color: brand.primaryInk } : undefined}
-                          >
-                            {s.section_title}
-                          </span>
+                          <span className={isActive ? "font-semibold" : ""}>{s.section_title}</span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     )
@@ -713,10 +703,10 @@ function DeckCover({
             <button
               type="button"
               onClick={onNext}
-              aria-label="Scroll to the first section"
-              className="mt-7 flex size-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white backdrop-blur-sm transition-colors [animation-duration:2.5s] hover:bg-white/25 motion-safe:animate-bounce"
+              className="mt-7 flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition-colors [animation-duration:2.5s] hover:bg-white/25 motion-safe:animate-bounce"
             >
-              <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              Click to view thesis
+              <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </button>
