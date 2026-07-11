@@ -35,6 +35,7 @@ import {
   useBrandTheme,
   useGoogleFont,
   inkFor,
+  mixHex,
 } from "@/components/brand-display"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { icons as lucideIcons } from "lucide-react"
@@ -604,6 +605,19 @@ function DeckCover({
   const hasContact =
     !!(contact.email || contact.phone || contact.website || contact.location) || contact.socials.length > 0
 
+  // Cover background blends the student's whole palette, each color anchored
+  // into near-black so white text stays readable across every stop.
+  const dark = "#05070D"
+  const coverStops =
+    brand.palette.length >= 2
+      ? brand.palette.map((c, i, arr) => mixHex(c, dark, i === 0 || i === arr.length - 1 ? 0.8 : 0.6))
+      : [...brand.heroStops]
+  const stopAt = (i: number) => Math.round((i / (coverStops.length - 1)) * 100)
+  const coverGradient = `linear-gradient(120deg, ${coverStops.map((c, i) => `${c} ${stopAt(i)}%`).join(", ")})`
+  const coverOverlay = `linear-gradient(120deg, ${coverStops
+    .map((c, i) => `${c}${i === 0 || i === coverStops.length - 1 ? "F0" : "D9"} ${stopAt(i)}%`)
+    .join(", ")})`
+
   return (
     <div className="relative mb-8 flex min-h-[calc(100svh-var(--header-height)-1rem)] overflow-hidden rounded-2xl md:min-h-[calc(100svh-var(--header-height)-1.5rem)] lg:min-h-[calc(100svh-var(--header-height)-2rem)]">
       {brand.coverImageUrl && (
@@ -616,11 +630,7 @@ function DeckCover({
       )}
       <div
         className="absolute inset-0"
-        style={{
-          background: brand.coverImageUrl
-            ? heroOverlay(brand.heroStops, 120)
-            : heroGradient(brand.heroStops, 120),
-        }}
+        style={{ background: brand.coverImageUrl ? coverOverlay : coverGradient }}
       />
       {brand.accent && (
         <div
@@ -633,37 +643,26 @@ function DeckCover({
       <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
 
       <div className="relative z-10 flex w-full flex-col justify-between gap-14 p-7 md:p-11">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2.5">
-            {brand.logoUrl ? (
-              <div className="size-12 shrink-0 overflow-hidden rounded-full border border-white/30 bg-white shadow-lg md:size-14">
-                <img src={brand.logoUrl} alt={brand.companyName || "Company logo"} className="size-full object-contain p-1" />
-              </div>
-            ) : (
-              <div
-                className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/30 text-xl font-bold shadow-lg md:size-14"
-                style={{ background: monogramBg, color: inkFor(monogramBg) }}
-              >
-                {(brand.companyName || "?").charAt(0).toUpperCase()}
-              </div>
-            )}
-            {studentImage && (
-              <img
-                src={studentImage}
-                alt={studentName || "Student"}
-                className="size-12 shrink-0 rounded-full border border-white/30 object-cover shadow-lg md:size-14"
-              />
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="h-px w-8 shrink-0" style={{ background: accentBar }} />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
-              Senior Business Thesis
-            </p>
-          </div>
+        <div className="flex items-center gap-3">
+          <span className="h-px w-8 shrink-0" style={{ background: accentBar }} />
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
+            Senior Business Thesis
+          </p>
         </div>
 
         <div>
+          {brand.logoUrl ? (
+            <div className="mb-6 size-20 overflow-hidden rounded-full border border-white/30 bg-white shadow-lg md:size-24">
+              <img src={brand.logoUrl} alt={brand.companyName || "Company logo"} className="size-full object-contain p-1.5" />
+            </div>
+          ) : (
+            <div
+              className="mb-6 flex size-20 items-center justify-center rounded-full border border-white/30 text-3xl font-bold shadow-lg md:size-24"
+              style={{ background: monogramBg, color: inkFor(monogramBg) }}
+            >
+              {(brand.companyName || "?").charAt(0).toUpperCase()}
+            </div>
+          )}
           <h1
             className="max-w-4xl text-balance text-4xl font-bold tracking-tight text-white sm:text-6xl"
             style={titleFont}
@@ -675,16 +674,41 @@ function DeckCover({
               {brand.tagline}
             </p>
           )}
-          {studentName && <p className="mt-5 text-sm text-white/60">by {studentName}</p>}
+          {studentName && (
+            <div className="mt-5 flex items-center gap-2.5">
+              {studentImage && (
+                <img
+                  src={studentImage}
+                  alt={studentName}
+                  className="size-8 shrink-0 rounded-full border border-white/30 object-cover shadow"
+                />
+              )}
+              <p className="text-sm text-white/60">by {studentName}</p>
+            </div>
+          )}
+
+          {onNext && (
+            <button
+              type="button"
+              onClick={onNext}
+              aria-label="Scroll to the first section"
+              className="mt-7 flex size-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white backdrop-blur-sm transition-colors [animation-duration:2.5s] hover:bg-white/25 motion-safe:animate-bounce"
+            >
+              <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+          )}
 
           {hasContact && (
-            <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-white/15 pr-16 pt-4 text-xs text-white/60">
+            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-white/15 pt-4 text-xs text-white/60">
               {contact.email && (
                 <a href={`mailto:${contact.email}`} className="transition-colors hover:text-white">
                   {contact.email}
                 </a>
               )}
               {contact.phone && <span>{contact.phone}</span>}
+              {contact.location && <span>{contact.location}</span>}
               {contact.website && (
                 <a
                   href={contact.website.startsWith("http") ? contact.website : `https://${contact.website}`}
@@ -700,24 +724,10 @@ function DeckCover({
                   {s.label} <span className="text-white/80">{s.value}</span>
                 </span>
               ))}
-              {contact.location && <span>{contact.location}</span>}
             </div>
           )}
         </div>
       </div>
-
-      {onNext && (
-        <button
-          type="button"
-          onClick={onNext}
-          aria-label="Scroll to the first section"
-          className="absolute bottom-6 right-6 z-20 flex size-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white backdrop-blur-sm transition-colors [animation-duration:2.5s] hover:bg-white/25 motion-safe:animate-bounce"
-        >
-          <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
-      )}
 
       {brand.palette.length > 0 && (
         <div className="absolute inset-x-0 bottom-0 z-10 flex h-1.5">

@@ -427,7 +427,13 @@ export function deriveBrandTheme(
       email: text("company_email"),
       phone: text("company_phone_number"),
       website: textByPattern(/website/i),
-      location: [text("city"), text("state")].filter(Boolean).join(", "),
+      location: [
+        text("company_address"),
+        text("city"),
+        [text("state"), text("zip_postal_code")].filter(Boolean).join(" "),
+      ]
+        .filter(Boolean)
+        .join(", "),
       socials,
     },
   }
