@@ -88,6 +88,7 @@ interface TemplateQuestion {
   public_display_title?: string
   public_display_description?: string
   width?: number | null
+  image_aspect_ratio?: string
   _question_types?: QuestionType
 }
 
@@ -143,6 +144,7 @@ function makeEmptyQuestion(F: FormApiConfig["fields"]): Omit<TemplateQuestion, "
     public_display_title: "",
     public_display_description: "",
     width: null,
+    image_aspect_ratio: "",
   }
 }
 
@@ -1470,6 +1472,7 @@ function QuestionSheet({
   const isSource = selectedTypeName === "Source"
   const showMinWords = !isSource && (selectedTypeName === "Long Response" || selectedTypeName === "Short Response")
   const showDropdown = selectedTypeName === "Dropdown"
+  const showImageSettings = selectedTypeName === "Image Upload"
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -1559,6 +1562,30 @@ function QuestionSheet({
                 onChange={(e) => updateField("min_words", parseInt(e.target.value) || 0)}
                 placeholder="e.g. 50"
               />
+            </div>
+          )}
+
+          {showImageSettings && (
+            <div className="space-y-2">
+              <Label>Image Crop Ratio</Label>
+              <Select
+                value={form.image_aspect_ratio || "free"}
+                onValueChange={(v) => updateField("image_aspect_ratio", v === "free" ? "" : v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Student's choice" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">Student&apos;s choice</SelectItem>
+                  <SelectItem value="3:4">3:4 — portrait</SelectItem>
+                  <SelectItem value="1:1">1:1 — square</SelectItem>
+                  <SelectItem value="16:9">16:9 — wide banner</SelectItem>
+                  <SelectItem value="9:16">9:16 — vertical / story</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">
+                When set, students must crop their upload to this exact ratio.
+              </p>
             </div>
           )}
 

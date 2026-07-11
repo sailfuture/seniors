@@ -59,6 +59,7 @@ import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
 import { BlurredFitImage } from "./blurred-fit-image"
 import { ImageCropDialog } from "./image-crop-dialog"
+import { GoogleFontPicker } from "./google-font-picker"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
@@ -89,6 +90,7 @@ interface TemplateQuestion {
   _question_types?: { id: number; type: string; noInput?: boolean }
   dropdownOptions: string[]
   sortOrder: number
+  image_aspect_ratio?: string
   [key: string]: unknown
 }
 
@@ -601,6 +603,19 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           body: JSON.stringify(patch),
         })
         if (res.ok) {
+          // Notify the sidebar badges of the state transition
+          const prevResp = responses.get(templateId)
+          const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)
+          const nowReady = patch.readyReview
+          const wasRevision = !!prevResp?.revisionNeeded
+          const eventName = `${cfg.eventPrefix ?? ""}review-update`
+          if (nowReady !== wasReady) {
+            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: nowReady ? 1 : -1 } }))
+          }
+          if (wasRevision) {
+            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: -1, type: "revision" } }))
+          }
+
           setResponses((prev) => {
             const next = new Map(prev)
             const existing = next.get(templateId)
@@ -1375,6 +1390,15 @@ function DynamicField({
       </AlertDialog>
 
       {typeId === QUESTION_TYPE.SHORT_RESPONSE && (
+        /\bfont\b/i.test(question.field_label) ? (
+          <GoogleFontPicker
+            value={value}
+            onChange={onChange}
+            onBlur={onBlur}
+            disabled={isDimmed}
+            placeholder={question.placeholder}
+          />
+        ) : (
         <InputGroup>
           <InputGroupInput
             className={isDimmed ? "" : "font-semibold"}
@@ -1386,6 +1410,7 @@ function DynamicField({
             spellCheck
           />
         </InputGroup>
+        )
       )}
 
       {typeId === QUESTION_TYPE.LONG_RESPONSE && (
@@ -1420,6 +1445,7 @@ function DynamicField({
           imageValue={imageValue}
           onUpload={onImageUpload}
           locked={isDimmed}
+          aspectRatio={question.image_aspect_ratio}
         />
       )}
 
@@ -1621,10 +1647,12 @@ function ImageUpload({
   imageValue,
   onUpload,
   locked = false,
+  aspectRatio,
 }: {
   imageValue: Record<string, unknown> | null
   onUpload: (file: File) => void
   locked?: boolean
+  aspectRatio?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [localPreview, setLocalPreview] = useState<string | null>(null)
@@ -1670,6 +1698,7 @@ function ImageUpload({
         file={pendingFile}
         onCropped={handleCropped}
         onCancel={() => setPendingFile(null)}
+        lockedRatio={aspectRatio}
       />
       {preview ? (
         <div className="group relative overflow-hidden rounded-lg border">

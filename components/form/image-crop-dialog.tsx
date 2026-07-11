@@ -18,6 +18,13 @@ const RATIOS = [
   { label: "9:16", value: 9 / 16 },
 ] as const
 
+export const CROP_RATIO_OPTIONS = RATIOS.map((r) => r.label)
+
+function ratioFromLabel(label: string | null | undefined): number | null {
+  if (!label) return null
+  return RATIOS.find((r) => r.label === label.trim())?.value ?? null
+}
+
 // Cap the long edge of the cropped output so a full-res phone photo doesn't
 // turn into a multi-megabyte upload.
 const MAX_OUTPUT_DIM = 2560
@@ -52,13 +59,17 @@ export function ImageCropDialog({
   file,
   onCropped,
   onCancel,
+  lockedRatio,
 }: {
   file: File | null
   onCropped: (file: File) => void
   onCancel: () => void
+  /** Ratio label (e.g. "16:9") configured on the question — hides the ratio choices. */
+  lockedRatio?: string | null
 }) {
+  const lockedAspect = ratioFromLabel(lockedRatio)
   const [src, setSrc] = useState<string | null>(null)
-  const [aspect, setAspect] = useState<number>(RATIOS[0].value)
+  const [aspect, setAspect] = useState<number>(lockedAspect ?? RATIOS[0].value)
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
   const [croppedArea, setCroppedArea] = useState<Area | null>(null)
@@ -69,14 +80,14 @@ export function ImageCropDialog({
       setSrc(null)
       return
     }
-    setAspect(RATIOS[0].value)
+    setAspect(lockedAspect ?? RATIOS[0].value)
     setCrop({ x: 0, y: 0 })
     setZoom(1)
     setCroppedArea(null)
     const url = URL.createObjectURL(file)
     setSrc(url)
     return () => URL.revokeObjectURL(url)
-  }, [file])
+  }, [file, lockedAspect])
 
   const handleConfirm = async () => {
     if (!file || !src || !croppedArea) return
@@ -117,22 +128,32 @@ export function ImageCropDialog({
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5" role="group" aria-label="Crop ratio">
-            {RATIOS.map((r) => (
-              <button
-                key={r.label}
-                type="button"
-                onClick={() => setAspect(r.value)}
-                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                  aspect === r.value
-                    ? "border-gray-900 bg-gray-900 text-white"
-                    : "border-input hover:bg-accent text-muted-foreground"
-                }`}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
+          {lockedAspect ? (
+            <span className="text-muted-foreground inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium">
+              <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              {lockedRatio} crop
+            </span>
+          ) : (
+            <div className="flex items-center gap-1.5" role="group" aria-label="Crop ratio">
+              {RATIOS.map((r) => (
+                <button
+                  key={r.label}
+                  type="button"
+                  onClick={() => setAspect(r.value)}
+                  className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    aspect === r.value
+                      ? "border-gray-900 bg-gray-900 text-white"
+                      : "border-input hover:bg-accent text-muted-foreground"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          )}
           <input
             type="range"
             min={1}
