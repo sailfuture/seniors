@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group"
 import { useGoogleFont } from "@/components/brand-display"
 
@@ -86,8 +87,36 @@ export function GoogleFontPicker({
 }) {
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(0)
+  // Dropdown coordinates for the portal (the form clips ancestors with
+  // overflow-hidden for its collapse animation, so the list must escape).
+  const [dropPos, setDropPos] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!open) {
+      setDropPos(null)
+      return
+    }
+    const update = () => {
+      const el = wrapRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - r.bottom
+      if (spaceBelow < 300 && r.top > 320) {
+        setDropPos({ left: r.left, width: r.width, bottom: window.innerHeight - r.top + 4 })
+      } else {
+        setDropPos({ left: r.left, width: r.width, top: r.bottom + 4 })
+      }
+    }
+    update()
+    window.addEventListener("resize", update)
+    window.addEventListener("scroll", update, true)
+    return () => {
+      window.removeEventListener("resize", update)
+      window.removeEventListener("scroll", update, true)
+    }
+  }, [open])
 
   const trimmed = value.trim()
   const exactMatch = useMemo(
@@ -181,18 +210,27 @@ export function GoogleFontPicker({
         </button>
       )}
 
-      {open && !disabled && visible.length > 0 && (
-        <div className="bg-popover text-popover-foreground absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-md border shadow-md">
-          {visible.map((name, i) => (
-            <FontOption key={name} name={name} active={i === activeIdx} onPick={pick} />
-          ))}
-          {filtered.length > MAX_VISIBLE && (
-            <p className="text-muted-foreground border-t px-3 py-1.5 text-[11px]">
-              {filtered.length - MAX_VISIBLE} more — keep typing to narrow down
-            </p>
-          )}
-        </div>
-      )}
+      {open &&
+        !disabled &&
+        visible.length > 0 &&
+        dropPos &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            style={{ position: "fixed", left: dropPos.left, width: dropPos.width, top: dropPos.top, bottom: dropPos.bottom }}
+            className="bg-popover text-popover-foreground z-[90] max-h-72 overflow-y-auto rounded-md border shadow-md"
+          >
+            {visible.map((name, i) => (
+              <FontOption key={name} name={name} active={i === activeIdx} onPick={pick} />
+            ))}
+            {filtered.length > MAX_VISIBLE && (
+              <p className="text-muted-foreground border-t px-3 py-1.5 text-[11px]">
+                {filtered.length - MAX_VISIBLE} more — keep typing to narrow down
+              </p>
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

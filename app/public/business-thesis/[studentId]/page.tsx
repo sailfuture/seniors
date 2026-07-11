@@ -35,7 +35,6 @@ import {
   useBrandTheme,
   useGoogleFont,
   inkFor,
-  mixHex,
 } from "@/components/brand-display"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { icons as lucideIcons } from "lucide-react"
@@ -224,6 +223,7 @@ export default function PublicBusinessThesisPage({
   const [groups, setGroups] = useState<CustomGroup[]>([])
   const [studentName, setStudentName] = useState("")
   const [studentImage, setStudentImage] = useState("")
+  const [studentYearGroup, setStudentYearGroup] = useState("")
   const [loading, setLoading] = useState(true)
   const [activeSection, setActiveSection] = useState<string>("")
   const sectionRefs = useRef<Map<number, HTMLElement>>(new Map())
@@ -256,12 +256,13 @@ export default function PublicBusinessThesisPage({
         setGroups(data)
       }
       if (studentsRes.ok) {
-        const students: { id: string; firstName: string; lastName: string; profileImage?: string }[] =
+        const students: { id: string; firstName: string; lastName: string; profileImage?: string; yearGroup?: string }[] =
           await studentsRes.json()
         const match = students.find((s) => s.id === studentId)
         if (match) {
           setStudentName(`${match.firstName} ${match.lastName}`)
           if (match.profileImage) setStudentImage(match.profileImage)
+          if (match.yearGroup) setStudentYearGroup(match.yearGroup)
         }
       }
     } catch {
@@ -354,6 +355,12 @@ export default function PublicBusinessThesisPage({
             <span className="text-sm font-semibold tracking-tight">SailFuture Academy</span>
             <Separator orientation="vertical" className="mx-2 data-vertical:h-4 data-vertical:self-auto" />
             <span className="text-muted-foreground text-sm">Business Thesis</span>
+            {studentYearGroup && (
+              <>
+                <Separator orientation="vertical" className="mx-2 data-vertical:h-4 data-vertical:self-auto" />
+                <span className="text-muted-foreground text-sm">{studentYearGroup}</span>
+              </>
+            )}
             <div className="ml-auto flex items-center gap-3">
               {studentName && (
                 <div className="flex items-center gap-2">
@@ -621,19 +628,6 @@ function DeckCover({
   const hasContact =
     !!(contact.email || contact.phone || contact.website || contact.location) || contact.socials.length > 0
 
-  // Cover background blends the student's whole palette, each color anchored
-  // into near-black so white text stays readable across every stop.
-  const dark = "#05070D"
-  const coverStops =
-    brand.palette.length >= 2
-      ? brand.palette.map((c, i, arr) => mixHex(c, dark, i === 0 || i === arr.length - 1 ? 0.8 : 0.6))
-      : [...brand.heroStops]
-  const stopAt = (i: number) => Math.round((i / (coverStops.length - 1)) * 100)
-  const coverGradient = `linear-gradient(120deg, ${coverStops.map((c, i) => `${c} ${stopAt(i)}%`).join(", ")})`
-  const coverOverlay = `linear-gradient(120deg, ${coverStops
-    .map((c, i) => `${c}${i === 0 || i === coverStops.length - 1 ? "F0" : "D9"} ${stopAt(i)}%`)
-    .join(", ")})`
-
   return (
     <div className="relative mb-8 flex min-h-[calc(100svh-var(--header-height)-1rem)] overflow-hidden rounded-2xl md:min-h-[calc(100svh-var(--header-height)-1.5rem)] lg:min-h-[calc(100svh-var(--header-height)-2rem)]">
       {brand.coverImageUrl && (
@@ -646,7 +640,11 @@ function DeckCover({
       )}
       <div
         className="absolute inset-0"
-        style={{ background: brand.coverImageUrl ? coverOverlay : coverGradient }}
+        style={{
+          background: brand.coverImageUrl
+            ? heroOverlay(brand.heroStops, 120)
+            : heroGradient(brand.heroStops, 120),
+        }}
       />
       {brand.accent && (
         <div
@@ -677,7 +675,7 @@ function DeckCover({
         <div>
           {brand.logoUrl ? (
             <div className="mb-6 size-20 overflow-hidden rounded-full border border-white/30 bg-white shadow-lg md:size-24">
-              <img src={brand.logoUrl} alt={brand.companyName || "Company logo"} className="size-full object-contain p-1.5" />
+              <img src={brand.logoUrl} alt={brand.companyName || "Company logo"} className="size-full object-cover" />
             </div>
           ) : (
             <div
