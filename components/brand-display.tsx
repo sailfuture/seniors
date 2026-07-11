@@ -305,6 +305,14 @@ interface ThemeSourceResponse {
   image_response?: { path?: string; url?: string } | null
 }
 
+export interface BrandContact {
+  email: string
+  phone: string
+  website: string
+  location: string
+  socials: { label: string; value: string }[]
+}
+
 export interface BrandTheme {
   hasBrand: boolean
   /** Raw brand primary (hex). */
@@ -325,6 +333,7 @@ export interface BrandTheme {
   coverImageUrl: string
   primaryFont: string
   secondaryFont: string
+  contact: BrandContact
 }
 
 const DEFAULT_HERO: [string, string, string] = ["#040810", "#0f1f52", "#040810"]
@@ -343,7 +352,10 @@ export const DEFAULT_BRAND_THEME: BrandTheme = {
   coverImageUrl: "",
   primaryFont: "",
   secondaryFont: "",
+  contact: { email: "", phone: "", website: "", location: "", socials: [] },
 }
+
+const SOCIAL_FIELD_RE = /^(instagram|facebook|tiktok|twitter|linkedin|youtube)(_|$)/i
 
 /**
  * Derive a per-student theme from the Branding group's answers (plus company
@@ -372,6 +384,18 @@ export function deriveBrandTheme(
     return parsed.hex ?? cssColorToHex(parsed.css)
   }
 
+  const textByPattern = (re: RegExp) => {
+    const q = questions.find((q) => re.test(q.field_name))
+    return q ? (responseMap.get(q.id)?.student_response ?? "").trim() : ""
+  }
+  const socials = questions
+    .filter((q) => SOCIAL_FIELD_RE.test(q.field_name))
+    .map((q) => ({
+      label: q.field_name.split("_")[0].replace(/^\w/, (c) => c.toUpperCase()),
+      value: (responseMap.get(q.id)?.student_response ?? "").trim(),
+    }))
+    .filter((s) => s.value)
+
   const primary = color("primary_color")
   const secondary = color("secondary_color")
   const accent1 = color("accent_color_1")
@@ -396,9 +420,16 @@ export function deriveBrandTheme(
     logoUrl: image("logo_image_url_light_background") || image("my_company_logo"),
     companyName: text("company_name") || text("my_company"),
     tagline: text("company_tagline"),
-    coverImageUrl: image("background_image"),
+    coverImageUrl: image("cover_background_image") || image("background_image"),
     primaryFont: extractFontFamily(text("primary_font_name")),
     secondaryFont: extractFontFamily(text("secondary_font_name")),
+    contact: {
+      email: text("company_email"),
+      phone: text("company_phone_number"),
+      website: textByPattern(/website/i),
+      location: [text("city"), text("state")].filter(Boolean).join(", "),
+      socials,
+    },
   }
 }
 

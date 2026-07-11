@@ -2,7 +2,7 @@
 
 import React from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { useBrandTheme, inkFor } from "@/components/brand-display"
+import { useBrandTheme } from "@/components/brand-display"
 import { ZoomableImage } from "@/components/zoomable-image"
 import {
   Table,
@@ -260,8 +260,7 @@ function CompetitorMapDisplay({
   mode: string
 }) {
   const brand = useBrandTheme()
-  const myChipBg = brand.primary ?? "#111827"
-  const myChipInk = inkFor(myChipBg)
+  const myChipBorder = brand.primary ?? "#111827"
   const xAxisLabel = getTextValue("x_axis_label", questions, responseMap) || "X Axis"
   const yAxisLabel = getTextValue("y_axis_label", questions, responseMap) || "Y Axis"
 
@@ -351,10 +350,10 @@ function CompetitorMapDisplay({
             >
               <div
                 title={entity.name}
-                className={`flex max-w-[170px] items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 shadow-sm ${
-                  entity.isMine ? "" : "border-gray-200 bg-white"
+                className={`flex max-w-[170px] items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-2.5 shadow-sm ${
+                  entity.isMine ? "border-2" : "border border-gray-200"
                 }`}
-                style={entity.isMine ? { background: myChipBg, borderColor: myChipBg } : undefined}
+                style={entity.isMine ? { borderColor: myChipBorder } : undefined}
               >
                 {entity.logoUrl ? (
                   <div className="size-6 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
@@ -369,10 +368,7 @@ function CompetitorMapDisplay({
                     {entity.name.charAt(0).toUpperCase()}
                   </div>
                 )}
-                <span
-                  className={`truncate text-xs font-medium ${entity.isMine ? "" : "text-gray-700"}`}
-                  style={entity.isMine ? { color: myChipInk } : undefined}
-                >
+                <span className="truncate text-xs font-medium text-gray-700">
                   {entity.name}
                 </span>
               </div>

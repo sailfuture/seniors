@@ -91,6 +91,12 @@ function isSectionBackgroundQuestion(q: TemplateQuestion): boolean {
   return typeId === QUESTION_TYPE.IMAGE_UPLOAD && /section\s*background/i.test(q.field_label)
 }
 
+// The cover banner upload feeds the deck cover, never the content cards.
+function isCoverBackgroundQuestion(q: TemplateQuestion): boolean {
+  const typeId = q.question_types_id ?? q._question_types?.id ?? null
+  return typeId === QUESTION_TYPE.IMAGE_UPLOAD && /cover\s*background/i.test(q.field_label)
+}
+
 interface StudentResponse {
   id: number
   student_response: string
@@ -305,6 +311,8 @@ export default function PublicBusinessThesisPage({
   useGoogleFont(brand.primaryFont)
   useGoogleFont(brand.secondaryFont)
 
+  const hasCover = !!(brand.companyName || brand.logoUrl)
+
   if (loading) {
     return (
       <div className="bg-background flex min-h-screen items-center justify-center">
@@ -371,6 +379,22 @@ export default function PublicBusinessThesisPage({
               <SidebarGroup>
                 <SidebarGroupLabel>Sections</SidebarGroupLabel>
                 <SidebarMenu>
+                  {hasCover && (
+                    <SidebarMenuItem key="cover">
+                      <SidebarMenuButton
+                        onClick={() => scrollToSection(0)}
+                        isActive={activeSection === "cover"}
+                        tooltip="Cover"
+                      >
+                        <span
+                          className={activeSection === "cover" ? "font-semibold" : ""}
+                          style={activeSection === "cover" && brand.hasBrand ? { color: brand.primaryInk } : undefined}
+                        >
+                          Cover
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
                   {sections.map((s) => {
                     const slug = `section-${s.id}`
                     const isActive = activeSection === slug
@@ -398,7 +422,21 @@ export default function PublicBusinessThesisPage({
 
           <SidebarInset className="bg-gray-50">
             <div className="w-full p-4 md:p-6 lg:p-8">
-              <DeckCover studentName={studentName} studentImage={studentImage} />
+              {hasCover && (
+                <section
+                  id="cover"
+                  ref={(el) => {
+                    if (el) sectionRefs.current.set(0, el)
+                  }}
+                  className="scroll-mt-14"
+                >
+                  <DeckCover
+                    studentName={studentName}
+                    studentImage={studentImage}
+                    onNext={sections.length > 0 ? () => scrollToSection(sections[0].id) : undefined}
+                  />
+                </section>
+              )}
               {sections.map((section, sectionIdx) => {
                 const allSectionTemplates = templates
                   .filter((q) => qSectionId(q) === section.id)
@@ -406,7 +444,9 @@ export default function PublicBusinessThesisPage({
                 const backgroundQ = allSectionTemplates.find(isSectionBackgroundQuestion)
                 const backgroundResp = backgroundQ ? responseMap.get(backgroundQ.id) : undefined
                 const studentBg = backgroundResp?.image_response?.path || backgroundResp?.image_response?.url
-                const sectionTemplates = allSectionTemplates.filter((q) => !isSectionBackgroundQuestion(q))
+                const sectionTemplates = allSectionTemplates.filter(
+                  (q) => !isSectionBackgroundQuestion(q) && !isCoverBackgroundQuestion(q)
+                )
                 const sectionGroups = groups
                   .filter((g) => g.businessthesis_sections_id === section.id)
                   .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -544,20 +584,33 @@ function heroOverlay(stops: [string, string, string], angle: number): string {
   return `linear-gradient(${angle}deg, ${stops[0]}F5 0%, ${stops[1]}D9 50%, ${stops[2]}F0 100%)`
 }
 
-function DeckCover({ studentName, studentImage }: { studentName: string; studentImage?: string }) {
+function DeckCover({
+  studentName,
+  studentImage,
+  onNext,
+}: {
+  studentName: string
+  studentImage?: string
+  onNext?: () => void
+}) {
   const brand = useBrandTheme()
   if (!brand.companyName && !brand.logoUrl) return null
 
   const titleFont = brand.primaryFont ? { fontFamily: `"${brand.primaryFont}", inherit` } : undefined
   const taglineFont = brand.secondaryFont ? { fontFamily: `"${brand.secondaryFont}", inherit` } : undefined
   const monogramBg = brand.accent ?? "#1f2937"
+  const accentBar = brand.accent ?? "rgba(255,255,255,0.45)"
+  const contact = brand.contact
+  const hasContact =
+    !!(contact.email || contact.phone || contact.website || contact.location) || contact.socials.length > 0
 
   return (
-    <div className="relative mb-8 overflow-hidden rounded-2xl">
+    <div className="relative mb-8 flex min-h-[calc(100svh-var(--header-height)-1rem)] overflow-hidden rounded-2xl md:min-h-[calc(100svh-var(--header-height)-1.5rem)] lg:min-h-[calc(100svh-var(--header-height)-2rem)]">
       {brand.coverImageUrl && (
         <img
           src={brand.coverImageUrl}
           alt=""
+          aria-hidden
           className="absolute inset-0 h-full w-full object-cover"
         />
       )}
@@ -565,51 +618,109 @@ function DeckCover({ studentName, studentImage }: { studentName: string; student
         className="absolute inset-0"
         style={{
           background: brand.coverImageUrl
-            ? heroOverlay(brand.heroStops, 135)
-            : heroGradient(brand.heroStops, 135),
+            ? heroOverlay(brand.heroStops, 120)
+            : heroGradient(brand.heroStops, 120),
         }}
       />
-      <div className="relative z-10 px-6 py-12 md:px-12 md:py-16">
-        <div className="flex items-center gap-5">
-          {brand.logoUrl ? (
-            <div className="size-16 shrink-0 overflow-hidden rounded-full border-2 border-white/40 bg-white shadow-lg md:size-20">
-              <img src={brand.logoUrl} alt={brand.companyName || "Company logo"} className="size-full object-contain p-1" />
-            </div>
-          ) : studentImage ? (
-            <img
-              src={studentImage}
-              alt={studentName || "Student"}
-              className="size-16 shrink-0 rounded-full border-2 border-white/40 object-cover shadow-lg md:size-20"
-            />
-          ) : (
-            <div
-              className="flex size-16 shrink-0 items-center justify-center rounded-full border-2 border-white/40 text-3xl font-bold shadow-lg md:size-20"
-              style={{ background: monogramBg, color: inkFor(monogramBg) }}
-            >
-              {(brand.companyName || "?").charAt(0).toUpperCase()}
-            </div>
-          )}
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/60">
+      {brand.accent && (
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `radial-gradient(720px circle at 88% -12%, ${brand.accent}30, transparent 62%)`,
+          }}
+        />
+      )}
+      <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+
+      <div className="relative z-10 flex w-full flex-col justify-between gap-14 p-7 md:p-11">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2.5">
+            {brand.logoUrl ? (
+              <div className="size-12 shrink-0 overflow-hidden rounded-full border border-white/30 bg-white shadow-lg md:size-14">
+                <img src={brand.logoUrl} alt={brand.companyName || "Company logo"} className="size-full object-contain p-1" />
+              </div>
+            ) : (
+              <div
+                className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/30 text-xl font-bold shadow-lg md:size-14"
+                style={{ background: monogramBg, color: inkFor(monogramBg) }}
+              >
+                {(brand.companyName || "?").charAt(0).toUpperCase()}
+              </div>
+            )}
+            {studentImage && (
+              <img
+                src={studentImage}
+                alt={studentName || "Student"}
+                className="size-12 shrink-0 rounded-full border border-white/30 object-cover shadow-lg md:size-14"
+              />
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="h-px w-8 shrink-0" style={{ background: accentBar }} />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
               Senior Business Thesis
             </p>
-            <h1
-              className="mt-1 text-3xl font-bold tracking-tight text-white md:text-5xl"
-              style={titleFont}
-            >
-              {brand.companyName || "Business Thesis"}
-            </h1>
           </div>
         </div>
-        {brand.tagline && (
-          <p className="mt-5 max-w-2xl text-base text-white/85 md:text-lg" style={taglineFont}>
-            {brand.tagline}
-          </p>
-        )}
-        {studentName && <p className="mt-2 text-sm text-white/60">by {studentName}</p>}
+
+        <div>
+          <h1
+            className="max-w-4xl text-balance text-4xl font-bold tracking-tight text-white sm:text-6xl"
+            style={titleFont}
+          >
+            {brand.companyName || "Business Thesis"}
+          </h1>
+          {brand.tagline && (
+            <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/80 sm:text-xl" style={taglineFont}>
+              {brand.tagline}
+            </p>
+          )}
+          {studentName && <p className="mt-5 text-sm text-white/60">by {studentName}</p>}
+
+          {hasContact && (
+            <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-white/15 pr-16 pt-4 text-xs text-white/60">
+              {contact.email && (
+                <a href={`mailto:${contact.email}`} className="transition-colors hover:text-white">
+                  {contact.email}
+                </a>
+              )}
+              {contact.phone && <span>{contact.phone}</span>}
+              {contact.website && (
+                <a
+                  href={contact.website.startsWith("http") ? contact.website : `https://${contact.website}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="transition-colors hover:text-white"
+                >
+                  {contact.website.replace(/^https?:\/\//, "")}
+                </a>
+              )}
+              {contact.socials.map((s) => (
+                <span key={s.label}>
+                  {s.label} <span className="text-white/80">{s.value}</span>
+                </span>
+              ))}
+              {contact.location && <span>{contact.location}</span>}
+            </div>
+          )}
+        </div>
       </div>
+
+      {onNext && (
+        <button
+          type="button"
+          onClick={onNext}
+          aria-label="Scroll to the first section"
+          className="absolute bottom-6 right-6 z-20 flex size-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white backdrop-blur-sm transition-colors [animation-duration:2.5s] hover:bg-white/25 motion-safe:animate-bounce"
+        >
+          <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      )}
+
       {brand.palette.length > 0 && (
-        <div className="relative z-10 flex h-1.5">
+        <div className="absolute inset-x-0 bottom-0 z-10 flex h-1.5">
           {brand.palette.map((c, i) => (
             <span key={i} className="flex-1" style={{ background: c }} />
           ))}
@@ -750,12 +861,12 @@ function GroupCard({
         <div className="grid items-stretch gap-5 md:grid-cols-6">
           {regularQuestions.map((q) => {
             const typeId = q.question_types_id ?? q._question_types?.id ?? null
-            // Brand color questions render as a compact palette: 3 swatches per row
+            // Brand color questions render as a compact palette: 6 swatches per row
             const isColorQuestion =
               typeId === QUESTION_TYPE.SHORT_RESPONSE && /colou?r/i.test(q.field_label)
             const colSpan =
               !q.width && isColorQuestion
-                ? "md:col-span-2"
+                ? "md:col-span-1"
                 : getQuestionColSpan(q.width as number | null | undefined, isShortType(typeId))
             return (
               <div key={q.id} className={`${colSpan} flex flex-col`}>
