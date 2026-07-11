@@ -58,6 +58,7 @@ import {
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
 import { BlurredFitImage } from "./blurred-fit-image"
+import { ImageCropDialog } from "./image-crop-dialog"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
@@ -1628,21 +1629,29 @@ function ImageUpload({
   const inputRef = useRef<HTMLInputElement>(null)
   const [localPreview, setLocalPreview] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
 
   const savedUrl = getImageUrl(imageValue)
   const preview = localPreview ?? savedUrl
 
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setPendingFile(file)
+    // reset so picking the same file again re-triggers onChange
+    e.target.value = ""
+  }
+
+  const handleCropped = async (cropped: File) => {
+    setPendingFile(null)
 
     const reader = new FileReader()
     reader.onload = (ev) => setLocalPreview(ev.target?.result as string)
-    reader.readAsDataURL(file)
+    reader.readAsDataURL(cropped)
 
     setUploading(true)
     try {
-      await onUpload(file)
+      await onUpload(cropped)
     } finally {
       setUploading(false)
     }
@@ -1656,6 +1665,11 @@ function ImageUpload({
         accept="image/*"
         className="hidden"
         onChange={handleChange}
+      />
+      <ImageCropDialog
+        file={pendingFile}
+        onCropped={handleCropped}
+        onCancel={() => setPendingFile(null)}
       />
       {preview ? (
         <div className="group relative overflow-hidden rounded-lg border">
