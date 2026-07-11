@@ -314,6 +314,19 @@ export default function PublicBusinessThesisPage({
 
   const hasCover = !!(brand.companyName || brand.logoUrl)
 
+  const lastEdited = useMemo(() => {
+    let max = 0
+    for (const r of responses) {
+      const le = r.last_edited
+      const t = Math.max(
+        typeof le === "number" ? le : Date.parse(String(le ?? "")) || 0,
+        Number(r.created_at) || 0
+      )
+      if (t > max) max = t
+    }
+    return max > 0 ? new Date(max) : null
+  }, [responses])
+
   if (loading) {
     return (
       <div className="bg-background flex min-h-screen items-center justify-center">
@@ -434,6 +447,7 @@ export default function PublicBusinessThesisPage({
                   <DeckCover
                     studentName={studentName}
                     studentImage={studentImage}
+                    lastEdited={lastEdited}
                     onNext={sections.length > 0 ? () => scrollToSection(sections[0].id) : undefined}
                   />
                 </section>
@@ -588,10 +602,12 @@ function heroOverlay(stops: [string, string, string], angle: number): string {
 function DeckCover({
   studentName,
   studentImage,
+  lastEdited,
   onNext,
 }: {
   studentName: string
   studentImage?: string
+  lastEdited?: Date | null
   onNext?: () => void
 }) {
   const brand = useBrandTheme()
@@ -643,11 +659,19 @@ function DeckCover({
       <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
 
       <div className="relative z-10 flex w-full flex-col justify-between gap-14 p-7 md:p-11">
-        <div className="flex items-center gap-3">
-          <span className="h-px w-8 shrink-0" style={{ background: accentBar }} />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
-            Senior Business Thesis
-          </p>
+        <div className="flex items-baseline justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="h-px w-8 shrink-0" style={{ background: accentBar }} />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
+              Senior Business Thesis
+            </p>
+          </div>
+          {lastEdited && (
+            <p className="shrink-0 text-right text-[11px] font-medium uppercase tracking-[0.18em] text-white/50">
+              Last updated{" "}
+              {lastEdited.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            </p>
+          )}
         </div>
 
         <div>
