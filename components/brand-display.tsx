@@ -356,7 +356,7 @@ export interface BrandTheme {
   contact: BrandContact
 }
 
-const DEFAULT_HERO: [string, string, string] = ["#040810", "#0f1f52", "#040810"]
+const DEFAULT_HERO: [string, string, string] = ["#0b1426", "#1b2f6e", "#0b1426"]
 
 export const DEFAULT_BRAND_THEME: BrandTheme = {
   hasBrand: false,
@@ -426,7 +426,7 @@ export function deriveBrandTheme(
 
   const darkAnchor = "#05070D"
   const heroStops: [string, string, string] = primary
-    ? [mixHex(primary, darkAnchor, 0.84), mixHex(primary, darkAnchor, 0.42), mixHex(primary, darkAnchor, 0.87)]
+    ? [mixHex(primary, darkAnchor, 0.72), mixHex(primary, darkAnchor, 0.3), mixHex(primary, darkAnchor, 0.76)]
     : DEFAULT_HERO
 
   return {
