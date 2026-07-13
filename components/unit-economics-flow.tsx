@@ -14,7 +14,7 @@ import {
   type NodeProps,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { useBrandTheme, inkFor } from "@/components/brand-display"
+import { useBrandTheme } from "@/components/brand-display"
 
 export interface UnitComponent {
   name: string
@@ -40,8 +40,8 @@ const hiddenHandle: React.CSSProperties = {
 function ComponentNode({ data }: NodeProps) {
   const d = data as { label: string; cost: number | null }
   return (
-    <div className="w-[200px] rounded-xl border border-gray-200 bg-white px-4 py-2.5 shadow-sm">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-gray-400">Cost component</p>
+    <div className="w-[200px] rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 shadow-sm">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-red-400">Cost component</p>
       <div className="mt-0.5 flex items-center justify-between gap-3">
         <span className="truncate text-sm font-medium text-gray-800">{d.label}</span>
         <span className="shrink-0 text-sm font-semibold text-gray-900 tabular-nums">{money(d.cost)}</span>
@@ -57,32 +57,26 @@ function StatNode({ data }: NodeProps) {
     value: string
     caption?: string
     captionTone?: "muted" | "warn"
-    fill?: string
-    border?: string
+    border: string
+    tint?: string
+    accent?: string
     hasTarget?: boolean
     hasSource?: boolean
   }
-  const filled = !!d.fill
-  const ink = filled ? inkFor(d.fill!) : undefined
   return (
     <div
-      className="w-[210px] rounded-xl border-2 bg-white px-4 py-3 shadow-sm"
-      style={{ borderColor: d.border ?? "#E5E7EB", background: d.fill ?? "#FFFFFF" }}
+      className="w-[210px] rounded-xl border-2 px-4 py-3 shadow-sm"
+      style={{ borderColor: d.border, background: d.tint ?? "#FFFFFF" }}
     >
       {d.hasTarget && <Handle type="target" position={Position.Left} style={hiddenHandle} />}
-      <p
-        className="text-[10px] font-semibold uppercase tracking-wider"
-        style={{ color: filled ? ink : "#6B7280", opacity: filled ? 0.75 : 1 }}
-      >
-        {d.label}
-      </p>
-      <p className="mt-0.5 text-2xl font-bold tracking-tight tabular-nums" style={{ color: filled ? ink : "#111827" }}>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">{d.label}</p>
+      <p className="mt-0.5 text-2xl font-bold tracking-tight tabular-nums" style={{ color: d.accent ?? "#111827" }}>
         {d.value}
       </p>
       {d.caption && (
         <p
           className="mt-1 text-[11px] leading-snug"
-          style={{ color: filled ? ink : d.captionTone === "warn" ? "#B45309" : "#9CA3AF", opacity: filled ? 0.7 : 1 }}
+          style={{ color: d.captionTone === "warn" ? "#B45309" : "#9CA3AF" }}
         >
           {d.caption}
         </p>
@@ -126,11 +120,6 @@ export function UnitEconomicsFlow({
     const priceVal = salePrice
     const marginVal = margin
 
-    const knownCosts = components.filter((c) => c.cost !== null)
-    const componentsSum = knownCosts.reduce((acc, c) => acc + (c.cost ?? 0), 0)
-    const sumMatches =
-      unitCostDerived || costVal === null || knownCosts.length === 0 || Math.abs(componentsSum - costVal) < 0.01
-
     const nodes: Node[] = []
     const edges: Edge[] = []
 
@@ -155,6 +144,7 @@ export function UnitEconomicsFlow({
       })
     })
 
+    // Cost = red (expense), Sale Price = green (revenue), Margin = branded.
     nodes.push({
       id: "cost",
       type: "stat",
@@ -162,14 +152,8 @@ export function UnitEconomicsFlow({
       data: {
         label: "Per Unit Cost",
         value: money(costVal),
-        caption:
-          knownCosts.length > 0
-            ? sumMatches
-              ? `= ${knownCosts.length} component${knownCosts.length === 1 ? "" : "s"}`
-              : `components total ${money(componentsSum)}`
-            : undefined,
-        captionTone: sumMatches ? "muted" : "warn",
-        border: primaryInk,
+        border: "#FECACA",
+        tint: "#FEF2F2",
         hasTarget: true,
         hasSource: true,
       },
@@ -179,7 +163,13 @@ export function UnitEconomicsFlow({
       id: "price",
       type: "stat",
       position: { x: 330, y: Math.max(costY - 160, -110) },
-      data: { label: "Per Unit Sale Price", value: money(priceVal), hasSource: true },
+      data: {
+        label: "Per Unit Sale Price",
+        value: money(priceVal),
+        border: "#BBF7D0",
+        tint: "#F0FDF4",
+        hasSource: true,
+      },
     })
 
     const marginY = (Math.max(costY - 160, -110) + costY) / 2
@@ -191,8 +181,9 @@ export function UnitEconomicsFlow({
         label: "Per Unit Margin",
         value: money(marginVal),
         caption: marginDerived ? "= sale price − unit cost" : "sale price − unit cost",
-        fill: primary,
-        border: primary,
+        border: primaryInk,
+        tint: brand.hasBrand ? `${primary}12` : undefined,
+        accent: primaryInk,
         hasTarget: true,
       },
     })

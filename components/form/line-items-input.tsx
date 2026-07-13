@@ -259,9 +259,6 @@ export function LineItemsInput({
                 <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => addRow(product.id, "item")}>
                   + Cost component
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => addRow(product.id, "header")}>
-                  + Group header
-                </Button>
                 {(["unit_cost", "unit_price", "unit_margin"] as LineItemKind[])
                   .filter((k) => !usedSingletons.has(k))
                   .map((k) => (

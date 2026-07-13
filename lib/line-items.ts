@@ -14,9 +14,10 @@ export interface LineItem {
   amount: number | null
 }
 
+// Selectable row kinds in the editor. "header" is still parsed/rendered for
+// any legacy data but is no longer offered as an option.
 export const LINE_ITEM_KINDS: { value: LineItemKind; label: string; hasAmount: boolean }[] = [
   { value: "item", label: "Cost component", hasAmount: true },
-  { value: "header", label: "Group header", hasAmount: false },
   { value: "unit_cost", label: "Per unit cost", hasAmount: true },
   { value: "unit_price", label: "Per unit sale price", hasAmount: true },
   { value: "unit_margin", label: "Per unit margin", hasAmount: true },
