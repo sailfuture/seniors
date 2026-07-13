@@ -5,6 +5,7 @@ import {
   ReactFlow,
   Background,
   BackgroundVariant,
+  Controls,
   Handle,
   Position,
   MarkerType,
@@ -37,15 +38,11 @@ const hiddenHandle: React.CSSProperties = {
 }
 
 function ComponentNode({ data }: NodeProps) {
-  const d = data as { label: string; cost: number | null; group?: string }
+  const d = data as { label: string; cost: number | null }
   return (
-    <div className="w-[200px] rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 shadow-sm">
-      {d.group && (
-        <p className="text-muted-foreground mb-0.5 truncate text-[9px] font-semibold uppercase tracking-wider">
-          {d.group}
-        </p>
-      )}
-      <div className="flex items-center justify-between gap-3">
+    <div className="w-[200px] rounded-xl border border-gray-200 bg-white px-4 py-2.5 shadow-sm">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-gray-400">Cost component</p>
+      <div className="mt-0.5 flex items-center justify-between gap-3">
         <span className="truncate text-sm font-medium text-gray-800">{d.label}</span>
         <span className="shrink-0 text-sm font-semibold text-gray-900 tabular-nums">{money(d.cost)}</span>
       </div>
@@ -153,8 +150,8 @@ export function UnitEconomicsFlow({
         id: `e-comp-${i}`,
         source: `comp-${i}`,
         target: "cost",
-        style: { stroke: edgeColor, strokeWidth: 1.5, opacity: 0.55 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor, width: 16, height: 16 },
+        style: { stroke: edgeColor, strokeWidth: 1.5, strokeDasharray: "1 6", strokeLinecap: "round", opacity: 0.75 },
+        markerEnd: { type: MarkerType.Arrow, color: edgeColor, width: 18, height: 18, strokeWidth: 1.25 },
       })
     })
 
@@ -205,8 +202,8 @@ export function UnitEconomicsFlow({
         id: `e-${source}-margin`,
         source,
         target: "margin",
-        style: { stroke: edgeColor, strokeWidth: 1.5, opacity: 0.55 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor, width: 16, height: 16 },
+        style: { stroke: edgeColor, strokeWidth: 1.5, strokeDasharray: "1 6", strokeLinecap: "round", opacity: 0.75 },
+        markerEnd: { type: MarkerType.Arrow, color: edgeColor, width: 18, height: 18, strokeWidth: 1.25 },
       })
     }
 
@@ -227,19 +224,23 @@ export function UnitEconomicsFlow({
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.12 }}
+        minZoom={0.4}
+        maxZoom={1.75}
         nodesDraggable={false}
         nodesConnectable={false}
         nodesFocusable={false}
         edgesFocusable={false}
         elementsSelectable={false}
-        panOnDrag={false}
+        panOnDrag
         panOnScroll={false}
         zoomOnScroll={false}
-        zoomOnPinch={false}
-        zoomOnDoubleClick={false}
+        zoomOnPinch
+        zoomOnDoubleClick
         preventScrolling={false}
+        proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#E5E7EB" />
+        <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
     </div>
   )

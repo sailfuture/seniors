@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useBrandTheme } from "@/components/brand-display"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { isLineItemsQuestion, parseLineItems, computeUnitEconomics } from "@/lib/line-items"
+import { LineItemsTable } from "@/components/line-items-table"
 
 const UnitEconomicsFlow = dynamic(
   () => import("@/components/unit-economics-flow").then((m) => m.UnitEconomicsFlow),
@@ -85,6 +86,7 @@ export const DISPLAY_TYPE = {
   COMPETITOR_MAP: 4,
   GOOGLE_BUDGET: 6,
   TRANSPORTATION_BUDGET: 7,
+  UNIT_ECONOMICS: 8,
 } as const
 
 export function isGroupDisplayType(typeId: number | null | undefined): boolean {
@@ -112,9 +114,48 @@ export function GroupDisplayRenderer({
       return <GoogleBudgetDisplay questions={questions} responseMap={responseMap} />
     case DISPLAY_TYPE.TRANSPORTATION_BUDGET:
       return <TransportationBudgetDisplay questions={questions} responseMap={responseMap} />
+    case DISPLAY_TYPE.UNIT_ECONOMICS:
+      return <UnitEconomicsDisplay questions={questions} responseMap={responseMap} />
     default:
       return null
   }
+}
+
+// ── Unit Economics (type 8) ──
+
+function UnitEconomicsDisplay({
+  questions,
+  responseMap,
+}: {
+  questions: TemplateQuestion[]
+  responseMap: Map<number, StudentResponse>
+}) {
+  const lineItemsQ = questions.find((q) => isLineItemsQuestion(q))
+  const raw = lineItemsQ ? (responseMap.get(lineItemsQ.id)?.student_response ?? "") : ""
+  const rows = parseLineItems(raw)
+  const econ = computeUnitEconomics(rows)
+
+  if (econ.components.length === 0) {
+    // No components to diagram — show the plain table if there are any rows
+    return rows.length > 0 ? (
+      <LineItemsTable raw={raw} />
+    ) : (
+      <p className="text-muted-foreground py-6 text-center text-sm italic">
+        No breakdown submitted yet.
+      </p>
+    )
+  }
+
+  return (
+    <UnitEconomicsFlow
+      components={econ.components}
+      unitCost={econ.unitCost}
+      unitCostDerived={econ.unitCostIsDerived}
+      salePrice={econ.unitPrice}
+      margin={econ.unitMargin}
+      marginDerived={econ.unitMarginIsDerived}
+    />
+  )
 }
 
 // ── Gallery (type 3) ──
