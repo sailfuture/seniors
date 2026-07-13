@@ -39,6 +39,7 @@ import {
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
 import { LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
+import { StatusBadge, statusOf, groupStatusOf } from "@/components/field-status"
 import { icons as lucideIcons } from "lucide-react"
 
 const BT_BASE =
@@ -107,6 +108,8 @@ interface StudentResponse {
   students_id: string
   isArchived?: boolean
   isComplete?: boolean
+  readyReview?: boolean
+  revisionNeeded?: boolean
   source_link?: string
   title_of_source?: string
   author_name_or_publisher?: string
@@ -457,7 +460,10 @@ export default function PublicBusinessThesisPage({
                   .sort((a, b) => a.sortOrder - b.sortOrder)
                 const backgroundQ = allSectionTemplates.find(isSectionBackgroundQuestion)
                 const backgroundResp = backgroundQ ? responseMap.get(backgroundQ.id) : undefined
-                const studentBg = backgroundResp?.image_response?.path || backgroundResp?.image_response?.url
+                // Only show a student-uploaded background once a teacher has approved it
+                const studentBg = backgroundResp?.isComplete
+                  ? backgroundResp.image_response?.path || backgroundResp.image_response?.url
+                  : undefined
                 const sectionTemplates = allSectionTemplates.filter(
                   (q) => !isSectionBackgroundQuestion(q) && !isCoverBackgroundQuestion(q)
                 )
@@ -526,9 +532,10 @@ export default function PublicBusinessThesisPage({
                                 <div key={group.id} className={`${displayColSpan} flex flex-col`}>
                                   <Card className="flex h-full flex-col border-gray-200 shadow-none">
                                     <CardHeader className="border-b">
-                                      <div className="flex items-center justify-between">
+                                      <div className="flex items-center justify-between gap-3">
                                         <CardTitle>{group.group_name}</CardTitle>
                                         <div className="flex items-center gap-2">
+                                          <StatusBadge status={groupStatusOf(groupQuestions.map((q) => responseMap.get(q.id)))} />
                                           {isGoogleBudget && sheetUrl && <GoogleSheetOpenButton url={sheetUrl} />}
                                           {group.icon_name && <GroupIcon name={group.icon_name} />}
                                         </div>
@@ -596,6 +603,13 @@ function heroGradient(stops: [string, string, string], angle: number): string {
 function heroOverlay(stops: [string, string, string], angle: number): string {
   // hex8 alpha: F5 ≈ 0.96, D9 ≈ 0.85, F0 ≈ 0.94
   return `linear-gradient(${angle}deg, ${stops[0]}F5 0%, ${stops[1]}D9 50%, ${stops[2]}F0 100%)`
+}
+
+// Light brand wash for section photos so the image stays visible; text
+// legibility comes from the bottom vignette rather than a heavy tint.
+// hex8 alpha: 4D ≈ 0.30, 26 ≈ 0.15, 59 ≈ 0.35
+function heroPhotoOverlay(stops: [string, string, string], angle: number): string {
+  return `linear-gradient(${angle}deg, ${stops[0]}4D 0%, ${stops[1]}26 45%, ${stops[2]}59 100%)`
 }
 
 function DeckCover({
@@ -783,13 +797,14 @@ function SectionHero({
             aria-hidden
             className="absolute inset-0 h-full w-full object-cover"
           />
-          <div className="absolute inset-0" style={{ background: heroOverlay(brand.heroStops, angle) }} />
+          <div className="absolute inset-0" style={{ background: heroPhotoOverlay(brand.heroStops, angle) }} />
         </>
       ) : (
         <div className="absolute inset-0" style={{ background: heroGradient(brand.heroStops, angle) }} />
       )}
-      {/* bottom vignette anchors the text zone */}
-      <div className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
+      {/* bottom vignette anchors the text zone (stronger over photos where the
+          top wash is light, so the title stays legible over a bright image) */}
+      <div className={`absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t to-transparent ${photoUrl ? "from-black/80 via-black/35" : "from-black/55 via-black/15"}`} />
       {/* oversized ghost numeral */}
       <span
         aria-hidden
@@ -869,13 +884,17 @@ function GroupCard({
   const sourceEntries = sourceQuestions
     .map((q) => ({ question: q, response: responseMap.get(q.id) }))
     .filter((e) => e.response?.isComplete && (e.response.source_link || e.response.title_of_source || e.response.author_name_or_publisher))
+  const groupStatus = groupStatusOf(questions.map((q) => responseMap.get(q.id)))
 
   return (
     <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
       <CardHeader className="border-b pt-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <CardTitle>{group.group_name}</CardTitle>
-          {group.icon_name && <GroupIcon name={group.icon_name} />}
+          <div className="flex items-center gap-2">
+            <StatusBadge status={groupStatus} />
+            {group.icon_name && <GroupIcon name={group.icon_name} />}
+          </div>
         </div>
         {group.group_description && (
           <CardDescription>{group.group_description}</CardDescription>
@@ -946,6 +965,10 @@ function QuestionBlock({
   compact?: boolean
 }) {
   const isComplete = response?.isComplete === true
+  // Field level surfaces only the in-progress states; a rendered field is
+  // clearly done, so a "Complete" pill on every one would just be noise.
+  const rawStatus = statusOf(response)
+  const status = rawStatus === "complete" ? null : rawStatus
   const title = question.public_display_title || question.field_label
   const description = question.public_display_description || ""
   const typeId = question.question_types_id ?? question._question_types?.id ?? null
@@ -970,9 +993,12 @@ function QuestionBlock({
             caption={title || description}
           />
         </CardContent>
-        {(title || description) && (
+        {(title || description || status) && (
           <CardFooter className="flex-col items-start gap-0.5 border-t-0 bg-white">
-            {title && <p className="text-muted-foreground text-xs">{title}</p>}
+            <div className="flex w-full items-start justify-between gap-2">
+              {title && <p className="text-muted-foreground text-xs">{title}</p>}
+              <StatusBadge status={status} />
+            </div>
             {description && <p className="text-muted-foreground/70 text-xs">{description}</p>}
           </CardFooter>
         )}
@@ -987,9 +1013,12 @@ function QuestionBlock({
           <CardContent className="flex-1 p-0">
             <div className="flex h-full min-h-[160px] items-center justify-center rounded-t-xl bg-gray-100" />
           </CardContent>
-          {(title || description) && (
+          {(title || description || status) && (
             <CardFooter className="flex-col items-start gap-0.5 border-t-0 bg-white">
-              {title && <p className="text-muted-foreground text-xs">{title}</p>}
+              <div className="flex w-full items-start justify-between gap-2">
+                {title && <p className="text-muted-foreground text-xs">{title}</p>}
+                <StatusBadge status={status} />
+              </div>
               {description && <p className="text-muted-foreground/70 text-xs">{description}</p>}
             </CardFooter>
           )}
@@ -998,7 +1027,12 @@ function QuestionBlock({
     }
     return (
       <div className="flex h-full flex-col">
-        {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
+        {(title || status) && (
+          <div className="flex items-start justify-between gap-2">
+            {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
+            <StatusBadge status={status} />
+          </div>
+        )}
         {description && (
           <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
         )}
@@ -1009,7 +1043,12 @@ function QuestionBlock({
 
   return (
     <div className="flex h-full flex-col">
-      {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
+      {(title || status) && (
+        <div className="flex items-start justify-between gap-2">
+          {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
+          <StatusBadge status={status} />
+        </div>
+      )}
       {description && (
         <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
       )}

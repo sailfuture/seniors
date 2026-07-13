@@ -74,6 +74,8 @@ function getImageUrl(
   responseMap: Map<number, StudentResponse>
 ): string {
   const r = getResponse(fieldName, questions, responseMap)
+  // Images only appear on the public page once a teacher approves them
+  if (!r?.isComplete) return ""
   const src = r?.image_response?.path || r?.image_response?.url
   return src ? resolveImageUrl(src) : ""
 }
@@ -245,7 +247,10 @@ function GalleryDisplay({
 
   const items = slides.map((s) => {
     const imgResponse = responseMap.get(s.imageQ.id)
-    const src = imgResponse?.image_response?.path || imgResponse?.image_response?.url
+    // Only approved images appear on the public page
+    const src = imgResponse?.isComplete
+      ? imgResponse.image_response?.path || imgResponse.image_response?.url
+      : undefined
     return {
       key: s.imageQ.id,
       url: src ? resolveImageUrl(src) : "",
@@ -413,30 +418,41 @@ function CompetitorMapDisplay({
         </div>
 
         {/* Entities: a dot marks the exact coordinate; the name chip floats
-            above it, clamped in px so it stays inside the box and clear of
-            the corner labels even at extreme positions. */}
+            beside it. Coordinates 0–100 map into an inset field (MX/MY) so a
+            point at an extreme value stays fully inside the box instead of
+            being clipped at the edge. The chip flips below the dot when the
+            dot sits near the top so it never runs off. */}
         {hasData && entities.map((entity, idx) => {
           if (!entity.name) return null
           const xPercent = Math.max(0, Math.min(100, entity.x))
           const yPercent = Math.max(0, Math.min(100, entity.y))
+          const MX = 26
+          const MY = 24
+          const fromLeft = `calc(${MX}px + (100% - ${MX * 2}px) * ${xPercent / 100})`
+          const fromBottom = `calc(${MY}px + (100% - ${MY * 2}px) * ${yPercent / 100})`
+          const fromTop = `calc(${MY}px + (100% - ${MY * 2}px) * ${(100 - yPercent) / 100})`
+          const dotNearTop = yPercent >= 55
+          const chipStyle: React.CSSProperties = dotNearTop
+            ? {
+                left: `clamp(92px, ${fromLeft}, calc(100% - 92px))`,
+                top: `min(calc(${fromTop} + 12px), calc(100% - 40px))`,
+              }
+            : {
+                left: `clamp(92px, ${fromLeft}, calc(100% - 92px))`,
+                bottom: `min(calc(${fromBottom} + 12px), calc(100% - 40px))`,
+              }
           return (
             <React.Fragment key={idx}>
               <div
-                className="absolute z-10 -translate-x-1/2 translate-y-1/2"
-                style={{ left: `${xPercent}%`, bottom: `${yPercent}%` }}
+                className="absolute z-20 -translate-x-1/2 translate-y-1/2"
+                style={{ left: fromLeft, bottom: fromBottom }}
               >
                 <span
                   className="block size-3 rounded-full border-2 border-white shadow-md"
                   style={{ background: entity.isMine ? myChipBorder : "#9CA3AF" }}
                 />
               </div>
-              <div
-                className="absolute z-10 -translate-x-1/2"
-                style={{
-                  left: `clamp(96px, ${xPercent}%, calc(100% - 96px))`,
-                  bottom: `clamp(40px, calc(${yPercent}% + 12px), calc(100% - 42px))`,
-                }}
-              >
+              <div className="absolute z-10 -translate-x-1/2" style={chipStyle}>
                 <div
                   title={entity.name}
                   className={`flex max-w-[170px] items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-2.5 shadow-sm ${

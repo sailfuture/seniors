@@ -323,6 +323,7 @@ interface ThemeSourceQuestion {
 interface ThemeSourceResponse {
   student_response?: string
   image_response?: { path?: string; url?: string } | null
+  isComplete?: boolean
 }
 
 export interface BrandContact {
@@ -396,6 +397,12 @@ export function deriveBrandTheme(
     const img = byField(field)?.image_response
     return brandResolveImageUrl(img?.path || img?.url)
   }
+  // Cosmetic uploads (cover banner, logo) only appear once a teacher approves
+  const approvedImage = (field: string) => {
+    const r = byField(field)
+    if (!r?.isComplete) return ""
+    return brandResolveImageUrl(r.image_response?.path || r.image_response?.url)
+  }
   const color = (field: string): string | null => {
     const raw = text(field)
     if (!raw) return null
@@ -437,10 +444,10 @@ export function deriveBrandTheme(
     accentInk: accent ? inkFor(accent) : "#FFFFFF",
     heroStops,
     palette,
-    logoUrl: image("logo_image_url_light_background") || image("my_company_logo"),
+    logoUrl: approvedImage("logo_image_url_light_background") || approvedImage("my_company_logo"),
     companyName: text("company_name") || text("my_company"),
     tagline: text("company_tagline"),
-    coverImageUrl: image("cover_background_image") || image("background_image"),
+    coverImageUrl: approvedImage("cover_background_image") || approvedImage("background_image"),
     primaryFont: extractFontFamily(text("primary_font_name")),
     secondaryFont: extractFontFamily(text("secondary_font_name")),
     contact: {

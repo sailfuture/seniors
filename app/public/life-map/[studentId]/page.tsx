@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { GroupDisplayRenderer, isGroupDisplayType, DISPLAY_TYPE, getGoogleSheetUrl, GoogleSheetOpenButton } from "@/components/group-display-types"
 import { ColorSwatch, FontPreview, parseBrandColor, parseExactHex } from "@/components/brand-display"
+import { StatusBadge, statusOf, groupStatusOf } from "@/components/field-status"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
 import { LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
@@ -79,6 +80,8 @@ interface StudentResponse {
   students_id: string
   isArchived?: boolean
   isComplete?: boolean
+  readyReview?: boolean
+  revisionNeeded?: boolean
   lifemap_sections_id?: number
   lifemap_custom_group_id?: number | null
   source_link?: string
@@ -369,7 +372,10 @@ export default function PublicLifeMapPage({
                     /section\s*background/i.test(q.field_label)
                 )
                 const backgroundResp = backgroundQ ? responseMap.get(backgroundQ.id) : undefined
-                const studentBg = backgroundResp?.image_response?.path || backgroundResp?.image_response?.url
+                // Only show a student-uploaded background once a teacher has approved it
+                const studentBg = backgroundResp?.isComplete
+                  ? backgroundResp.image_response?.path || backgroundResp.image_response?.url
+                  : undefined
                 const sectionTemplates = allSectionTemplates.filter((q) => q !== backgroundQ)
                 const sectionGroups = groups
                   .filter((g) => g.lifemap_sections_id === section.id)
@@ -435,9 +441,10 @@ export default function PublicLifeMapPage({
                                 <div key={group.id} className={`${displayColSpan} flex flex-col`}>
                                   <Card className="flex h-full flex-col border-gray-200 shadow-none">
                                     <CardHeader className="border-b">
-                                      <div className="flex items-center justify-between">
+                                      <div className="flex items-center justify-between gap-3">
                                         <CardTitle>{group.group_name}</CardTitle>
                                         <div className="flex items-center gap-2">
+                                          <StatusBadge status={groupStatusOf(groupQuestions.map((q) => responseMap.get(q.id)))} />
                                           {isGoogleBudget && sheetUrl && <GoogleSheetOpenButton url={sheetUrl} />}
                                           {group.icon_name && <GroupIcon name={group.icon_name} />}
                                         </div>
@@ -615,13 +622,17 @@ function GroupCard({
   const sourceEntries = sourceQuestions
     .map((q) => ({ question: q, response: responseMap.get(q.id) }))
     .filter((e) => e.response?.isComplete && (e.response.source_link || e.response.title_of_source || e.response.author_name_or_publisher))
+  const groupStatus = groupStatusOf(questions.map((q) => responseMap.get(q.id)))
 
   return (
     <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
       <CardHeader className="border-b pt-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <CardTitle>{group.group_name}</CardTitle>
-          {group.icon_name && <GroupIcon name={group.icon_name} />}
+          <div className="flex items-center gap-2">
+            <StatusBadge status={groupStatus} />
+            {group.icon_name && <GroupIcon name={group.icon_name} />}
+          </div>
         </div>
         {group.group_description && (
           <CardDescription>{group.group_description}</CardDescription>
@@ -685,6 +696,8 @@ function QuestionBlock({
   compact?: boolean
 }) {
   const isComplete = response?.isComplete === true
+  const rawStatus = statusOf(response)
+  const status = rawStatus === "complete" ? null : rawStatus
   const title = question.public_display_title || question.field_label
   const description = question.public_display_description || ""
   const typeId = question.question_types_id ?? question._question_types?.id ?? null
@@ -709,9 +722,12 @@ function QuestionBlock({
             caption={title || description}
           />
         </CardContent>
-        {(title || description) && (
+        {(title || description || status) && (
           <CardFooter className="flex-col items-start gap-0.5 border-t-0 bg-white">
-            {title && <p className="text-muted-foreground text-xs">{title}</p>}
+            <div className="flex w-full items-start justify-between gap-2">
+              {title && <p className="text-muted-foreground text-xs">{title}</p>}
+              <StatusBadge status={status} />
+            </div>
             {description && <p className="text-muted-foreground/70 text-xs">{description}</p>}
           </CardFooter>
         )}
@@ -726,9 +742,12 @@ function QuestionBlock({
           <CardContent className="flex-1 p-0">
             <div className="flex h-full min-h-[160px] items-center justify-center rounded-t-xl bg-gray-100" />
           </CardContent>
-          {(title || description) && (
+          {(title || description || status) && (
             <CardFooter className="flex-col items-start gap-0.5 border-t-0 bg-white">
-              {title && <p className="text-muted-foreground text-xs">{title}</p>}
+              <div className="flex w-full items-start justify-between gap-2">
+                {title && <p className="text-muted-foreground text-xs">{title}</p>}
+                <StatusBadge status={status} />
+              </div>
               {description && <p className="text-muted-foreground/70 text-xs">{description}</p>}
             </CardFooter>
           )}
@@ -737,7 +756,12 @@ function QuestionBlock({
     }
     return (
       <div className="flex h-full flex-col">
-        {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
+        {(title || status) && (
+          <div className="flex items-start justify-between gap-2">
+            {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
+            <StatusBadge status={status} />
+          </div>
+        )}
         {description && (
           <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
         )}
@@ -748,7 +772,12 @@ function QuestionBlock({
 
   return (
     <div className="flex h-full flex-col">
-      {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
+      {(title || status) && (
+        <div className="flex items-start justify-between gap-2">
+          {title && <h4 className={`${titleSize} text-muted-foreground font-medium`}>{title}</h4>}
+          <StatusBadge status={status} />
+        </div>
+      )}
       {description && (
         <p className="text-muted-foreground/70 mt-1 text-xs leading-relaxed">{description}</p>
       )}
