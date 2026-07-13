@@ -208,6 +208,7 @@ export function TemplateManager({
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingQuestion, setEditingQuestion] = useState<TemplateQuestion | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TemplateQuestion | null>(null)
+  const [duplicateTarget, setDuplicateTarget] = useState<TemplateQuestion | null>(null)
   const [deletingQuestion, setDeletingQuestion] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<TemplateQuestion | null>(null)
   const [saving, setSaving] = useState(false)
@@ -1104,7 +1105,7 @@ export function TemplateManager({
                                         variant="outline"
                                         size="icon"
                                         className="size-7 text-muted-foreground hover:text-foreground"
-                                        onClick={(e) => { e.stopPropagation(); handleDuplicate(q) }}
+                                        onClick={(e) => { e.stopPropagation(); setDuplicateTarget(q) }}
                                         title="Duplicate"
                                       >
                                         <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} className="size-3.5" />
@@ -1186,6 +1187,32 @@ export function TemplateManager({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleArchive}>
               Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!duplicateTarget} onOpenChange={(open) => !open && setDuplicateTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} className="text-muted-foreground size-5" />
+              Duplicate question?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              A copy of &ldquo;{duplicateTarget?.field_label}&rdquo; will be created right below it
+              as an unpublished draft, with no student responses attached.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (duplicateTarget) handleDuplicate(duplicateTarget)
+                setDuplicateTarget(null)
+              }}
+            >
+              Duplicate
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
