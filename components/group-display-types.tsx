@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useBrandTheme } from "@/components/brand-display"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { isLineItemsQuestion, parseLineItemProducts, computeUnitEconomics } from "@/lib/line-items"
+import { extractPlainText, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { ProductLineItemsTable } from "@/components/line-items-table"
 
 const UnitEconomicsFlow = dynamic(
@@ -65,7 +66,9 @@ function getTextValue(
   questions: TemplateQuestion[],
   responseMap: Map<number, StudentResponse>
 ): string {
-  return getResponse(fieldName, questions, responseMap)?.student_response ?? ""
+  const raw = getResponse(fieldName, questions, responseMap)?.student_response ?? ""
+  // Rich-text essays store TipTap JSON; group displays only show plain text
+  return looksLikeRichTextDoc(raw) ? extractPlainText(raw) : raw
 }
 
 function getImageUrl(

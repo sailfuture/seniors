@@ -49,6 +49,8 @@ import {
   Link01Icon,
 } from "@hugeicons/core-free-icons"
 import { btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
+import { ProductStatusCard } from "@/components/status-overview"
+import { BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 import type { Comment } from "@/lib/form-types"
 import { useRefreshRegister } from "@/lib/refresh-context"
 
@@ -399,6 +401,16 @@ export default function AdminStudentBusinessThesisOverviewPage({
           </TableBody>
         </Table>
       </div>
+
+      <ProductStatusCard
+        title="Submissions"
+        description="Everything this student has submitted, grouped by status."
+        apiConfig={BUSINESSTHESIS_API_CONFIG}
+        slugify={btTitleToSlug}
+        studentId={studentId}
+        basePath={`/admin/business-thesis/${studentId}`}
+        variant="admin"
+      />
 
       <Sheet open={!!sheetRow} onOpenChange={(open) => { if (!open) setSheetRow(null) }}>
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-lg">

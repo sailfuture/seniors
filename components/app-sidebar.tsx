@@ -479,13 +479,12 @@ function buildStudentNav(
   sections: LifeMapSection[],
   btSections: BusinessThesisSection[],
   pathname: string,
-  commentCounts?: Map<number, number>,
   revisionCounts?: Map<number, number>,
-  btCommentCounts?: Map<number, number>,
   btRevisionCounts?: Map<number, number>,
   readyReviewCounts?: Map<number, number>,
   btReadyReviewCounts?: Map<number, number>,
 ) {
+  const sum = (m?: Map<number, number>) => (m ? [...m.values()].reduce((a, b) => a + b, 0) : 0)
   const mapItems = buildLifeMapNavItems(sections)
   const btItems = buildBusinessSectionItems(btSections)
   const onLifeMap = pathname.startsWith("/life-map")
@@ -496,34 +495,50 @@ function buildStudentNav(
       url: `/life-map`,
       icon: <HugeiconsIcon icon={MapsIcon} strokeWidth={2} />,
       isActive: onLifeMap,
-      items: mapItems.map((s) => {
-        const sec = sections.find((sec) => sec.section_title === s.title)
-        return {
-          title: s.title,
-          url: `/life-map/${s.slug}`,
-          badge: sec && commentCounts ? (commentCounts.get(sec.id) ?? 0) : 0,
-          badgeRed: sec && revisionCounts ? (revisionCounts.get(sec.id) ?? 0) : 0,
-          badgeAmber: sec && readyReviewCounts ? (readyReviewCounts.get(sec.id) ?? 0) : 0,
-          isLocked: sec?.isLocked ?? false,
-        }
-      }),
+      items: [
+        {
+          title: "Review Status",
+          url: "/life-map/status",
+          badgeRed: sum(revisionCounts),
+          badgeBlue: sum(readyReviewCounts),
+          isLocked: false,
+        },
+        ...mapItems.map((s) => {
+          const sec = sections.find((sec) => sec.section_title === s.title)
+          return {
+            title: s.title,
+            url: `/life-map/${s.slug}`,
+            badgeRed: sec && revisionCounts ? (revisionCounts.get(sec.id) ?? 0) : 0,
+            badgeBlue: sec && readyReviewCounts ? (readyReviewCounts.get(sec.id) ?? 0) : 0,
+            isLocked: sec?.isLocked ?? false,
+          }
+        }),
+      ],
     },
     {
       title: "Business Thesis",
       url: `/business-thesis`,
       icon: <HugeiconsIcon icon={BookOpen02Icon} strokeWidth={2} />,
       isActive: onBusiness,
-      items: btItems.map((s) => {
-        const sec = btSections.find((sc) => btTitleToSlug(sc.section_title) === s.slug)
-        return {
-          title: s.title,
-          url: `/business-thesis/${s.slug}`,
-          badge: sec && btCommentCounts ? (btCommentCounts.get(sec.id) ?? 0) : 0,
-          badgeRed: sec && btRevisionCounts ? (btRevisionCounts.get(sec.id) ?? 0) : 0,
-          badgeAmber: sec && btReadyReviewCounts ? (btReadyReviewCounts.get(sec.id) ?? 0) : 0,
-          isLocked: sec?.isLocked ?? false,
-        }
-      }),
+      items: [
+        {
+          title: "Review Status",
+          url: "/business-thesis/status",
+          badgeRed: sum(btRevisionCounts),
+          badgeBlue: sum(btReadyReviewCounts),
+          isLocked: false,
+        },
+        ...btItems.map((s) => {
+          const sec = btSections.find((sc) => btTitleToSlug(sc.section_title) === s.slug)
+          return {
+            title: s.title,
+            url: `/business-thesis/${s.slug}`,
+            badgeRed: sec && btRevisionCounts ? (btRevisionCounts.get(sec.id) ?? 0) : 0,
+            badgeBlue: sec && btReadyReviewCounts ? (btReadyReviewCounts.get(sec.id) ?? 0) : 0,
+            isLocked: sec?.isLocked ?? false,
+          }
+        }),
+      ],
     },
   ]
 }
@@ -607,7 +622,7 @@ function getTeacherStudentNav(
           return {
             title: s.title,
             url: `/admin/life-map/${studentId}/${s.slug}`,
-            badgeAmber: sec && readyReviewCounts ? (readyReviewCounts.get(sec.id) ?? 0) : 0,
+            badgeBlue: sec && readyReviewCounts ? (readyReviewCounts.get(sec.id) ?? 0) : 0,
             badgeRed: sec && revisionCounts ? (revisionCounts.get(sec.id) ?? 0) : 0,
           }
         }),
@@ -629,7 +644,7 @@ function getTeacherStudentNav(
           return {
             title: s.title,
             url: `/admin/business-thesis/${studentId}/${s.slug}`,
-            badgeAmber: sec && btReadyReviewCounts ? (btReadyReviewCounts.get(sec.id) ?? 0) : 0,
+            badgeBlue: sec && btReadyReviewCounts ? (btReadyReviewCounts.get(sec.id) ?? 0) : 0,
             badgeRed: sec && btRevisionCounts ? (btRevisionCounts.get(sec.id) ?? 0) : 0,
           }
         }),
@@ -656,7 +671,7 @@ function getNavFromPathname(pathname: string, isAdmin: boolean, sections: LifeMa
   if (isAdmin) {
     return buildTeacherBaseNav(sections, btSections, pathname, students)
   }
-  return buildStudentNav(sections, btSections, pathname, badges.commentCounts, badges.revisionCounts, badges.btCommentCounts, badges.btRevisionCounts, badges.readyReviewCounts, badges.btReadyReviewCounts)
+  return buildStudentNav(sections, btSections, pathname, badges.revisionCounts, badges.btRevisionCounts, badges.readyReviewCounts, badges.btReadyReviewCounts)
 }
 
 function buildStudentPublicPagesNav(studentId: string | null): { title: string; url: string; icon: React.ReactNode; items: { title: string; url: string; isExternal?: boolean }[] } | null {

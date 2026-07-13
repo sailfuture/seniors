@@ -63,6 +63,8 @@ import { GoogleFontPicker } from "./google-font-picker"
 import { BrandColorInput } from "./brand-color-input"
 import { LineItemsInput } from "./line-items-input"
 import { isLineItemsQuestion } from "@/lib/line-items"
+import { RichTextPreviewCard } from "./rich-text-preview-card"
+import { extractPlainText, isRichTextQuestion, richTextWordCount } from "@/lib/rich-text"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
@@ -341,7 +343,10 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             patch = { ...source, last_edited: now }
           } else {
             const value = localValues.get(templateId) ?? ""
-            const wordCount = value.trim().split(/\s+/).filter(Boolean).length
+            // Rich-text essays store TipTap JSON; count prose words, not markup
+            const wordCount = question && isRichTextQuestion(question)
+              ? richTextWordCount(value)
+              : value.trim().split(/\s+/).filter(Boolean).length
             patch = { student_response: value, wordCount, last_edited: now }
           }
 
@@ -508,6 +513,49 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     } catch { /* ignore */ }
   }, [dispatchCommentRead, cfg.commentsEndpoint])
 
+  const handleStudentReply = useCallback(async (fieldName: string, note: string): Promise<boolean> => {
+    if (!studentId) return false
+    const studentName = session?.user?.name ?? "Student"
+    const payload: Record<string, unknown> = {
+      students_id: studentId,
+      teachers_id: null,
+      field_name: fieldName,
+      [F.sectionId]: sectionId,
+      note,
+      // Born unread so the teacher's comment badge picks it up; for student
+      // replies isOld means "seen by the teacher". Student-facing unread
+      // counts all skip isStudentReply comments.
+      isOld: false,
+      isComplete: false,
+      teacher_name: studentName,
+      isStudentReply: true,
+    }
+    try {
+      const res = await fetch(cfg.commentsEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) return false
+      const created = await res.json()
+      // Feature detection: if Xano dropped the isStudentReply flag (column or
+      // endpoint input missing), the reply would forever render as a teacher
+      // comment — delete the mis-flagged record and report failure instead.
+      if (created?.isStudentReply !== true) {
+        if (created?.id) {
+          try {
+            await fetch(`${cfg.commentsEndpoint}/${created.id}`, { method: "DELETE" })
+          } catch { /* ignore */ }
+        }
+        return false
+      }
+      setComments((prev) => [...prev, created as Comment])
+      return true
+    } catch {
+      return false
+    }
+  }, [studentId, session, sectionId, cfg.commentsEndpoint, F.sectionId])
+
   const handleImageUpload = async (templateId: number, file: File) => {
     try {
       const formData = new FormData()
@@ -548,7 +596,10 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         const skipAiCheck =
           question?.question_types_id === QUESTION_TYPE.SOURCE ||
           (question ? isLineItemsQuestion(question) : false)
-        const text = localValues.get(templateId) ?? response?.student_response ?? ""
+        const rawText = localValues.get(templateId) ?? response?.student_response ?? ""
+        // Rich-text essays are prose and DO go through the AI check, but the
+        // checker must see the extracted text, not the TipTap JSON document
+        const text = question && isRichTextQuestion(question) ? extractPlainText(rawText) : rawText
         const textWordCount = text.trim().split(/\s+/).filter(Boolean).length
 
         if (!skipAiCheck && textWordCount >= 20 && cfg.plagiarismCheckEndpoint) {
@@ -692,6 +743,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           key={q.id}
           comments={comments}
           onMarkRead={handleMarkRead}
+          onReplyToComments={handleStudentReply}
           question={q}
           value={value}
           imageValue={response?.image_response ?? null}
@@ -790,7 +842,8 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             const src = localSourceValues.get(q.id)
             return !!(src && (src.source_link.trim() || src.title_of_source.trim()))
           }
-          const text = localValues.get(q.id) ?? r.student_response ?? ""
+          const raw = localValues.get(q.id) ?? r.student_response ?? ""
+          const text = isRichTextQuestion(q) ? extractPlainText(raw) : raw
           if (!text.trim()) return false
           const wordCount = text.trim().split(/\s+/).filter(Boolean).length
           if (q.min_words && q.min_words > 0 && wordCount < q.min_words) return false
@@ -1167,6 +1220,7 @@ function DynamicField({
   onImageUpload,
   comments,
   onMarkRead,
+  onReplyToComments,
   lastEdited,
   plagiarism,
   submittingForReview,
@@ -1186,6 +1240,7 @@ function DynamicField({
   onImageUpload: (file: File) => void
   comments: Comment[]
   onMarkRead: (commentIds: number[]) => void
+  onReplyToComments?: (fieldName: string, note: string) => Promise<boolean>
   lastEdited?: string | number | null
   plagiarism?: GptZeroResult
   submittingForReview?: boolean
@@ -1232,8 +1287,9 @@ function DynamicField({
   }, [groupExpandKey])
   const isImageType = typeId === QUESTION_TYPE.IMAGE_UPLOAD
   const isSourceType = typeId === QUESTION_TYPE.SOURCE
+  const isRichTextType = isRichTextQuestion(question)
   const hasImage = !!imageValue && Object.keys(imageValue).length > 0 && !!(imageValue.path || imageValue.url || imageValue.name)
-  const wordCount = value.trim().split(/\s+/).filter(Boolean).length
+  const wordCount = isRichTextType ? richTextWordCount(value) : value.trim().split(/\s+/).filter(Boolean).length
   const meetsMinWords = !question.min_words || question.min_words <= 0 || wordCount >= question.min_words
   const hasSourceContent = isSourceType && sourceValues && (sourceValues.source_link.trim().length > 0 || sourceValues.title_of_source.trim().length > 0)
   const hasContent = isImageType ? hasImage : isSourceType ? !!hasSourceContent : value.trim().length > 0
@@ -1260,11 +1316,14 @@ function DynamicField({
             <CommentBadge
               fieldName={question.field_name}
               fieldLabel={question.field_label}
-              fieldValue={value || "—"}
+              fieldValue={(isRichTextType ? extractPlainText(value) : value) || "—"}
               minWords={question.min_words > 0 ? question.min_words : undefined}
               comments={comments}
               onMarkRead={onMarkRead}
               plagiarism={plagiarism}
+              responseStatus={responseStatus}
+              lastEdited={lastEdited}
+              onReply={onReplyToComments}
             />
           )}
           {hasInstructions && (
@@ -1427,6 +1486,15 @@ function DynamicField({
 
       {isLineItemsQuestion(question) && (
         <LineItemsInput value={value} onChange={onChange} onBlur={onBlur} disabled={isDimmed} />
+      )}
+
+      {isRichTextType && (
+        <RichTextPreviewCard
+          questionId={question.id}
+          value={value}
+          minWords={question.min_words > 0 ? question.min_words : undefined}
+          disabled={isDimmed}
+        />
       )}
 
       {typeId === QUESTION_TYPE.SHORT_RESPONSE && (

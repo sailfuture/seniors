@@ -1488,8 +1488,8 @@ function QuestionSheet({
       return
     }
     const typeName = questionTypes.find((t) => t.id === form.question_types_id)?.type ?? ""
-    if (typeName === "Long Response" && (!form.min_words || form.min_words < 1)) {
-      toast("Minimum word count is required for long response questions", { duration: 2000 })
+    if ((typeName === "Long Response" || typeName === "Rich Text") && (!form.min_words || form.min_words < 1)) {
+      toast("Minimum word count is required for this question type", { duration: 2000 })
       return
     }
     const fieldName = form.field_name.trim() || form.field_label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
@@ -1497,7 +1497,7 @@ function QuestionSheet({
   }
 
   const isSource = selectedTypeName === "Source"
-  const showMinWords = !isSource && (selectedTypeName === "Long Response" || selectedTypeName === "Short Response")
+  const showMinWords = !isSource && (selectedTypeName === "Long Response" || selectedTypeName === "Short Response" || selectedTypeName === "Rich Text")
   const showDropdown = selectedTypeName === "Dropdown"
   const showImageSettings = selectedTypeName === "Image Upload"
 

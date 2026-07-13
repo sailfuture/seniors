@@ -52,6 +52,8 @@ import {
 import { titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import type { Comment } from "@/lib/form-types"
 import { useRefreshRegister } from "@/lib/refresh-context"
+import { ProductStatusCard } from "@/components/status-overview"
+import { LIFEMAP_API_CONFIG } from "@/lib/form-api-config"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -383,6 +385,16 @@ export default function AdminStudentLifeMapOverviewPage({
           </TableBody>
         </Table>
       </div>
+
+      <ProductStatusCard
+        title="Submissions"
+        description="Everything this student has submitted, grouped by status."
+        apiConfig={LIFEMAP_API_CONFIG}
+        slugify={titleToSlug}
+        studentId={studentId}
+        basePath={`/admin/life-map/${studentId}`}
+        variant="admin"
+      />
 
       <Sheet open={!!sheetRow} onOpenChange={(open) => { if (!open) setSheetRow(null) }}>
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-lg">

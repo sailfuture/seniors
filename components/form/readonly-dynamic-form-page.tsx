@@ -44,6 +44,8 @@ import type { Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LineItemsTable } from "@/components/line-items-table"
 import { isLineItemsQuestion } from "@/lib/line-items"
+import { RichTextDisplay } from "./rich-text-display"
+import { extractPlainText, isRichTextQuestion, richTextWordCount } from "@/lib/rich-text"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useRefreshRegister } from "@/lib/refresh-context"
 
@@ -388,6 +390,26 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     []
   )
 
+  // For student replies, isOld doubles as "the teacher has seen it" — flip it
+  // when the teacher opens a field's activity sheet so the badge clears.
+  const handleMarkRepliesSeen = useCallback(
+    async (commentIds: number[]) => {
+      setComments((prev) =>
+        prev.map((c) => (c.id != null && commentIds.includes(c.id) ? { ...c, isOld: true } : c))
+      )
+      for (const id of commentIds) {
+        try {
+          await fetch(`${cfg.commentsEndpoint}/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isOld: true }),
+          })
+        } catch { /* ignore */ }
+      }
+    },
+    [cfg.commentsEndpoint]
+  )
+
   const handleResponseReviewAction = useCallback(
     async (responseId: number, templateId: number, action: "complete" | "revision" | "ready" | "clear", comment?: string, silent = false) => {
       const now = new Date().toISOString()
@@ -506,7 +528,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const isImage = typeId === QUESTION_TYPE.IMAGE_UPLOAD
         const isCurrency = typeId === QUESTION_TYPE.CURRENCY
         const isSource = typeId === QUESTION_TYPE.SOURCE
-        const colSpan = flat ? "" : (isLong || isImage || isSource ? "md:col-span-6" : "md:col-span-3")
+        const isRichText = isRichTextQuestion(q)
+        const colSpan = flat ? "" : (isLong || isImage || isSource || isRichText ? "md:col-span-6" : "md:col-span-3")
 
         const gptzero = response ? plagiarismData.get(response.id) : undefined
         const aiIsHighest = gptzero ? isAiHighest(gptzero) : false
@@ -589,6 +612,20 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           )
         } else if (isLineItemsQuestion(q)) {
           displayValue = <LineItemsTable raw={value} />
+        } else if (isRichText) {
+          displayValue = (
+            <div>
+              <RichTextDisplay raw={value} />
+              {(q.min_words > 0 || (gptzero && isSubmitted)) && (
+                <div className="text-muted-foreground/60 mt-1 flex items-center justify-between text-xs">
+                  <span>
+                    {q.min_words > 0 ? `${richTextWordCount(value)} / ${q.min_words} words` : ""}
+                  </span>
+                  {gptzero && isSubmitted && <PlagiarismScoresInline data={gptzero} />}
+                </div>
+              )}
+            </div>
+          )
         } else {
           displayValue = (
             <div>
@@ -626,15 +663,17 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 <TeacherComment
                   fieldName={q.field_name}
                   fieldLabel={q.field_label}
-                  fieldValue={value || "—"}
+                  fieldValue={(isRichText ? extractPlainText(value) : value) || "—"}
                   imageUrl={isImage ? getImageUrl(imageValue) : undefined}
                   minWords={q.min_words > 0 ? q.min_words : undefined}
                   comments={comments}
                   onSubmit={handlePostComment}
                   onDelete={handleDelete}
-                  plagiarism={isLong && isSubmitted ? gptzero : undefined}
+                  plagiarism={(isLong || isRichText) && isSubmitted ? gptzero : undefined}
                   teacherGuideline={q.teacher_guideline}
                   responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : null}
+                  lastEdited={response?.last_edited}
+                  onMarkRepliesSeen={handleMarkRepliesSeen}
                   onMarkCompleteAction={isSubmitted ? () => handleResponseReviewAction(response!.id, q.id, "complete") : undefined}
                   onRequestRevision={isSubmitted ? () => { setRevisionModal({ responseId: response!.id, templateId: q.id }); setRevisionComment("") } : undefined}
                   onUndoStatus={isSubmitted && (response!.isComplete || (response!.revisionNeeded && !studentEditedSinceRevision)) ? () => handleResponseReviewAction(response!.id, q.id, "ready") : undefined}

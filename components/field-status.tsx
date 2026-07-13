@@ -1,7 +1,8 @@
 // Review status surfaced on the public pages so fields and groups show
-// whether they are pending review, need a resubmission, or are complete.
+// whether they are pending review, need a resubmission, or haven't been
+// submitted yet. Approved work shows no badge — done is the default state.
 
-export type FieldStatus = "revision" | "pending" | "complete"
+export type FieldStatus = "revision" | "pending" | "complete" | "empty"
 
 interface StatusLike {
   isComplete?: boolean
@@ -10,24 +11,24 @@ interface StatusLike {
 }
 
 export function statusOf(r: StatusLike | null | undefined): FieldStatus | null {
-  if (!r) return null
+  if (!r) return "empty"
   if (r.revisionNeeded) return "revision"
   if (r.readyReview && !r.isComplete) return "pending"
   if (r.isComplete) return "complete"
-  return null
+  return "empty"
 }
 
-/** Aggregate status across a group's responses (revision > pending > complete). */
+/** Aggregate status across a group's responses (revision > pending > not submitted > complete). */
 export function groupStatusOf(responses: (StatusLike | null | undefined)[]): FieldStatus | null {
-  const present = responses.filter(Boolean) as StatusLike[]
-  if (present.length === 0) return null
-  if (present.some((r) => r.revisionNeeded)) return "revision"
-  if (present.some((r) => r.readyReview && !r.isComplete)) return "pending"
-  if (present.every((r) => r.isComplete)) return "complete"
-  return null
+  if (responses.length === 0) return null
+  const statuses = responses.map(statusOf)
+  if (statuses.some((s) => s === "revision")) return "revision"
+  if (statuses.some((s) => s === "pending")) return "pending"
+  if (statuses.some((s) => s === "empty")) return "empty"
+  return "complete"
 }
 
-const STYLES: Record<FieldStatus, { label: string; className: string; dot: string }> = {
+const STYLES: Record<Exclude<FieldStatus, "complete">, { label: string; className: string; dot: string }> = {
   revision: {
     label: "Revision requested",
     className: "border-red-200 bg-red-50 text-red-700",
@@ -35,13 +36,13 @@ const STYLES: Record<FieldStatus, { label: string; className: string; dot: strin
   },
   pending: {
     label: "Pending review",
-    className: "border-amber-200 bg-amber-50 text-amber-700",
-    dot: "bg-amber-500",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+    dot: "bg-blue-500",
   },
-  complete: {
-    label: "Complete",
-    className: "border-green-200 bg-green-50 text-green-700",
-    dot: "bg-green-500",
+  empty: {
+    label: "Not submitted",
+    className: "border-gray-200 bg-gray-50 text-gray-500",
+    dot: "bg-gray-400",
   },
 }
 
@@ -52,7 +53,8 @@ export function StatusBadge({
   status: FieldStatus | null
   className?: string
 }) {
-  if (!status) return null
+  // Approved work renders clean — no badge.
+  if (!status || status === "complete") return null
   const s = STYLES[status]
   return (
     <span

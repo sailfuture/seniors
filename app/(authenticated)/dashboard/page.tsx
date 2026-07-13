@@ -7,10 +7,18 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MapsIcon, BookOpen02Icon } from "@hugeicons/core-free-icons"
 import { TeacherDashboard } from "@/components/teacher-dashboard"
+import { ProductStatusCard } from "@/components/status-overview"
 import { fetchSections, titleToSlug } from "@/lib/lifemap-sections"
+import { btTitleToSlug } from "@/lib/businessthesis-sections"
 import { LIFEMAP_API_CONFIG, BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 
 function StudentDashboard() {
+  const { data: session, status: sessionStatus } = useSession()
+  const studentId =
+    sessionStatus === "loading"
+      ? undefined
+      : (((session?.user as Record<string, unknown>)?.students_id as string | undefined) ?? null)
+
   const [lifeMapUrl, setLifeMapUrl] = useState("/life-map")
   const [lmSections, setLmSections] = useState(0)
   const [lmQuestions, setLmQuestions] = useState(0)
@@ -76,6 +84,26 @@ function StudentDashboard() {
             </CardContent>
           </Card>
         </Link>
+      </div>
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <ProductStatusCard
+          title="Life Map"
+          description="Revisions, pending reviews, and unread comments."
+          apiConfig={LIFEMAP_API_CONFIG}
+          slugify={titleToSlug}
+          studentId={studentId}
+          basePath="/life-map"
+          viewAllHref="/life-map/status"
+        />
+        <ProductStatusCard
+          title="Business Thesis"
+          description="Revisions, pending reviews, and unread comments."
+          apiConfig={BUSINESSTHESIS_API_CONFIG}
+          slugify={btTitleToSlug}
+          studentId={studentId}
+          basePath="/business-thesis"
+          viewAllHref="/business-thesis/status"
+        />
       </div>
     </div>
   )

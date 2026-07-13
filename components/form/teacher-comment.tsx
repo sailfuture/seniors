@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Sheet,
   SheetContent,
@@ -8,60 +8,20 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Comment01Icon,
-  Delete02Icon,
   CheckmarkCircle02Icon,
   ArrowTurnBackwardIcon,
-  AlertCircleIcon,
-  SentIcon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import { BlurredFitImage } from "./blurred-fit-image"
-
-function getRelativeTime(date: Date): string {
-  const now = Date.now()
-  const diff = Math.floor((now - date.getTime()) / 1000)
-
-  if (diff < 5) return "just now"
-  if (diff < 60) return `${diff}s ago`
-  const mins = Math.floor(diff / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  if (days < 7) return `${days}d ago`
-  return date.toLocaleDateString()
-}
-
-function parseTimestamp(ts: string | number | undefined): number {
-  if (!ts) return 0
-  if (typeof ts === "number") return ts
-  if (/^\d+$/.test(ts)) return Number(ts)
-  return new Date(ts).getTime()
-}
-
-function sortByRecent(list: Comment[]): Comment[] {
-  return [...list].sort(
-    (a, b) => parseTimestamp(b.created_at) - parseTimestamp(a.created_at)
-  )
-}
+import { FieldActivityStream } from "./field-activity-stream"
 
 interface PlagiarismData {
   class_probability_ai?: number
@@ -90,6 +50,10 @@ interface TeacherCommentProps {
   plagiarism?: PlagiarismData
   teacherGuideline?: string
   responseStatus?: ResponseStatus | null
+  lastEdited?: string | number | null
+  /** Called with unseen student-reply ids when the sheet opens, so the
+   *  teacher's badge clears once they've looked at the activity. */
+  onMarkRepliesSeen?: (commentIds: number[]) => void
   onMarkCompleteAction?: () => void
   onRequestRevision?: () => void
   onClearStatus?: () => void
@@ -109,6 +73,8 @@ export function TeacherComment({
   plagiarism,
   teacherGuideline,
   responseStatus,
+  lastEdited,
+  onMarkRepliesSeen,
   onMarkCompleteAction,
   onRequestRevision,
   onClearStatus,
@@ -118,9 +84,25 @@ export function TeacherComment({
   const [note, setNote] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
-  const fieldComments = sortByRecent(comments.filter((c) => c.field_name === fieldName))
-  const commentCount = fieldComments.filter((c) => !c.isOld).length
+  const fieldComments = comments.filter((c) => c.field_name === fieldName)
+  // Two directions of "unread": teacher comments the student hasn't read yet,
+  // and student replies the teacher hasn't seen yet. Both surface in the
+  // badge; only the replies are the teacher's own to-do (blue).
+  const studentUnreadCount = fieldComments.filter((c) => !c.isOld && !c.isStudentReply).length
+  const unseenReplyIds = fieldComments
+    .filter((c) => c.isStudentReply && !c.isOld && c.id != null)
+    .map((c) => c.id!)
+  const commentCount = studentUnreadCount + unseenReplyIds.length
+  const hasUnseenReplies = unseenReplyIds.length > 0
   const aiIsHighest = plagiarism ? isAiHighest(plagiarism) : false
+
+  // Opening the sheet counts as the teacher seeing any new replies.
+  useEffect(() => {
+    if (open && hasUnseenReplies && onMarkRepliesSeen) {
+      onMarkRepliesSeen(unseenReplyIds)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const handleSubmit = async () => {
     if (!note.trim()) return
@@ -155,12 +137,17 @@ export function TeacherComment({
           strokeWidth={2}
           className={cn(
             "size-4",
-            commentCount > 0 ? "text-gray-500" : "text-muted-foreground/40"
+            hasUnseenReplies
+              ? "text-blue-500"
+              : commentCount > 0
+                ? "text-gray-500"
+                : "text-muted-foreground/40"
           )}
         />
         {commentCount > 0 && (
           <span className={cn(
-            "absolute flex items-center justify-center rounded-full bg-gray-500 font-bold text-white",
+            "absolute flex items-center justify-center rounded-full font-bold text-white",
+            hasUnseenReplies ? "bg-blue-500" : "bg-gray-500",
             square
               ? "-right-1 -top-1 size-4 text-[10px] font-medium"
               : "-right-0.5 -top-0.5 size-3.5 text-[9px] ring-2 ring-white"
@@ -173,9 +160,9 @@ export function TeacherComment({
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="border-b px-6 py-4">
-            <SheetTitle className="text-base">Teacher Comments</SheetTitle>
+            <SheetTitle className="text-base">Activity</SheetTitle>
             <SheetDescription className="sr-only">
-              View and add comments for {fieldLabel}
+              Comments, submissions, and review activity for {fieldLabel}
             </SheetDescription>
           </SheetHeader>
 
@@ -207,20 +194,14 @@ export function TeacherComment({
               </div>
             )}
 
-            <div className="space-y-2 px-6 py-4">
-              {fieldComments.length === 0 && (
-                <p className="text-muted-foreground py-8 text-center text-sm">
-                  No comments yet.
-                </p>
-              )}
-
-              {fieldComments.map((comment) => (
-                <CommentCard
-                  key={comment.id}
-                  comment={comment}
-                  onDelete={onDelete}
-                />
-              ))}
+            <div className="px-6 py-4">
+              <FieldActivityStream
+                comments={fieldComments}
+                viewer="teacher"
+                responseStatus={responseStatus}
+                lastEdited={lastEdited}
+                onDelete={onDelete}
+              />
             </div>
           </div>
 
@@ -256,27 +237,8 @@ export function TeacherComment({
 
           {responseStatus && (onMarkCompleteAction || onRequestRevision || onUndoStatus) && (
             <div className="border-t px-6 py-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {responseStatus.isComplete && (
-                    <div className="inline-flex size-7 items-center justify-center rounded-md border border-green-200" title="Complete">
-                      <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-green-600" />
-                    </div>
-                  )}
-                  {responseStatus.revisionNeeded && (
-                    <div className="inline-flex size-7 items-center justify-center rounded-md border border-red-200" title="Revision Needed">
-                      <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5 text-red-500" />
-                    </div>
-                  )}
-                  {responseStatus.readyReview && !responseStatus.isComplete && !responseStatus.revisionNeeded && (
-                    <div className="inline-flex size-7 items-center justify-center rounded-md border border-blue-200" title="Ready for Review">
-                      <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-3.5 text-blue-500" />
-                    </div>
-                  )}
-                  {!responseStatus.isComplete && !responseStatus.revisionNeeded && !responseStatus.readyReview && (
-                    <span className="text-muted-foreground/50 text-xs italic">Not submitted</span>
-                  )}
-                </div>
+              {/* Current status lives in the activity stream; this bar is just actions. */}
+              <div className="flex items-center justify-end">
                 <div className="flex items-center gap-1.5">
                   {(responseStatus.isComplete || responseStatus.revisionNeeded) && onUndoStatus && (
                     <Button
@@ -317,111 +279,6 @@ export function TeacherComment({
         </SheetContent>
       </Sheet>
     </>
-  )
-}
-
-function CommentCard({
-  comment,
-  onDelete,
-}: {
-  comment: Comment
-  onDelete: (commentId: number) => Promise<void>
-}) {
-  const [deleting, setDeleting] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [exiting, setExiting] = useState(false)
-  const cardRef = useRef<HTMLDivElement>(null)
-
-  const handleDelete = () => {
-    if (!comment.id) return
-    setDeleting(true)
-    setConfirmDelete(false)
-    setExiting(true)
-    setTimeout(async () => {
-      await onDelete(comment.id!)
-      setDeleting(false)
-      setExiting(false)
-    }, 250)
-  }
-
-  const createdDate = comment.created_at
-    ? new Date(parseTimestamp(comment.created_at))
-    : null
-
-  const readTime = comment.isRead
-    ? getRelativeTime(new Date(typeof comment.isRead === "number" ? comment.isRead : new Date(comment.isRead as string).getTime()))
-    : null
-
-  return (
-    <div
-      ref={cardRef}
-      className={cn(
-        "relative overflow-hidden rounded-md border p-3 text-sm transition-all duration-200 ease-in-out",
-        exiting && "max-h-0 scale-95 border-transparent opacity-0 !mb-0 !p-0"
-      )}
-      style={exiting ? { marginTop: 0, marginBottom: 0 } : undefined}
-    >
-      {comment.id && (
-        <div className="absolute right-2 top-2">
-          <button
-            type="button"
-            onClick={() => setConfirmDelete(true)}
-            disabled={deleting || exiting}
-            className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-500"
-            title="Delete"
-          >
-            <HugeiconsIcon
-              icon={Delete02Icon}
-              strokeWidth={2}
-              className="size-3.5"
-            />
-          </button>
-        </div>
-      )}
-
-      <p className="whitespace-pre-wrap pr-7">{comment.note}</p>
-
-      <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
-        {createdDate && <span>{getRelativeTime(createdDate)}</span>}
-        {createdDate && comment.teacher_name && <span>&middot;</span>}
-        {comment.teacher_name && (
-          <span className="font-medium">{comment.teacher_name}</span>
-        )}
-        {comment.isRevisionFeedback && (
-          <>
-            <span>&middot;</span>
-            <span className="font-semibold text-red-500">Revision</span>
-          </>
-        )}
-        {readTime && (
-          <>
-            <span>&middot;</span>
-            <span className="text-green-600">Read {readTime}</span>
-          </>
-        )}
-      </div>
-
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete comment?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this comment. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
   )
 }
 

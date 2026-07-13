@@ -4,33 +4,19 @@ import { useState } from "react"
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { HugeiconsIcon } from "@hugeicons/react"
-import {
-  Comment01Icon,
-  CheckmarkCircle02Icon,
-} from "@hugeicons/core-free-icons"
+import { Comment01Icon } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
-
-function getRelativeTime(date: Date): string {
-  const now = Date.now()
-  const diff = Math.floor((now - date.getTime()) / 1000)
-
-  if (diff < 5) return "just now"
-  if (diff < 60) return `${diff}s ago`
-  const mins = Math.floor(diff / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  if (days < 7) return `${days}d ago`
-  return date.toLocaleDateString()
-}
+import { FieldActivityStream } from "./field-activity-stream"
 
 function parseTimestamp(ts: string | number | undefined): number {
   if (!ts) return 0
@@ -52,6 +38,12 @@ function toPercent(val: unknown): number {
   return n <= 1 ? Math.round(n * 100) : Math.round(n)
 }
 
+interface ResponseStatus {
+  isComplete?: boolean
+  revisionNeeded?: boolean
+  readyReview?: boolean
+}
+
 interface CommentBadgeProps {
   fieldName: string
   fieldLabel: string
@@ -60,6 +52,10 @@ interface CommentBadgeProps {
   comments: Comment[]
   onMarkRead?: (commentIds: number[]) => void
   plagiarism?: PlagiarismData
+  responseStatus?: ResponseStatus | null
+  lastEdited?: string | number | null
+  /** Post a student reply; resolve true when it persisted (backend flag intact). */
+  onReply?: (fieldName: string, note: string) => Promise<boolean>
 }
 
 export function CommentBadge({
@@ -70,8 +66,14 @@ export function CommentBadge({
   comments,
   onMarkRead,
   plagiarism,
+  responseStatus,
+  lastEdited,
+  onReply,
 }: CommentBadgeProps) {
   const [open, setOpen] = useState(false)
+  const [reply, setReply] = useState("")
+  const [sending, setSending] = useState(false)
+  const [replyError, setReplyError] = useState<string | null>(null)
 
   const fieldComments = comments
     .filter((c) => c.field_name === fieldName && !c.isComplete)
@@ -79,11 +81,27 @@ export function CommentBadge({
 
   if (fieldComments.length === 0) return null
 
-  const unreadCount = fieldComments.filter((c) => !c.isOld).length
+  const unreadCount = fieldComments.filter((c) => !c.isOld && !c.isStudentReply).length
   const hasUnread = unreadCount > 0
 
   const handleMarkSingleRead = (commentId: number) => {
     if (onMarkRead) onMarkRead([commentId])
+  }
+
+  const handleSendReply = async () => {
+    if (!reply.trim() || !onReply) return
+    setSending(true)
+    setReplyError(null)
+    try {
+      const ok = await onReply(fieldName, reply.trim())
+      if (ok) {
+        setReply("")
+      } else {
+        setReplyError("Couldn't post your reply — please try again or ask your teacher.")
+      }
+    } finally {
+      setSending(false)
+    }
   }
 
   const displayAnswer = fieldValue && fieldValue !== "—" && fieldValue !== "" ? fieldValue : null
@@ -112,7 +130,10 @@ export function CommentBadge({
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="border-b px-6 py-4">
-            <SheetTitle className="text-base">Teacher Comments</SheetTitle>
+            <SheetTitle className="text-base">Activity</SheetTitle>
+            <SheetDescription className="sr-only">
+              Teacher feedback and review activity for {fieldLabel}
+            </SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto">
@@ -132,59 +153,45 @@ export function CommentBadge({
             </div>
             <Separator />
 
-            <div className="space-y-2 px-6 py-4">
-              {fieldComments.map((comment, i) => {
-                const isRead = !!comment.isOld
-                const createdDate = comment.created_at
-                  ? new Date(parseTimestamp(comment.created_at))
-                  : null
-                const readTime = comment.isRead
-                  ? getRelativeTime(new Date(typeof comment.isRead === "number" ? comment.isRead : new Date(comment.isRead as string).getTime()))
-                  : null
-
-                return (
-                  <div
-                    key={comment.id ?? i}
-                    className={cn(
-                      "relative rounded-md border p-3 text-sm",
-                      isRead && "bg-muted/50"
-                    )}
-                  >
-                    {!isRead && comment.id != null && onMarkRead && (
-                      <button
-                        type="button"
-                        onClick={() => handleMarkSingleRead(comment.id!)}
-                        className="absolute right-2 top-2 inline-flex size-6 items-center justify-center rounded transition-colors text-muted-foreground/40 hover:text-green-600 hover:bg-accent"
-                        title="Mark as read"
-                      >
-                        <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
-                      </button>
-                    )}
-                    <p className={cn("whitespace-pre-wrap", !isRead && "pr-7")}>{comment.note}</p>
-                    <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
-                      {createdDate && <span>{getRelativeTime(createdDate)}</span>}
-                      {createdDate && comment.teacher_name && <span>&middot;</span>}
-                      {comment.teacher_name && (
-                        <span className="font-medium">{comment.teacher_name}</span>
-                      )}
-                      {comment.isRevisionFeedback && (
-                        <>
-                          <span>&middot;</span>
-                          <span className="font-semibold text-red-500">Revision</span>
-                        </>
-                      )}
-                      {readTime && (
-                        <>
-                          <span>&middot;</span>
-                          <span className="text-green-600">Read {readTime}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+            <div className="px-6 py-4">
+              <FieldActivityStream
+                comments={fieldComments}
+                viewer="student"
+                responseStatus={responseStatus}
+                lastEdited={lastEdited}
+                onMarkRead={handleMarkSingleRead}
+              />
             </div>
           </div>
+
+          {onReply && (
+            <div className="border-t px-6 py-4">
+              <div className="space-y-2">
+                <Textarea
+                  placeholder="Reply to your teacher..."
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && reply.trim() && !sending) {
+                      e.preventDefault()
+                      handleSendReply()
+                    }
+                  }}
+                  rows={2}
+                />
+                {replyError && <p className="text-xs text-red-600">{replyError}</p>}
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={handleSendReply}
+                    disabled={!reply.trim() || sending}
+                  >
+                    {sending ? "Sending..." : "Reply"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
     </>

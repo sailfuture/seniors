@@ -39,6 +39,8 @@ import {
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
 import { LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
+import { RichTextDisplay } from "@/components/form/rich-text-display"
+import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { StatusBadge, statusOf, groupStatusOf } from "@/components/field-status"
 import { icons as lucideIcons } from "lucide-react"
 
@@ -1167,6 +1169,12 @@ function ResponseDisplay({
 
   if (typeId === LINE_ITEMS_TYPE_ID) {
     return <LineItemsTable raw={text} />
+  }
+
+  // The doc-shape fallback guarantees stored TipTap JSON never renders raw,
+  // even if the question's type id changes out from under us
+  if (typeId === RICH_TEXT_TYPE_ID || looksLikeRichTextDoc(text)) {
+    return <RichTextDisplay raw={text} className="text-foreground" />
   }
 
   if (!text) return <p className="text-muted-foreground text-sm italic">—</p>

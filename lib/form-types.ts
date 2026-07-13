@@ -40,6 +40,9 @@ export interface Comment {
   isComplete?: boolean
   isRevisionFeedback?: boolean
   isRead?: string | number | null
+  /** True when the student authored this as a reply to teacher feedback.
+   *  Requires the isStudentReply column on the Xano comments tables. */
+  isStudentReply?: boolean
   note: string
   teacher_name?: string
   created_at?: string
