@@ -27,6 +27,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { GroupDisplayRenderer, isGroupDisplayType, DISPLAY_TYPE, getGoogleSheetUrl, GoogleSheetOpenButton } from "@/components/group-display-types"
 import { ColorSwatch, FontPreview, parseBrandColor, parseExactHex } from "@/components/brand-display"
 import { ZoomableImage } from "@/components/zoomable-image"
+import { LineItemsTable } from "@/components/line-items-table"
+import { LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
 import { icons as lucideIcons } from "lucide-react"
 
 const XANO_BASE =
@@ -855,6 +857,10 @@ function ResponseDisplay({
         </div>
       </div>
     )
+  }
+
+  if (typeId === LINE_ITEMS_TYPE_ID) {
+    return <LineItemsTable raw={text} />
   }
 
   if (!text) return <p className="text-muted-foreground text-sm italic">—</p>

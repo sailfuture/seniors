@@ -61,6 +61,8 @@ import { BlurredFitImage } from "./blurred-fit-image"
 import { ImageCropDialog } from "./image-crop-dialog"
 import { GoogleFontPicker } from "./google-font-picker"
 import { BrandColorInput } from "./brand-color-input"
+import { LineItemsInput } from "./line-items-input"
+import { isLineItemsQuestion } from "@/lib/line-items"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
@@ -542,11 +544,14 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
       if (action === "ready" && studentId) {
         const response = responses.get(templateId)
         const question = questions.find((q) => q.id === templateId)
-        const isSourceQ = question?.question_types_id === QUESTION_TYPE.SOURCE
+        // Source citations and line-item JSON are structured data, not prose
+        const skipAiCheck =
+          question?.question_types_id === QUESTION_TYPE.SOURCE ||
+          (question ? isLineItemsQuestion(question) : false)
         const text = localValues.get(templateId) ?? response?.student_response ?? ""
         const textWordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-        if (!isSourceQ && textWordCount >= 20 && cfg.plagiarismCheckEndpoint) {
+        if (!skipAiCheck && textWordCount >= 20 && cfg.plagiarismCheckEndpoint) {
           setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
           try {
             const respIdField = cfg.plagiarismResponseIdField ?? `${F.sectionId.replace('_id', '')}_responses_id`
@@ -1396,6 +1401,10 @@ function DynamicField({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {isLineItemsQuestion(question) && (
+        <LineItemsInput value={value} onChange={onChange} onBlur={onBlur} disabled={isDimmed} />
+      )}
 
       {typeId === QUESTION_TYPE.SHORT_RESPONSE && (
         /\bfont\b/i.test(question.field_label) ? (

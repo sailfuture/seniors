@@ -42,6 +42,8 @@ import { TeacherComment } from "./teacher-comment"
 import { BlurredFitImage } from "./blurred-fit-image"
 import type { Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
+import { LineItemsTable } from "@/components/line-items-table"
+import { isLineItemsQuestion } from "@/lib/line-items"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useRefreshRegister } from "@/lib/refresh-context"
 
@@ -585,6 +587,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           ) : (
             <p className="text-muted-foreground text-sm">—</p>
           )
+        } else if (isLineItemsQuestion(q)) {
+          displayValue = <LineItemsTable raw={value} />
         } else {
           displayValue = (
             <div>

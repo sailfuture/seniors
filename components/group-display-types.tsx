@@ -1,9 +1,16 @@
 "use client"
 
 import React from "react"
+import dynamic from "next/dynamic"
 import { Card, CardContent } from "@/components/ui/card"
 import { useBrandTheme } from "@/components/brand-display"
 import { ZoomableImage } from "@/components/zoomable-image"
+import { isLineItemsQuestion, parseLineItems, computeUnitEconomics } from "@/lib/line-items"
+
+const UnitEconomicsFlow = dynamic(
+  () => import("@/components/unit-economics-flow").then((m) => m.UnitEconomicsFlow),
+  { ssr: false, loading: () => <div className="h-[380px] w-full animate-pulse rounded-b-xl bg-gray-50" /> }
+)
 import {
   Table,
   TableBody,
@@ -467,6 +474,28 @@ function GoogleBudgetDisplay({
     (q) => q.field_name !== "google_sheet_url" && q.field_name !== "google_sheet_summary"
   )
 
+  // A Line Items response feeds the unit economics diagram rather than
+  // tiles or table rows; standalone per-unit questions act as fallbacks.
+  const lineItemsQ = questions.find((q) => isLineItemsQuestion(q))
+  const lineItemsRaw = lineItemsQ ? (responseMap.get(lineItemsQ.id)?.student_response ?? "") : ""
+  const econ = computeUnitEconomics(parseLineItems(lineItemsRaw))
+  const showFlow = econ.components.length > 0
+
+  const fallbackNum = (field: string): number | null => {
+    const v = getTextValue(field, questions, responseMap)
+    if (!v) return null
+    const n = parseFloat(v.replace(/[^0-9.-]/g, ""))
+    return isNaN(n) ? null : n
+  }
+  const flowUnitCost = econ.unitCost ?? fallbackNum("per_unit_cost")
+  const flowPrice = econ.unitPrice ?? fallbackNum("per_unit_price")
+  let flowMargin = econ.unitMargin ?? fallbackNum("per_unit_margin")
+  let flowMarginDerived = econ.unitMarginIsDerived
+  if (flowMargin === null && flowPrice !== null && flowUnitCost !== null) {
+    flowMargin = flowPrice - flowUnitCost
+    flowMarginDerived = true
+  }
+
   type Section = { header: string; rows: { label: string; value: string; typeId: number | null }[] }
   const sections: Section[] = []
   const statTiles: { label: string; value: string }[] = []
@@ -474,6 +503,7 @@ function GoogleBudgetDisplay({
   let current: Section | null = null
 
   for (const q of tableQuestions) {
+    if (isLineItemsQuestion(q)) continue
     const isTextHeader = q._question_types?.noInput === true
     if (isTextHeader) {
       current = { header: q.public_display_title || q.field_label, rows: [] }
@@ -482,9 +512,12 @@ function GoogleBudgetDisplay({
       const value = getTextValue(q.field_name, questions, responseMap)
       const label = q.public_display_title || q.field_label
       const typeId = q.question_types_id ?? q._question_types?.id ?? null
-      // Currency questions render as stat tiles instead of table rows
+      // Currency questions render as stat tiles instead of table rows; the
+      // per-unit trio moves into the diagram when components exist.
       if (typeId === QUESTION_TYPE_CURRENCY) {
-        statTiles.push({ label, value })
+        if (!(showFlow && /^per_unit_(price|cost|margin)$/.test(q.field_name))) {
+          statTiles.push({ label, value })
+        }
         continue
       }
       // Long-form answers read as prose blocks after the summary, not table rows
@@ -515,6 +548,19 @@ function GoogleBudgetDisplay({
       ) : (
         <div className="flex h-[300px] items-center justify-center bg-gray-50 text-sm text-muted-foreground">
           No budget sheet linked
+        </div>
+      )}
+
+      {showFlow && (
+        <div className="border-t">
+          <UnitEconomicsFlow
+            components={econ.components}
+            unitCost={flowUnitCost}
+            unitCostDerived={econ.unitCostIsDerived}
+            salePrice={flowPrice}
+            margin={flowMargin}
+            marginDerived={flowMarginDerived}
+          />
         </div>
       )}
 
