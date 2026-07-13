@@ -1,6 +1,11 @@
 "use client"
 
-import { parseLineItems, computeUnitEconomics, type LineItem } from "@/lib/line-items"
+import {
+  computeUnitEconomics,
+  parseLineItemProducts,
+  type LineItem,
+  type LineItemProduct,
+} from "@/lib/line-items"
 
 function money(n: number | null): string {
   if (n === null || isNaN(n)) return "—"
@@ -13,12 +18,10 @@ const SUMMARY_LABELS: Record<string, string> = {
   unit_margin: "Per Unit Margin",
 }
 
-/** Read-only rendering of a Line Items response for teacher review and public fallback. */
-export function LineItemsTable({ raw }: { raw: string }) {
-  const rows = parseLineItems(raw)
-  if (rows.length === 0) {
-    return <p className="text-muted-foreground text-sm italic">—</p>
-  }
+/** Read-only table for one product's rows. */
+export function ProductLineItemsTable({ product }: { product: LineItemProduct }) {
+  const rows = product.rows
+  if (rows.length === 0) return null
   const econ = computeUnitEconomics(rows)
   const body = rows.filter((r) => r.kind === "header" || r.kind === "item")
   const summary = rows.filter((r) => r.kind === "unit_cost" || r.kind === "unit_price" || r.kind === "unit_margin")
@@ -27,6 +30,13 @@ export function LineItemsTable({ raw }: { raw: string }) {
     <div className="overflow-hidden rounded-lg border border-gray-200">
       <table className="w-full text-sm">
         <tbody>
+          {product.name && (
+            <tr className="bg-gray-100/80">
+              <td colSpan={2} className="px-3 py-2 text-sm font-semibold text-gray-900">
+                {product.name}
+              </td>
+            </tr>
+          )}
           {body.map((row: LineItem, i: number) =>
             row.kind === "header" ? (
               <tr key={i} className="bg-gray-50">
@@ -57,6 +67,21 @@ export function LineItemsTable({ raw }: { raw: string }) {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+/** Read-only rendering of a Line Items response for teacher review and public fallback. */
+export function LineItemsTable({ raw }: { raw: string }) {
+  const products = parseLineItemProducts(raw).filter((p) => p.rows.length > 0)
+  if (products.length === 0) {
+    return <p className="text-muted-foreground text-sm italic">—</p>
+  }
+  return (
+    <div className="space-y-3">
+      {products.map((p, i) => (
+        <ProductLineItemsTable key={i} product={p} />
+      ))}
     </div>
   )
 }

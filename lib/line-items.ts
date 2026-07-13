@@ -55,6 +55,43 @@ export function serializeLineItems(rows: LineItem[]): string {
   return JSON.stringify({ rows })
 }
 
+// ── Products: each product/service carries its own breakdown ──────────────
+
+export interface LineItemProduct {
+  name: string
+  rows: LineItem[]
+}
+
+/**
+ * Parse a response into products. Supports the current shape
+ * `{ products: [{ name, rows }] }` and migrates the legacy flat
+ * `{ rows: [...] }` shape into a single unnamed product.
+ */
+export function parseLineItemProducts(raw: string | null | undefined): LineItemProduct[] {
+  if (!raw || !raw.trim()) return []
+  try {
+    const data = JSON.parse(raw)
+    if (Array.isArray(data?.products)) {
+      return data.products
+        .filter((p: unknown) => p && typeof p === "object")
+        .map((p: { name?: unknown; rows?: unknown }) => ({
+          name: typeof p.name === "string" ? p.name : "",
+          rows: parseLineItems(JSON.stringify({ rows: p.rows ?? [] })),
+        }))
+    }
+  } catch {
+    return []
+  }
+  const legacyRows = parseLineItems(raw)
+  return legacyRows.length > 0 ? [{ name: "", rows: legacyRows }] : []
+}
+
+export function serializeLineItemProducts(products: LineItemProduct[]): string {
+  const kept = products.filter((p) => p.name.trim() || p.rows.length > 0)
+  if (kept.length === 0) return ""
+  return JSON.stringify({ products: kept })
+}
+
 export interface UnitEconomics {
   /** Cost components in order, with the group header (if any) they sit under. */
   components: { name: string; cost: number | null; group?: string }[]

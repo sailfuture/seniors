@@ -5,8 +5,8 @@ import dynamic from "next/dynamic"
 import { Card, CardContent } from "@/components/ui/card"
 import { useBrandTheme } from "@/components/brand-display"
 import { ZoomableImage } from "@/components/zoomable-image"
-import { isLineItemsQuestion, parseLineItems, computeUnitEconomics } from "@/lib/line-items"
-import { LineItemsTable } from "@/components/line-items-table"
+import { isLineItemsQuestion, parseLineItemProducts, computeUnitEconomics } from "@/lib/line-items"
+import { ProductLineItemsTable } from "@/components/line-items-table"
 
 const UnitEconomicsFlow = dynamic(
   () => import("@/components/unit-economics-flow").then((m) => m.UnitEconomicsFlow),
@@ -123,6 +123,50 @@ export function GroupDisplayRenderer({
 
 // ── Unit Economics (type 8) ──
 
+/** One diagram per product/service; products without components fall back
+    to their summary table. */
+function LineItemsFlowStack({ raw }: { raw: string }) {
+  const products = parseLineItemProducts(raw).filter((p) => p.rows.length > 0)
+  if (products.length === 0) {
+    return (
+      <p className="text-muted-foreground py-6 text-center text-sm italic">
+        No breakdown submitted yet.
+      </p>
+    )
+  }
+  return (
+    <div className="space-y-6">
+      {products.map((p, i) => {
+        const econ = computeUnitEconomics(p.rows)
+        return (
+          <div key={i} className={i > 0 ? "border-t border-gray-100 pt-5" : undefined}>
+            {p.name && (
+              <div className="mb-1.5">
+                <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
+                  Product / Service
+                </p>
+                <h4 className="text-foreground text-base font-semibold">{p.name}</h4>
+              </div>
+            )}
+            {econ.components.length > 0 ? (
+              <UnitEconomicsFlow
+                components={econ.components}
+                unitCost={econ.unitCost}
+                unitCostDerived={econ.unitCostIsDerived}
+                salePrice={econ.unitPrice}
+                margin={econ.unitMargin}
+                marginDerived={econ.unitMarginIsDerived}
+              />
+            ) : (
+              <ProductLineItemsTable product={p} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function UnitEconomicsDisplay({
   questions,
   responseMap,
@@ -132,30 +176,7 @@ function UnitEconomicsDisplay({
 }) {
   const lineItemsQ = questions.find((q) => isLineItemsQuestion(q))
   const raw = lineItemsQ ? (responseMap.get(lineItemsQ.id)?.student_response ?? "") : ""
-  const rows = parseLineItems(raw)
-  const econ = computeUnitEconomics(rows)
-
-  if (econ.components.length === 0) {
-    // No components to diagram — show the plain table if there are any rows
-    return rows.length > 0 ? (
-      <LineItemsTable raw={raw} />
-    ) : (
-      <p className="text-muted-foreground py-6 text-center text-sm italic">
-        No breakdown submitted yet.
-      </p>
-    )
-  }
-
-  return (
-    <UnitEconomicsFlow
-      components={econ.components}
-      unitCost={econ.unitCost}
-      unitCostDerived={econ.unitCostIsDerived}
-      salePrice={econ.unitPrice}
-      margin={econ.unitMargin}
-      marginDerived={econ.unitMarginIsDerived}
-    />
-  )
+  return <LineItemsFlowStack raw={raw} />
 }
 
 // ── Gallery (type 3) ──
@@ -351,76 +372,97 @@ function CompetitorMapDisplay({
 
   return (
     <div className="space-y-5">
-      {/* Map */}
+      {/* Map — y grows upward: low/low bottom-left, high/high top-right */}
       <div className="relative w-full overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: "3 / 1" }}>
         {/* Corner quadrant labels */}
         <span className="absolute left-3 top-2 z-10 text-[11px] text-muted-foreground/60">
-          Low {yAxisLabel} / Low {xAxisLabel}
-        </span>
-        <span className="absolute right-3 top-2 z-10 text-[11px] text-muted-foreground/60">
-          Low {yAxisLabel} / High {xAxisLabel}
-        </span>
-        <span className="absolute bottom-2 left-3 z-10 text-[11px] text-muted-foreground/60">
           High {yAxisLabel} / Low {xAxisLabel}
         </span>
-        <span className="absolute bottom-2 right-3 z-10 text-[11px] text-muted-foreground/60">
+        <span className="absolute right-3 top-2 z-10 text-[11px] text-muted-foreground/60">
           High {yAxisLabel} / High {xAxisLabel}
         </span>
+        <span className="absolute bottom-2 left-3 z-10 text-[11px] text-muted-foreground/60">
+          Low {yAxisLabel} / Low {xAxisLabel}
+        </span>
+        <span className="absolute bottom-2 right-3 z-10 text-[11px] text-muted-foreground/60">
+          Low {yAxisLabel} / High {xAxisLabel}
+        </span>
 
-        {/* Cross lines */}
-        <div className="absolute left-1/2 top-0 h-full w-px bg-gray-200" />
-        <div className="absolute left-0 top-1/2 h-px w-full bg-gray-200" />
+        {/* Grid lines — quarter grid with an emphasized center cross */}
+        {[12.5, 25, 37.5, 50, 62.5, 75, 87.5].map((p) => (
+          <div
+            key={`v-${p}`}
+            className={`absolute top-0 h-full w-px ${p === 50 ? "bg-gray-300" : "bg-gray-100"}`}
+            style={{ left: `${p}%` }}
+          />
+        ))}
+        {[25, 50, 75].map((p) => (
+          <div
+            key={`h-${p}`}
+            className={`absolute left-0 h-px w-full ${p === 50 ? "bg-gray-300" : "bg-gray-100"}`}
+            style={{ top: `${p}%` }}
+          />
+        ))}
 
-        {/* Axis labels – rendered after lines so they sit on top */}
-        <div className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 bg-white px-2 text-xs font-medium text-muted-foreground">
+        {/* Axis labels in shadow badges */}
+        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
           {xAxisLabel}
         </div>
-        <div className="absolute left-2 top-1/2 z-10 origin-center -translate-y-1/2 -rotate-90 whitespace-nowrap bg-white px-2 text-xs font-medium text-muted-foreground">
+        <div className="absolute left-1 top-1/2 z-10 origin-center -translate-y-1/2 -rotate-90 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
           {yAxisLabel}
         </div>
 
-        {/* Entities plotted on chart. Positions are clamped in px so a chip
-            at an extreme coordinate stays fully inside the box and clear of
-            the corner labels, while mid-range coordinates keep their true
-            percentage position (clamp only bites near the edges). */}
+        {/* Entities: a dot marks the exact coordinate; the name chip floats
+            above it, clamped in px so it stays inside the box and clear of
+            the corner labels even at extreme positions. */}
         {hasData && entities.map((entity, idx) => {
           if (!entity.name) return null
           const xPercent = Math.max(0, Math.min(100, entity.x))
           const yPercent = Math.max(0, Math.min(100, entity.y))
           return (
-            <div
-              key={idx}
-              className="absolute z-10 -translate-x-1/2 translate-y-1/2"
-              style={{
-                left: `clamp(96px, ${xPercent}%, calc(100% - 96px))`,
-                bottom: `clamp(44px, ${yPercent}%, calc(100% - 44px))`,
-              }}
-            >
+            <React.Fragment key={idx}>
               <div
-                title={entity.name}
-                className={`flex max-w-[170px] items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-2.5 shadow-sm ${
-                  entity.isMine ? "border-2" : "border border-gray-200"
-                }`}
-                style={entity.isMine ? { borderColor: myChipBorder } : undefined}
+                className="absolute z-10 -translate-x-1/2 translate-y-1/2"
+                style={{ left: `${xPercent}%`, bottom: `${yPercent}%` }}
               >
-                {entity.logoUrl ? (
-                  <div className="size-6 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
-                    <img
-                      src={entity.logoUrl}
-                      alt={entity.name}
-                      className="size-full object-contain"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-600">
-                    {entity.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <span className="truncate text-xs font-medium text-gray-700">
-                  {entity.name}
-                </span>
+                <span
+                  className="block size-3 rounded-full border-2 border-white shadow-md"
+                  style={{ background: entity.isMine ? myChipBorder : "#9CA3AF" }}
+                />
               </div>
-            </div>
+              <div
+                className="absolute z-10 -translate-x-1/2"
+                style={{
+                  left: `clamp(96px, ${xPercent}%, calc(100% - 96px))`,
+                  bottom: `clamp(40px, calc(${yPercent}% + 12px), calc(100% - 42px))`,
+                }}
+              >
+                <div
+                  title={entity.name}
+                  className={`flex max-w-[170px] items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-2.5 shadow-sm ${
+                    entity.isMine ? "border-2" : "border border-gray-200"
+                  }`}
+                  style={entity.isMine ? { borderColor: myChipBorder } : undefined}
+                >
+                  {entity.logoUrl ? (
+                    <div className="size-6 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
+                      <img
+                        src={entity.logoUrl}
+                        alt={entity.name}
+                        className="size-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-600">
+                      {entity.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="truncate text-xs font-medium text-gray-700">
+                    {entity.name}
+                  </span>
+                </div>
+              </div>
+            </React.Fragment>
           )
         })}
       </div>
@@ -515,27 +557,11 @@ function GoogleBudgetDisplay({
     (q) => q.field_name !== "google_sheet_url" && q.field_name !== "google_sheet_summary"
   )
 
-  // A Line Items response feeds the unit economics diagram rather than
-  // tiles or table rows; standalone per-unit questions act as fallbacks.
+  // A Line Items response feeds the unit economics diagrams rather than
+  // tiles or table rows.
   const lineItemsQ = questions.find((q) => isLineItemsQuestion(q))
   const lineItemsRaw = lineItemsQ ? (responseMap.get(lineItemsQ.id)?.student_response ?? "") : ""
-  const econ = computeUnitEconomics(parseLineItems(lineItemsRaw))
-  const showFlow = econ.components.length > 0
-
-  const fallbackNum = (field: string): number | null => {
-    const v = getTextValue(field, questions, responseMap)
-    if (!v) return null
-    const n = parseFloat(v.replace(/[^0-9.-]/g, ""))
-    return isNaN(n) ? null : n
-  }
-  const flowUnitCost = econ.unitCost ?? fallbackNum("per_unit_cost")
-  const flowPrice = econ.unitPrice ?? fallbackNum("per_unit_price")
-  let flowMargin = econ.unitMargin ?? fallbackNum("per_unit_margin")
-  let flowMarginDerived = econ.unitMarginIsDerived
-  if (flowMargin === null && flowPrice !== null && flowUnitCost !== null) {
-    flowMargin = flowPrice - flowUnitCost
-    flowMarginDerived = true
-  }
+  const showFlow = parseLineItemProducts(lineItemsRaw).some((p) => p.rows.length > 0)
 
   type Section = { header: string; rows: { label: string; value: string; typeId: number | null }[] }
   const sections: Section[] = []
@@ -593,15 +619,8 @@ function GoogleBudgetDisplay({
       )}
 
       {showFlow && (
-        <div className="border-t">
-          <UnitEconomicsFlow
-            components={econ.components}
-            unitCost={flowUnitCost}
-            unitCostDerived={econ.unitCostIsDerived}
-            salePrice={flowPrice}
-            margin={flowMargin}
-            marginDerived={flowMarginDerived}
-          />
+        <div className="border-t px-5 py-4">
+          <LineItemsFlowStack raw={lineItemsRaw} />
         </div>
       )}
 

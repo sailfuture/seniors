@@ -13,10 +13,11 @@ import {
 import {
   LINE_ITEM_KINDS,
   computeUnitEconomics,
-  parseLineItems,
-  serializeLineItems,
+  parseLineItemProducts,
+  serializeLineItemProducts,
   type LineItem,
   type LineItemKind,
+  type LineItemProduct,
 } from "@/lib/line-items"
 
 interface EditorRow {
@@ -26,14 +27,24 @@ interface EditorRow {
   amountText: string
 }
 
-let rowIdCounter = 1
+interface EditorProduct {
+  id: number
+  name: string
+  rows: EditorRow[]
+}
 
-function toEditorRows(items: LineItem[]): EditorRow[] {
-  return items.map((r) => ({
-    id: rowIdCounter++,
-    kind: r.kind,
-    label: r.label,
-    amountText: r.amount === null ? "" : String(r.amount),
+let editorIdCounter = 1
+
+function toEditorProducts(products: LineItemProduct[]): EditorProduct[] {
+  return products.map((p) => ({
+    id: editorIdCounter++,
+    name: p.name,
+    rows: p.rows.map((r) => ({
+      id: editorIdCounter++,
+      kind: r.kind,
+      label: r.label,
+      amountText: r.amount === null ? "" : String(r.amount),
+    })),
   }))
 }
 
@@ -51,15 +62,16 @@ function money(n: number | null): string {
 
 const kindPlaceholders: Record<LineItemKind, string> = {
   header: "e.g. Material costs",
-  item: "e.g. Hoodie blank",
+  item: "e.g. Oil filter",
   unit_cost: "Per unit cost",
   unit_price: "Per unit sale price",
   unit_margin: "Per unit margin",
 }
 
 /**
- * Repeating-row editor for Line Items questions. Rows serialize to JSON in
- * the single response, so autosave and the review flow work unchanged.
+ * Product-scoped line-item editor: each product or service carries its own
+ * named breakdown with typed rows. Everything serializes to JSON in the
+ * single response, so autosave and the review flow work unchanged.
  */
 export function LineItemsInput({
   value,
@@ -72,101 +84,97 @@ export function LineItemsInput({
   onBlur?: () => void
   disabled?: boolean
 }) {
-  const [rows, setRows] = useState<EditorRow[]>(() => toEditorRows(parseLineItems(value)))
+  const [products, setProducts] = useState<EditorProduct[]>(() => toEditorProducts(parseLineItemProducts(value)))
   const lastEmitted = useRef(value)
 
   // Adopt external value changes (initial load, refresh) without fighting typing
   useEffect(() => {
     if (value !== lastEmitted.current) {
-      setRows(toEditorRows(parseLineItems(value)))
+      setProducts(toEditorProducts(parseLineItemProducts(value)))
       lastEmitted.current = value
     }
   }, [value])
 
-  const emit = (next: EditorRow[]) => {
-    setRows(next)
-    const json = serializeLineItems(fromEditorRows(next))
+  const emit = (next: EditorProduct[]) => {
+    setProducts(next)
+    const json = serializeLineItemProducts(
+      next.map((p) => ({ name: p.name, rows: fromEditorRows(p.rows) }))
+    )
     lastEmitted.current = json
     onChange(json)
   }
 
   const persistSoon = () => setTimeout(() => onBlur?.(), 0)
 
-  const updateRow = (id: number, patch: Partial<EditorRow>) => {
-    emit(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+  const updateProduct = (id: number, patch: Partial<EditorProduct>) => {
+    emit(products.map((p) => (p.id === id ? { ...p, ...patch } : p)))
   }
 
-  const addRow = (kind: LineItemKind) => {
-    emit([...rows, { id: rowIdCounter++, kind, label: "", amountText: "" }])
+  const updateRow = (productId: number, rowId: number, patch: Partial<EditorRow>) => {
+    emit(
+      products.map((p) =>
+        p.id === productId ? { ...p, rows: p.rows.map((r) => (r.id === rowId ? { ...r, ...patch } : r)) } : p
+      )
+    )
+  }
+
+  const addProduct = () => {
+    emit([
+      ...products,
+      {
+        id: editorIdCounter++,
+        name: "",
+        rows: [{ id: editorIdCounter++, kind: "item", label: "", amountText: "" }],
+      },
+    ])
     persistSoon()
   }
 
-  const removeRow = (id: number) => {
-    emit(rows.filter((r) => r.id !== id))
+  const removeProduct = (id: number) => {
+    emit(products.filter((p) => p.id !== id))
     persistSoon()
   }
 
-  const econ = computeUnitEconomics(fromEditorRows(rows))
-  const usedSingletons = new Set(rows.map((r) => r.kind).filter((k) => k.startsWith("unit_")))
+  const addRow = (productId: number, kind: LineItemKind) => {
+    emit(
+      products.map((p) =>
+        p.id === productId
+          ? { ...p, rows: [...p.rows, { id: editorIdCounter++, kind, label: "", amountText: "" }] }
+          : p
+      )
+    )
+    persistSoon()
+  }
+
+  const removeRow = (productId: number, rowId: number) => {
+    emit(products.map((p) => (p.id === productId ? { ...p, rows: p.rows.filter((r) => r.id !== rowId) } : p)))
+    persistSoon()
+  }
 
   return (
-    <div className="space-y-2">
-      {rows.length > 0 && (
-        <div className="space-y-1.5">
-          {rows.map((row) => (
-            <div key={row.id} className="flex items-center gap-1.5">
-              <Select
-                value={row.kind}
-                onValueChange={(v) => {
-                  updateRow(row.id, { kind: v as LineItemKind })
-                  persistSoon()
-                }}
-                disabled={disabled}
-              >
-                <SelectTrigger className="h-8 w-[168px] shrink-0 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LINE_ITEM_KINDS.map((k) => (
-                    <SelectItem
-                      key={k.value}
-                      value={k.value}
-                      disabled={k.value.startsWith("unit_") && k.value !== row.kind && usedSingletons.has(k.value)}
-                    >
-                      {k.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+    <div className="space-y-3">
+      {products.map((product, productIdx) => {
+        const econ = computeUnitEconomics(fromEditorRows(product.rows))
+        const usedSingletons = new Set(product.rows.map((r) => r.kind).filter((k) => k.startsWith("unit_")))
+        return (
+          <div key={product.id} className="space-y-2 rounded-lg border border-gray-200 p-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground shrink-0 text-[10px] font-semibold uppercase tracking-wider">
+                Product / Service {productIdx + 1}
+              </span>
               <Input
-                className={row.kind === "header" ? "flex-1 font-semibold" : "flex-1"}
-                placeholder={kindPlaceholders[row.kind]}
-                value={row.label}
-                onChange={(e) => updateRow(row.id, { label: e.target.value })}
+                className="flex-1 font-semibold"
+                placeholder="e.g. Oil Change"
+                value={product.name}
+                onChange={(e) => updateProduct(product.id, { name: e.target.value })}
                 onBlur={onBlur}
                 disabled={disabled}
               />
-              {row.kind !== "header" && (
-                <div className="relative w-28 shrink-0">
-                  <span className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm">
-                    $
-                  </span>
-                  <Input
-                    className="pl-6 text-right tabular-nums"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={row.amountText}
-                    onChange={(e) => updateRow(row.id, { amountText: e.target.value })}
-                    onBlur={onBlur}
-                    disabled={disabled}
-                  />
-                </div>
-              )}
               {!disabled && (
                 <button
                   type="button"
-                  aria-label="Remove row"
-                  onClick={() => removeRow(row.id)}
+                  aria-label="Remove product"
+                  onClick={() => removeProduct(product.id)}
                   className="text-muted-foreground hover:text-destructive flex size-8 shrink-0 items-center justify-center rounded-md transition-colors"
                 >
                   <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -176,38 +184,113 @@ export function LineItemsInput({
                 </button>
               )}
             </div>
-          ))}
-        </div>
-      )}
+
+            {product.rows.length > 0 && (
+              <div className="space-y-1.5">
+                {product.rows.map((row) => (
+                  <div key={row.id} className="flex items-center gap-1.5">
+                    <Select
+                      value={row.kind}
+                      onValueChange={(v) => {
+                        updateRow(product.id, row.id, { kind: v as LineItemKind })
+                        persistSoon()
+                      }}
+                      disabled={disabled}
+                    >
+                      <SelectTrigger className="h-8 w-[168px] shrink-0 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LINE_ITEM_KINDS.map((k) => (
+                          <SelectItem
+                            key={k.value}
+                            value={k.value}
+                            disabled={k.value.startsWith("unit_") && k.value !== row.kind && usedSingletons.has(k.value)}
+                          >
+                            {k.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      className={row.kind === "header" ? "flex-1 font-semibold" : "flex-1"}
+                      placeholder={kindPlaceholders[row.kind]}
+                      value={row.label}
+                      onChange={(e) => updateRow(product.id, row.id, { label: e.target.value })}
+                      onBlur={onBlur}
+                      disabled={disabled}
+                    />
+                    {row.kind !== "header" && (
+                      <div className="relative w-28 shrink-0">
+                        <span className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm">
+                          $
+                        </span>
+                        <Input
+                          className="pl-6 text-right tabular-nums"
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={row.amountText}
+                          onChange={(e) => updateRow(product.id, row.id, { amountText: e.target.value })}
+                          onBlur={onBlur}
+                          disabled={disabled}
+                        />
+                      </div>
+                    )}
+                    {!disabled && (
+                      <button
+                        type="button"
+                        aria-label="Remove row"
+                        onClick={() => removeRow(product.id, row.id)}
+                        className="text-muted-foreground hover:text-destructive flex size-8 shrink-0 items-center justify-center rounded-md transition-colors"
+                      >
+                        <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!disabled && (
+              <div className="flex flex-wrap gap-1.5">
+                <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => addRow(product.id, "item")}>
+                  + Cost component
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => addRow(product.id, "header")}>
+                  + Group header
+                </Button>
+                {(["unit_cost", "unit_price", "unit_margin"] as LineItemKind[])
+                  .filter((k) => !usedSingletons.has(k))
+                  .map((k) => (
+                    <Button key={k} type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => addRow(product.id, k)}>
+                      + {LINE_ITEM_KINDS.find((x) => x.value === k)?.label}
+                    </Button>
+                  ))}
+              </div>
+            )}
+
+            {econ.components.length > 0 && (
+              <p className="text-muted-foreground text-xs">
+                Components total <span className="font-semibold tabular-nums">{money(econ.itemsTotal)}</span>
+                {econ.unitPrice !== null && econ.unitMargin !== null && (
+                  <>
+                    {" · "}margin {econ.unitMarginIsDerived ? "≈" : ""}
+                    <span className="font-semibold tabular-nums"> {money(econ.unitMargin)}</span>
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+        )
+      })}
 
       {!disabled && (
-        <div className="flex flex-wrap gap-1.5">
-          <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => addRow("item")}>
-            + Cost component
-          </Button>
-          <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => addRow("header")}>
-            + Group header
-          </Button>
-          {(["unit_cost", "unit_price", "unit_margin"] as LineItemKind[])
-            .filter((k) => !usedSingletons.has(k))
-            .map((k) => (
-              <Button key={k} type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => addRow(k)}>
-                + {LINE_ITEM_KINDS.find((x) => x.value === k)?.label}
-              </Button>
-            ))}
-        </div>
-      )}
-
-      {econ.components.length > 0 && (
-        <p className="text-muted-foreground text-xs">
-          Components total <span className="font-semibold tabular-nums">{money(econ.itemsTotal)}</span>
-          {econ.unitPrice !== null && econ.unitMargin !== null && (
-            <>
-              {" · "}margin {econ.unitMarginIsDerived ? "≈" : ""}
-              <span className="font-semibold tabular-nums"> {money(econ.unitMargin)}</span>
-            </>
-          )}
-        </p>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={addProduct}>
+          + Add product / service
+        </Button>
       )}
     </div>
   )
