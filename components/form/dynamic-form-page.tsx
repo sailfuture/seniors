@@ -1,7 +1,7 @@
 "use client"
 
 import { Loader2 } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
@@ -837,6 +837,10 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   )
 }
 
+// Bumped each time a group is manually expanded, so every question inside
+// opens with it instead of requiring a click on each completed input.
+const GroupExpandContext = createContext(0)
+
 function GroupSection({
   group,
   children,
@@ -868,12 +872,25 @@ function GroupSection({
   const blankCount = totalQuestions - completedCount - revisionCount - readyCount
   const allComplete = completedCount === totalQuestions && totalQuestions > 0
   const [collapsed, setCollapsed] = useState(allComplete)
+  const [expandKey, setExpandKey] = useState(0)
+
+  // Keep the collapse in sync with completion: collapse once every question
+  // is complete, reopen if the teacher reopens one.
+  useEffect(() => {
+    setCollapsed(allComplete)
+  }, [allComplete])
+
+  const toggleCollapsed = () => {
+    // Expanding the group opens every question inside it too
+    if (collapsed) setExpandKey((k) => k + 1)
+    setCollapsed(!collapsed)
+  }
 
   return (
     <Card className="overflow-hidden !pt-0 !gap-0">
       <div
         className="flex cursor-pointer items-center justify-between border-b px-6 py-4 select-none"
-        onClick={() => setCollapsed((v) => !v)}
+        onClick={toggleCollapsed}
       >
         <div className="flex items-center gap-2">
           <div className="inline-flex size-7 items-center justify-center rounded-md border">
@@ -988,7 +1005,7 @@ function GroupSection({
             </div>
           )}
           <CardContent className="p-6">
-            {children}
+            <GroupExpandContext.Provider value={expandKey}>{children}</GroupExpandContext.Provider>
           </CardContent>
         </div>
       </div>
@@ -1207,6 +1224,12 @@ function DynamicField({
   useEffect(() => {
     setQuestionCollapsed(isComplete)
   }, [isComplete])
+
+  // When the surrounding group is manually expanded, open this question too
+  const groupExpandKey = useContext(GroupExpandContext)
+  useEffect(() => {
+    if (groupExpandKey > 0) setQuestionCollapsed(false)
+  }, [groupExpandKey])
   const isImageType = typeId === QUESTION_TYPE.IMAGE_UPLOAD
   const isSourceType = typeId === QUESTION_TYPE.SOURCE
   const hasImage = !!imageValue && Object.keys(imageValue).length > 0 && !!(imageValue.path || imageValue.url || imageValue.name)

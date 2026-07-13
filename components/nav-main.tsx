@@ -35,7 +35,7 @@ type NavItem = {
     url: string
     badge?: number
     badgeRed?: number
-    badgeGray?: number
+    badgeAmber?: number
     isLocked?: boolean
   }[]
 }
@@ -99,16 +99,16 @@ function NavCollapsibleItem({ item, pathname, loading }: { item: NavItem; pathna
                           <SidebarMenuSubButton asChild className={isActive ? "bg-muted font-semibold" : ""}>
                             <Link href={subItem.url}>
                               <span className="flex-1">{subItem.title}</span>
-                              {((subItem.badgeRed != null && subItem.badgeRed > 0) || (subItem.badge != null && subItem.badge > 0) || (subItem.badgeGray != null && subItem.badgeGray > 0)) && (
+                              {((subItem.badgeRed != null && subItem.badgeRed > 0) || (subItem.badge != null && subItem.badge > 0) || (subItem.badgeAmber != null && subItem.badgeAmber > 0)) && (
                                 <span className="ml-auto flex shrink-0 items-center gap-1">
                                   {subItem.badgeRed != null && subItem.badgeRed > 0 && (
                                     <span className="flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
                                       {subItem.badgeRed}
                                     </span>
                                   )}
-                                  {subItem.badgeGray != null && subItem.badgeGray > 0 && (
-                                    <span className="flex size-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
-                                      {subItem.badgeGray}
+                                  {subItem.badgeAmber != null && subItem.badgeAmber > 0 && (
+                                    <span className="flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-medium text-white">
+                                      {subItem.badgeAmber}
                                     </span>
                                   )}
                                   {subItem.badge != null && subItem.badge > 0 && (
