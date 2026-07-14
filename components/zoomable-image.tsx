@@ -69,16 +69,25 @@ export function ZoomableImage({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="animate-in fade-in fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/85 p-4 backdrop-blur-sm duration-200 md:p-10"
+            className="animate-in fade-in fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden p-4 duration-200 md:p-10"
             role="dialog"
             aria-modal="true"
             aria-label={alt || "Image preview"}
             onClick={() => setOpen(false)}
           >
+            {/* A blurred, blown-up copy of the image tints the whole backdrop
+                with the picture's own colors; a dark scrim keeps contrast. */}
+            <img
+              src={src}
+              alt=""
+              aria-hidden
+              className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-3xl"
+            />
+            <span className="pointer-events-none absolute inset-0 bg-black/70" />
             <button
               type="button"
               aria-label="Close preview"
-              className="absolute right-4 top-4 flex size-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/25"
+              className="absolute right-4 top-4 z-10 flex size-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/25"
               onClick={() => setOpen(false)}
             >
               <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -89,11 +98,11 @@ export function ZoomableImage({
             <img
               src={src}
               alt={alt}
-              className="animate-in zoom-in-95 max-h-full max-w-full rounded-lg object-contain shadow-2xl duration-200"
+              className="animate-in zoom-in-95 relative z-[1] max-h-full max-w-full rounded-lg object-contain shadow-2xl duration-200"
               onClick={(e) => e.stopPropagation()}
             />
             {caption && (
-              <p className="mt-4 max-w-2xl text-center text-sm text-white/80">{caption}</p>
+              <p className="relative z-[1] mt-4 max-w-2xl text-center text-sm text-white/80">{caption}</p>
             )}
           </div>,
           document.body

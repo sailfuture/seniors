@@ -152,17 +152,16 @@ export function FieldActivityStream({
                 <MarkerIcon>
                   <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="text-red-500" />
                 </MarkerIcon>
-                <MarkerContent className="font-medium text-red-600">
-                  Revision requested
-                </MarkerContent>
+                <MarkerContent className="font-medium">Revision requested</MarkerContent>
               </Marker>
             )}
 
             <Bubble variant={variant} align={align} className="group/bubble">
               <BubbleContent
                 className={cn(
-                  isRevision &&
-                    "border-red-300 bg-gray-50 text-red-600 dark:border-red-400/40 dark:bg-muted/40 dark:text-red-400"
+                  // Revision reads as a light bubble with a red border only —
+                  // the text stays black like every other comment.
+                  isRevision && "border-red-300 bg-gray-50 dark:border-red-400/40 dark:bg-muted/40"
                 )}
               >
                 {c.note}

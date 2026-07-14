@@ -1,25 +1,21 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import type { FormApiConfig } from "@/lib/form-api-config"
+import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
+import { isLineItemsQuestion } from "@/lib/line-items"
+import { ResponseReviewSheet, type ReviewTarget } from "@/components/form/response-review-sheet"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
+
+const IMAGE_UPLOAD = 4
 
 interface Student {
   id: string
@@ -34,12 +30,15 @@ interface TemplateQuestion {
   field_label: string
   isArchived: boolean
   isPublished: boolean
+  question_types_id?: number | null
   [key: string]: unknown
 }
 
 interface StudentResponse {
   id: number
   students_id?: string | number | null
+  student_response?: string
+  image_response?: Record<string, unknown> | null
   isArchived?: boolean
   isComplete?: boolean
   readyReview?: boolean
@@ -58,12 +57,14 @@ interface SectionInfo {
 
 interface QueueRow {
   key: string
+  responseId: number
   studentName: string
   studentImage?: string
   questionLabel: string
   sectionTitle: string
-  href: string
+  preview: string
   when: number | null
+  target: ReviewTarget
 }
 
 type GroupKey = "pending" | "revisions"
@@ -76,8 +77,9 @@ const GROUP_META: Record<GroupKey, { label: string; dot: string; empty: string }
 const GROUP_ORDER: GroupKey[] = ["pending", "revisions"]
 const ROW_CAP = 6
 
-function initials(first: string, last: string): string {
-  return `${first?.charAt(0) ?? ""}${last?.charAt(0) ?? ""}`.toUpperCase()
+function initials(name: string): string {
+  const [a = "", b = ""] = name.split(" ")
+  return `${a.charAt(0)}${b.charAt(0)}`.toUpperCase()
 }
 
 function formatWhen(ts: number | null): string {
@@ -92,37 +94,62 @@ function toTimestamp(v: number | string | null | undefined): number | null {
   return isNaN(parsed) ? null : parsed
 }
 
+function previewOf(q: TemplateQuestion, r: StudentResponse): string {
+  if ((q.question_types_id ?? null) === IMAGE_UPLOAD) return "Image submission"
+  if (isLineItemsQuestion(q)) return "Cost / product breakdown"
+  const raw = r.student_response ?? ""
+  const text = isRichTextQuestion(q) || looksLikeRichTextDoc(raw) ? extractPlainText(raw) : raw
+  const t = text.trim().replace(/\s+/g, " ")
+  if (!t) return "—"
+  return t.length > 110 ? `${t.slice(0, 110)}…` : t
+}
+
+/** Group rows by student, newest-active student first. */
+function groupByStudent(rows: QueueRow[]): { name: string; image?: string; rows: QueueRow[] }[] {
+  const byName = new Map<string, QueueRow[]>()
+  for (const r of rows) {
+    const arr = byName.get(r.studentName) ?? []
+    arr.push(r)
+    byName.set(r.studentName, arr)
+  }
+  return [...byName.entries()]
+    .map(([name, list]) => ({
+      name,
+      image: list[0]?.studentImage,
+      rows: list.sort((a, b) => (b.when ?? 0) - (a.when ?? 0)),
+    }))
+    .sort((a, b) => (b.rows[0]?.when ?? 0) - (a.rows[0]?.when ?? 0))
+}
+
 /**
- * Teacher-facing consolidated review queue: every student's submissions that
- * are awaiting review or awaiting a resubmission, across one product, each row
- * deep-linking to that student's exact input. Uses the cross-student
- * (unfiltered) responses endpoint — the whole point is to see every student.
+ * Teacher-facing review queue: a card per review type (pending / revisions),
+ * each grouped by student, with a truncated response preview. Clicking a row
+ * opens the response and its thread in a sheet — review without navigating.
  */
 export function AdminReviewQueue({
   title,
-  description,
   apiConfig,
-  adminBasePath,
   slugify,
   defaultExpanded = false,
   viewAllHref,
+  studentId: onlyStudentId,
 }: {
   title?: string
-  description?: string
   apiConfig: FormApiConfig
-  /** e.g. "/admin/life-map" — rows link to `${adminBasePath}/${studentId}/${slug}`. */
-  adminBasePath: string
   slugify: (title: string) => string
   defaultExpanded?: boolean
   viewAllHref?: string
+  /** Scope to a single student (per-student review page). */
+  studentId?: string
 }) {
   const cfg = apiConfig
   const F = cfg.fields
-  const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState<Record<GroupKey, QueueRow[]>>({ pending: [], revisions: [] })
   const [expanded, setExpanded] = useState<Set<GroupKey>>(new Set())
+  const [sheetTarget, setSheetTarget] = useState<ReviewTarget | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -148,21 +175,44 @@ export function AdminReviewQueue({
         }
 
         const rowFor = (r: StudentResponse, group: GroupKey): QueueRow | null => {
+          if (onlyStudentId && String(r.students_id) !== String(onlyStudentId)) return null
           const q = liveQuestions.get(Number(r[F.templateId]))
           if (!q) return null
           const section = sectionById.get(Number(q[F.sectionId]))
           if (!section || section.isLocked) return null
           const student = studentById.get(String(r.students_id))
           if (!student) return null
-          const slug = slugify(section.section_title)
+          const studentName = `${student.firstName} ${student.lastName}`.trim()
           return {
             key: `${group}-${r.id}`,
-            studentName: `${student.firstName} ${student.lastName}`.trim(),
+            responseId: r.id,
+            studentName,
             studentImage: student.profileImage,
             questionLabel: q.field_label,
             sectionTitle: section.section_title,
-            href: `${adminBasePath}/${student.id}/${slug}?focus=${encodeURIComponent(q.field_name)}`,
+            preview: previewOf(q, r),
             when: toTimestamp(r.last_edited) ?? r.created_at ?? null,
+            target: {
+              response: {
+                id: r.id,
+                student_response: r.student_response,
+                image_response: r.image_response,
+                students_id: String(r.students_id),
+                isComplete: r.isComplete,
+                readyReview: r.readyReview,
+                revisionNeeded: r.revisionNeeded,
+                last_edited: r.last_edited,
+              },
+              question: {
+                id: q.id,
+                field_name: q.field_name,
+                field_label: q.field_label,
+                question_types_id: q.question_types_id ?? null,
+              },
+              sectionId: section.id,
+              sectionTitle: section.section_title,
+              studentName,
+            },
           }
         }
 
@@ -178,10 +228,7 @@ export function AdminReviewQueue({
             if (row) pending.push(row)
           }
         }
-
-        // Newest submissions first — the freshest work to grade sits on top.
-        const byRecent = (a: QueueRow, b: QueueRow) => (b.when ?? 0) - (a.when ?? 0)
-        setGroups({ pending: pending.sort(byRecent), revisions: revisions.sort(byRecent) })
+        setGroups({ pending, revisions })
       } catch {
         /* leave empty state */
       } finally {
@@ -192,162 +239,174 @@ export function AdminReviewQueue({
     return () => {
       cancelled = true
     }
-  }, [cfg, F, adminBasePath, slugify])
+  }, [cfg, F, slugify, onlyStudentId])
 
-  const total = GROUP_ORDER.reduce((n, k) => n + groups[k].length, 0)
+  const openRow = (target: ReviewTarget) => {
+    setSheetTarget(target)
+    setSheetOpen(true)
+  }
 
-  const toggleGroup = (key: GroupKey) => {
+  const handleReviewed = (responseId: number, action: "complete" | "revision" | "ready") => {
+    setGroups((prev) => {
+      const row =
+        prev.pending.find((r) => r.responseId === responseId) ??
+        prev.revisions.find((r) => r.responseId === responseId)
+      const pending = prev.pending.filter((r) => r.responseId !== responseId)
+      const revisions = prev.revisions.filter((r) => r.responseId !== responseId)
+      // Complete leaves the queue; revision/undo move the row to the other card.
+      if (!row || action === "complete") return { pending, revisions }
+      if (action === "revision") return { pending, revisions: [{ ...row, key: `revisions-${responseId}` }, ...revisions] }
+      return { pending: [{ ...row, key: `pending-${responseId}` }, ...pending], revisions }
+    })
+  }
+
+  const toggle = (key: GroupKey) =>
     setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
       return next
     })
-  }
 
   return (
-    <Card className="gap-0 py-0">
-      {title && (
-        <CardHeader className="border-b py-4">
-          <CardTitle className="flex items-center gap-2 text-base">
-            {title}
-            {!loading && <span className="text-muted-foreground text-sm font-normal">({total})</span>}
-          </CardTitle>
-          {description && <CardDescription>{description}</CardDescription>}
-          {viewAllHref && (
-            <CardAction>
-              <Link
-                href={viewAllHref}
-                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium transition-colors"
-              >
-                View all
-                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5" />
-              </Link>
-            </CardAction>
-          )}
-        </CardHeader>
-      )}
-      <CardContent className="p-0">
-        {loading ? (
-          <div className="space-y-2 p-4">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
-            ))}
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Student</TableHead>
-                <TableHead>Question</TableHead>
-                <TableHead className="hidden md:table-cell w-[180px]">Section</TableHead>
-                <TableHead className="w-[110px]">Date</TableHead>
-                <TableHead className="w-[40px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {GROUP_ORDER.map((key) => {
-                const meta = GROUP_META[key]
-                const rows = groups[key]
-                const isExpanded = defaultExpanded || expanded.has(key)
-                const visible = isExpanded ? rows : rows.slice(0, ROW_CAP)
-                return (
-                  <QueueGroupRows
-                    key={key}
-                    meta={meta}
-                    rows={rows}
-                    visible={visible}
-                    isExpanded={isExpanded}
-                    canToggle={!defaultExpanded && rows.length > ROW_CAP}
-                    onToggle={() => toggleGroup(key)}
-                    onOpen={(href) => router.push(href)}
-                  />
-                )
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+    <div className="space-y-6">
+      {title && <h2 className="text-lg font-semibold">{title}</h2>}
+      {GROUP_ORDER.map((key) => (
+        <ReviewCard
+          key={key}
+          meta={GROUP_META[key]}
+          rows={groups[key]}
+          loading={loading}
+          expanded={defaultExpanded || expanded.has(key)}
+          canToggle={!defaultExpanded}
+          onToggle={() => toggle(key)}
+          onOpen={openRow}
+          viewAllHref={viewAllHref}
+        />
+      ))}
+
+      <ResponseReviewSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        target={sheetTarget}
+        apiConfig={cfg}
+        onReviewed={handleReviewed}
+      />
+    </div>
   )
 }
 
-function QueueGroupRows({
+function ReviewCard({
   meta,
   rows,
-  visible,
-  isExpanded,
+  loading,
+  expanded,
   canToggle,
   onToggle,
   onOpen,
+  viewAllHref,
 }: {
   meta: { label: string; dot: string; empty: string }
   rows: QueueRow[]
-  visible: QueueRow[]
-  isExpanded: boolean
+  loading: boolean
+  expanded: boolean
   canToggle: boolean
   onToggle: () => void
-  onOpen: (href: string) => void
+  onOpen: (target: ReviewTarget) => void
+  viewAllHref?: string
 }) {
+  const studentGroups = useMemo(() => groupByStudent(rows), [rows])
+
+  // Cap the number of data rows shown when collapsed, without splitting groups awkwardly.
+  let shown = 0
+  const visibleGroups = expanded
+    ? studentGroups
+    : studentGroups
+        .map((g) => {
+          if (shown >= ROW_CAP) return null
+          const take = g.rows.slice(0, Math.max(0, ROW_CAP - shown))
+          shown += take.length
+          return { ...g, rows: take }
+        })
+        .filter(Boolean) as typeof studentGroups
+
   return (
-    <>
-      <TableRow className="bg-muted/50 hover:bg-muted/50">
-        <TableCell colSpan={5} className="py-2">
-          <div className="flex items-center gap-2">
-            <span className={`size-2 shrink-0 rounded-full ${meta.dot}`} />
-            <span className="text-xs font-semibold uppercase tracking-wide">{meta.label}</span>
-            <span className="text-muted-foreground text-xs">({rows.length})</span>
+    <Card className="gap-0 py-0">
+      <CardHeader className="border-b py-4">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <span className={`size-2 rounded-full ${meta.dot}`} />
+          {meta.label}
+          {!loading && <span className="text-muted-foreground text-sm font-normal">({rows.length})</span>}
+        </CardTitle>
+        {viewAllHref && (
+          <CardAction>
+            <Link
+              href={viewAllHref}
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium transition-colors"
+            >
+              View all
+              <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5" />
+            </Link>
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent className="p-0">
+        {loading ? (
+          <div className="space-y-2 p-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
           </div>
-        </TableCell>
-      </TableRow>
-      {rows.length === 0 ? (
-        <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={5} className="text-muted-foreground py-3 text-center text-xs italic">
-            {meta.empty}
-          </TableCell>
-        </TableRow>
-      ) : (
-        <>
-          {visible.map((row) => (
-            <TableRow key={row.key} className="cursor-pointer" onClick={() => onOpen(row.href)}>
-              <TableCell className="py-2.5">
-                <div className="flex items-center gap-2">
-                  <Avatar className="size-6">
-                    <AvatarImage src={row.studentImage} />
-                    <AvatarFallback className="text-[10px]">
-                      {initials(...(row.studentName.split(" ") as [string, string]))}
-                    </AvatarFallback>
+        ) : rows.length === 0 ? (
+          <p className="text-muted-foreground px-6 py-6 text-center text-sm italic">{meta.empty}</p>
+        ) : (
+          <div className="divide-y">
+            {visibleGroups.map((g) => (
+              <div key={g.name}>
+                <div className="bg-muted/40 flex items-center gap-2 px-4 py-1.5">
+                  <Avatar className="size-5">
+                    <AvatarImage src={g.image} />
+                    <AvatarFallback className="text-[9px]">{initials(g.name)}</AvatarFallback>
                   </Avatar>
-                  <span className="text-sm font-medium whitespace-nowrap">{row.studentName}</span>
+                  <span className="text-xs font-semibold">{g.name}</span>
+                  <span className="text-muted-foreground text-xs">({g.rows.length})</span>
                 </div>
-              </TableCell>
-              <TableCell className="py-2.5 text-sm">{row.questionLabel}</TableCell>
-              <TableCell className="text-muted-foreground hidden py-2.5 text-sm md:table-cell">
-                {row.sectionTitle}
-              </TableCell>
-              <TableCell className="text-muted-foreground py-2.5 text-sm whitespace-nowrap">
-                {formatWhen(row.when)}
-              </TableCell>
-              <TableCell className="py-2.5 text-right">
-                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="text-muted-foreground/50 size-4" />
-              </TableCell>
-            </TableRow>
-          ))}
-          {canToggle && (
-            <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={5} className="py-1.5">
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground mx-auto block text-xs font-medium transition-colors"
-                  onClick={onToggle}
-                >
-                  {isExpanded ? "Show fewer" : `Show all ${rows.length}`}
-                </button>
-              </TableCell>
-            </TableRow>
-          )}
-        </>
-      )}
-    </>
+                {g.rows.map((row) => (
+                  <button
+                    key={row.key}
+                    type="button"
+                    onClick={() => onOpen(row.target)}
+                    className="hover:bg-muted/50 flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{row.questionLabel}</span>
+                        <span className="text-muted-foreground hidden shrink-0 text-xs sm:inline">
+                          {row.sectionTitle}
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground mt-0.5 line-clamp-1 text-xs italic">{row.preview}</p>
+                    </div>
+                    <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
+                      {formatWhen(row.when)}
+                    </span>
+                    <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="text-muted-foreground/40 mt-0.5 size-4 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            ))}
+            {canToggle && rows.length > ROW_CAP && (
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground w-full py-2 text-center text-xs font-medium transition-colors"
+                onClick={onToggle}
+              >
+                {expanded ? "Show fewer" : `Show all ${rows.length}`}
+              </button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

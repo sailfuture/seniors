@@ -237,42 +237,37 @@ export function TeacherComment({
 
           {responseStatus && (onMarkCompleteAction || onRequestRevision || onUndoStatus) && (
             <div className="border-t px-6 py-3">
-              {/* Current status lives in the activity stream; this bar is just actions. */}
-              <div className="flex items-center justify-end">
-                <div className="flex items-center gap-1.5">
-                  {(responseStatus.isComplete || responseStatus.revisionNeeded) && onUndoStatus && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs text-muted-foreground"
-                      onClick={() => { onUndoStatus(); setOpen(false) }}
-                    >
-                      Undo
-                    </Button>
-                  )}
-                  {!responseStatus.revisionNeeded && !responseStatus.isComplete && onRequestRevision && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 gap-1.5 px-2 text-xs"
-                      onClick={() => { onRequestRevision() }}
-                    >
-                      <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3" />
-                      Revision
-                    </Button>
-                  )}
-                  {!responseStatus.isComplete && !responseStatus.revisionNeeded && onMarkCompleteAction && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 gap-1.5 border-green-200 bg-green-50 px-2 text-xs text-green-700 hover:bg-green-100 hover:text-green-800"
-                      onClick={() => { onMarkCompleteAction(); setOpen(false) }}
-                    >
-                      <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3" />
-                      Complete
-                    </Button>
-                  )}
-                </div>
+              {/* Current status lives in the activity stream; these are full-width actions. */}
+              <div className="flex items-center gap-2">
+                {(responseStatus.isComplete || responseStatus.revisionNeeded) && onUndoStatus && (
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-1.5 text-muted-foreground"
+                    onClick={() => { onUndoStatus(); setOpen(false) }}
+                  >
+                    Undo review
+                  </Button>
+                )}
+                {!responseStatus.revisionNeeded && !responseStatus.isComplete && onRequestRevision && (
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-1.5 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                    onClick={() => { onRequestRevision() }}
+                  >
+                    <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-4" />
+                    Revision
+                  </Button>
+                )}
+                {!responseStatus.isComplete && !responseStatus.revisionNeeded && onMarkCompleteAction && (
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-1.5 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800"
+                    onClick={() => { onMarkCompleteAction(); setOpen(false) }}
+                  >
+                    <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
+                    Complete
+                  </Button>
+                )}
               </div>
             </div>
           )}

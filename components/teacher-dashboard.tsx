@@ -86,17 +86,13 @@ export function TeacherDashboard() {
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <AdminReviewQueue
           title="Life Map — Review Queue"
-          description="Submissions pending review and outstanding revisions, across all students."
           apiConfig={LIFEMAP_API_CONFIG}
-          adminBasePath="/admin/life-map"
           slugify={titleToSlug}
           viewAllHref="/life-map/status"
         />
         <AdminReviewQueue
           title="Business Thesis — Review Queue"
-          description="Submissions pending review and outstanding revisions, across all students."
           apiConfig={BUSINESSTHESIS_API_CONFIG}
-          adminBasePath="/admin/business-thesis"
           slugify={btTitleToSlug}
           viewAllHref="/business-thesis/status"
         />

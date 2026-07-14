@@ -27,6 +27,7 @@ import {
   ArrowLeft02Icon,
   Image01Icon,
   Folder01Icon,
+  CheckListIcon,
 } from "@hugeicons/core-free-icons"
 import Link from "next/link"
 import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
@@ -386,7 +387,7 @@ function useBtSectionCommentCounts(studentId: string | null, refreshKey: number)
         const map = new Map<number, number>()
         for (const c of data) {
           if (String(c.students_id) !== String(studentId)) continue
-          if (c.isComplete || c.isOld) continue
+          if (c.isComplete || c.isOld || c.thread_id) continue
           if (c.businessthesis_template_id && excludedIds.has(c.businessthesis_template_id)) continue
           const sid = Number(c.businessthesis_sections_id)
           if (sid) map.set(sid, (map.get(sid) ?? 0) + 1)
@@ -448,7 +449,7 @@ function useSectionCommentCounts(studentId: string | null, refreshKey: number): 
         const map = new Map<number, number>()
         for (const c of data) {
           if (String(c.students_id) !== String(studentId)) continue
-          if (c.isComplete || c.isOld) continue
+          if (c.isComplete || c.isOld || c.thread_id) continue
           if (c.lifemap_template_id && excludedIds.has(c.lifemap_template_id)) continue
           const sid = Number(c.lifemap_sections_id)
           if (sid) map.set(sid, (map.get(sid) ?? 0) + 1)
@@ -663,6 +664,12 @@ function getTeacherStudentNav(
     const studentId = lifeMapMatch[1]
     return [
       {
+        title: "Review",
+        url: `/admin/life-map/${studentId}/review`,
+        icon: <HugeiconsIcon icon={CheckListIcon} strokeWidth={2} />,
+        isActive: pathname.endsWith("/review"),
+      },
+      {
         title: "Life Map",
         url: `/admin/life-map/${studentId}`,
         icon: <HugeiconsIcon icon={MapsIcon} strokeWidth={2} />,
@@ -685,6 +692,12 @@ function getTeacherStudentNav(
   if (businessMatch) {
     const studentId = businessMatch[1]
     return [
+      {
+        title: "Review",
+        url: `/admin/business-thesis/${studentId}/review`,
+        icon: <HugeiconsIcon icon={CheckListIcon} strokeWidth={2} />,
+        isActive: pathname.endsWith("/review"),
+      },
       {
         title: "Business Thesis",
         url: `/admin/business-thesis/${studentId}`,

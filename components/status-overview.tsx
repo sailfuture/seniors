@@ -48,6 +48,7 @@ interface TeacherComment {
   field_name: string
   note: string
   students_id?: string | number | null
+  thread_id?: string | null
   isOld?: boolean
   isComplete?: boolean
   isStudentReply?: boolean
@@ -172,7 +173,8 @@ export function ProductStatusCard({
           (r: StudentResponse) => String(r.students_id ?? "") === String(studentId)
         )
         const comments: TeacherComment[] = (commentsRes.ok ? await commentsRes.json() : []).filter(
-          (c: TeacherComment) => String(c.students_id ?? "") === String(studentId)
+          // Skip inline essay-comment threads (they belong to a highlight).
+          (c: TeacherComment) => String(c.students_id ?? "") === String(studentId) && !c.thread_id
         )
         if (cancelled) return
 
@@ -480,12 +482,7 @@ export function StatusOverview({
             Every student&apos;s work that needs your attention: submissions pending review and outstanding revision requests.
           </p>
         </div>
-        <AdminReviewQueue
-          apiConfig={apiConfig}
-          adminBasePath={adminBasePath}
-          slugify={slugify}
-          defaultExpanded
-        />
+        <AdminReviewQueue apiConfig={apiConfig} slugify={slugify} defaultExpanded />
       </div>
     )
   }

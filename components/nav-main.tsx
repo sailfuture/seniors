@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowRight01Icon, SquareLock02Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
+import { ArrowRight01Icon, SquareLock02Icon, Tick02Icon } from "@hugeicons/core-free-icons"
 
 type NavItem = {
   title: string
@@ -119,11 +119,13 @@ function NavCollapsibleItem({ item, pathname, loading }: { item: NavItem; pathna
                                     )}
                                   </span>
                                 ) : subItem.complete ? (
-                                  <HugeiconsIcon
-                                    icon={CheckmarkCircle02Icon}
-                                    strokeWidth={2}
-                                    className="ml-auto size-4 shrink-0 text-green-600"
-                                  />
+                                  <span className="ml-auto flex size-4 shrink-0 items-center justify-center rounded-full bg-green-600">
+                                    <HugeiconsIcon
+                                      icon={Tick02Icon}
+                                      strokeWidth={3}
+                                      className="size-2.5 text-white"
+                                    />
+                                  </span>
                                 ) : null}
                               </Link>
                             </SidebarMenuSubButton>
