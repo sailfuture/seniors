@@ -46,6 +46,7 @@ import { isLineItemsQuestion } from "@/lib/line-items"
 import { RichTextDisplay } from "./rich-text-display"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
 import { ZoomableImage } from "@/components/zoomable-image"
+import { TeacherEssayAnnotator } from "./teacher-essay-annotator"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 
@@ -270,6 +271,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               .filter((c: Record<string, unknown>) => {
                 if (String(c.students_id) !== String(studentId)) return false
                 if (Number(c[F.sectionId]) !== sectionId) return false
+                // Inline essay-comment threads share the field's name; they
+                // belong to the highlight, not the general activity stream.
+                if (c.thread_id) return false
                 const tid = c[F.templateId] as number | null | undefined
                 if (tid && excludedTemplateIds.has(tid)) return false
                 return true
@@ -622,9 +626,32 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           // Fall back on the doc shape too, so a stored TipTap essay always
           // renders as rich text instead of dumping raw JSON, even if the
           // question's type flag is out of sync.
+          const hasEssay = !!value && value.trim().length > 0
+          // Only annotate when the student's own editor is locked (submitted or
+          // approved) — otherwise both sides could write student_response and
+          // the teacher's mark save would clobber a live draft.
+          const canAnnotate = hasEssay && !!response && (response.readyReview || response.isComplete)
           displayValue = (
             <div>
-              <RichTextDisplay raw={value} />
+              {canAnnotate ? (
+                <TeacherEssayAnnotator
+                  key={response!.id}
+                  initialValue={value}
+                  patchUrl={`${cfg.responsePatchBase}/${response!.id}`}
+                  comments={{
+                    commentsEndpoint: cfg.commentsEndpoint,
+                    sectionIdField: F.sectionId,
+                    studentId,
+                    sectionId,
+                    fieldName: q.field_name,
+                    viewer: "teacher",
+                    authorName: session?.user?.name ?? "Teacher",
+                    teachersId: ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null,
+                  }}
+                />
+              ) : (
+                <RichTextDisplay raw={value} showComments />
+              )}
               {(q.min_words > 0 || (gptzero && isSubmitted)) && (
                 <div className="text-muted-foreground/60 mt-1 flex items-center justify-between text-xs">
                   <span>

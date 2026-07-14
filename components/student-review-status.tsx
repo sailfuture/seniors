@@ -140,7 +140,9 @@ export function StudentReviewStatus({
           (r: StudentResponse) => String(r.students_id ?? "") === String(studentId)
         )
         const commentsData: Comment[] = (commentsRes.ok ? await commentsRes.json() : []).filter(
-          (c: Comment) => String(c.students_id ?? "") === String(studentId)
+          // Exclude inline essay-comment threads — they belong to a highlight,
+          // not the field/section comment surfaces.
+          (c: Comment) => String(c.students_id ?? "") === String(studentId) && !c.thread_id
         )
         if (cancelled) return
 

@@ -253,6 +253,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             .filter((c: Record<string, unknown>) => {
               if (String(c.students_id) !== String(studentId)) return false
               if (Number(c[F.sectionId]) !== sectionId) return false
+              // Inline essay-comment threads live on their highlight, not the
+              // general per-field comment stream.
+              if (c.thread_id) return false
               const tid = c[F.templateId] as number | null | undefined
               if (tid && excludedTemplateIds.has(tid)) return false
               return true

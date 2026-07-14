@@ -43,6 +43,10 @@ export interface Comment {
   /** True when the student authored this as a reply to teacher feedback.
    *  Requires the isStudentReply column on the Xano comments tables. */
   isStudentReply?: boolean
+  /** Groups an inline-comment thread anchored to a highlight in a rich-text
+   *  essay. Null/absent for ordinary field- and section-level comments.
+   *  Requires the thread_id column on the Xano comments tables. */
+  thread_id?: string | null
   note: string
   teacher_name?: string
   created_at?: string

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useEditor, useEditorState, EditorContent, type Editor } from "@tiptap/react"
 import { Placeholder } from "@tiptap/extensions"
 import {
@@ -16,6 +16,7 @@ import {
   TextQuote,
   Minus,
   Table as TableIcon,
+  MessageSquarePlus,
   Undo2,
   Redo2,
 } from "lucide-react"
@@ -24,11 +25,62 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { parseRichText, serializeRichText, type RichTextDoc } from "@/lib/rich-text"
 import { richTextExtensions } from "@/lib/rich-text-extensions"
+import { COMMENT_MARK_NAME } from "@/lib/rich-text-comment-mark"
+import { useInlineComments, generateThreadId } from "@/lib/inline-comments"
+import { CommentThreadPopover } from "./comment-thread-popover"
+
+export interface RichTextCommentConfig {
+  commentsEndpoint: string
+  /** Section FK on the comments table, e.g. "lifemap_sections_id". */
+  sectionIdField: string
+  studentId: string
+  sectionId: number
+  fieldName: string
+  viewer: "teacher" | "student"
+  authorName: string
+  teachersId?: string | null
+}
+
+const DISABLED_COMMENTS = {
+  commentsEndpoint: "",
+  sectionIdField: "",
+  studentId: null as unknown as string,
+  sectionId: 0,
+  fieldName: "",
+  viewer: "student" as const,
+  authorName: "",
+}
+
+/** Every span carrying a thread's mark, so resolve unsets exactly those and
+ *  never a neighbor thread — even when the highlight is split or duplicated. */
+function threadMarkRanges(editor: Editor, threadId: string): { from: number; to: number }[] {
+  const ranges: { from: number; to: number }[] = []
+  editor.state.doc.descendants((node, pos) => {
+    if (
+      node.isText &&
+      node.marks.some((m) => m.type.name === COMMENT_MARK_NAME && m.attrs.threadId === threadId)
+    ) {
+      ranges.push({ from: pos, to: pos + node.nodeSize })
+    }
+  })
+  return ranges
+}
+
+interface ActiveThread {
+  threadId: string
+  isNew: boolean
+  anchor: { x: number; y: number }
+  range?: { from: number; to: number }
+}
 
 /**
  * Controlled TipTap editor: `value` is the serialized JSON string stored in
  * student_response ("" when empty), mirroring the LineItemsInput contract so
  * it plugs into the standard dirty/debounce/autosave path unchanged.
+ *
+ * Pass `comments` to enable inline anchored comments: highlight text and
+ * "Comment" to start a thread, click a highlight to reply/resolve. `annotateOnly`
+ * (teacher) permits adding comment highlights while blocking prose edits.
  */
 export function RichTextEditor({
   value,
@@ -37,6 +89,9 @@ export function RichTextEditor({
   disabled = false,
   placeholder,
   className,
+  comments,
+  annotateOnly = false,
+  minHeightClass = "min-h-[55vh]",
 }: {
   value: string
   onChange: (value: string) => void
@@ -44,6 +99,10 @@ export function RichTextEditor({
   disabled?: boolean
   placeholder?: string
   className?: string
+  comments?: RichTextCommentConfig
+  annotateOnly?: boolean
+  /** Editor body min-height (a full page by default; pass min-h-0 when inline). */
+  minHeightClass?: string
 }) {
   const lastEmitted = useRef(value)
   const [loadError, setLoadError] = useState(false)
@@ -52,6 +111,10 @@ export function RichTextEditor({
     loadErrorRef.current = true
     setLoadError(true)
   }
+
+  const commentsEnabled = !!comments
+  const inline = useInlineComments(comments ?? DISABLED_COMMENTS)
+  const [activeThread, setActiveThread] = useState<ActiveThread | null>(null)
 
   const editor = useEditor({
     // Required in the Next.js App Router: rendering the editor during SSR /
@@ -74,9 +137,41 @@ export function RichTextEditor({
     editable: !disabled,
     editorProps: {
       attributes: {
-        class:
-          "prose prose-neutral dark:prose-invert max-w-none min-h-[55vh] px-6 py-8 sm:px-10 focus:outline-none",
+        class: `prose prose-neutral dark:prose-invert max-w-none ${minHeightClass} px-6 py-8 sm:px-10 focus:outline-none`,
       },
+      // Annotate-only (teacher): permit selection + our comment command, but
+      // block every content mutation so the student's prose is never edited.
+      ...(annotateOnly
+        ? {
+            handleTextInput: () => true,
+            handleKeyDown: (_view, event: KeyboardEvent) => {
+              const k = event.key
+              if (k.startsWith("Arrow") || ["Home", "End", "PageUp", "PageDown", "Tab", "Shift", "Control", "Meta", "Alt", "Escape"].includes(k)) {
+                return false
+              }
+              if ((event.metaKey || event.ctrlKey) && ["a", "c", "z", "y"].includes(k.toLowerCase())) {
+                return false
+              }
+              return true
+            },
+            handlePaste: () => true,
+            handleDrop: () => true,
+            // handleKeyDown can't catch a context-menu Cut or a native text
+            // drag (no keydown). Returning true skips ProseMirror's own
+            // handling, but the BROWSER would still cut/move the selection from
+            // the contenteditable — so preventDefault to stop it deleting prose.
+            handleDOMEvents: {
+              cut: (_view, event) => {
+                event.preventDefault()
+                return true
+              },
+              dragstart: (_view, event) => {
+                event.preventDefault()
+                return true
+              },
+            },
+          }
+        : {}),
     },
     onUpdate: ({ editor }) => {
       if (loadErrorRef.current) return
@@ -109,6 +204,60 @@ export function RichTextEditor({
     editor?.setEditable(!disabled && !loadError)
   }, [editor, disabled, loadError])
 
+  // Clicking a highlight opens its thread (works even in read-only mode).
+  useEffect(() => {
+    if (!editor || !commentsEnabled) return
+    const dom = editor.view.dom
+    const onClick = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement)?.closest?.(".rt-comment") as HTMLElement | null
+      const threadId = el?.getAttribute("data-thread-id")
+      if (!threadId) return
+      setActiveThread({ threadId, isNew: false, anchor: { x: e.clientX, y: e.clientY } })
+    }
+    dom.addEventListener("click", onClick)
+    return () => dom.removeEventListener("click", onClick)
+  }, [editor, commentsEnabled])
+
+  const startCommentOnSelection = useCallback(() => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    if (from === to) return
+    const coords = editor.view.coordsAtPos(to)
+    setActiveThread({
+      threadId: generateThreadId(),
+      isNew: true,
+      range: { from, to },
+      anchor: { x: coords.left, y: coords.bottom },
+    })
+  }, [editor])
+
+  const handleSend = useCallback(
+    async (note: string): Promise<boolean> => {
+      if (!activeThread) return false
+      const created = await inline.reply(activeThread.threadId, note)
+      // A brand-new thread's highlight is applied only once its first comment
+      // persists, so cancelling leaves no orphan highlight.
+      if (created && activeThread.isNew && activeThread.range && editor) {
+        editor.chain().setTextSelection(activeThread.range).setCommentThread(activeThread.threadId).run()
+        setActiveThread((prev) => (prev ? { ...prev, isNew: false } : prev))
+      }
+      return !!created
+    },
+    [activeThread, inline, editor]
+  )
+
+  const handleResolve = useCallback(async () => {
+    if (!activeThread || !editor) return
+    await inline.resolveThread(activeThread.threadId)
+    const ranges = threadMarkRanges(editor, activeThread.threadId)
+    if (ranges.length) {
+      let chain = editor.chain()
+      for (const rg of ranges) chain = chain.setTextSelection(rg).unsetCommentThread()
+      chain.run()
+    }
+    setActiveThread(null)
+  }, [activeThread, editor, inline])
+
   if (loadError) {
     return (
       <div
@@ -123,15 +272,43 @@ export function RichTextEditor({
     )
   }
 
+  const showToolbar = !disabled || (commentsEnabled && annotateOnly)
+
   return (
     <div className={cn("flex flex-col", className)}>
-      {!disabled && <EditorToolbar editor={editor} />}
+      {showToolbar && (
+        <EditorToolbar
+          editor={editor}
+          annotateOnly={annotateOnly}
+          onComment={commentsEnabled ? startCommentOnSelection : undefined}
+        />
+      )}
       <EditorContent editor={editor} />
+      {activeThread && (
+        <CommentThreadPopover
+          anchor={activeThread.anchor}
+          comments={inline.threads.get(activeThread.threadId)?.comments ?? []}
+          viewer={comments?.viewer ?? "student"}
+          isNew={activeThread.isNew}
+          onSend={handleSend}
+          onMarkRead={inline.markRead}
+          onResolve={!disabled ? handleResolve : undefined}
+          onClose={() => setActiveThread(null)}
+        />
+      )}
     </div>
   )
 }
 
-function EditorToolbar({ editor }: { editor: Editor | null }) {
+function EditorToolbar({
+  editor,
+  annotateOnly = false,
+  onComment,
+}: {
+  editor: Editor | null
+  annotateOnly?: boolean
+  onComment?: () => void
+}) {
   const state = useEditorState({
     editor,
     selector: ({ editor }) =>
@@ -148,6 +325,7 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
             orderedList: editor.isActive("orderedList"),
             blockquote: editor.isActive("blockquote"),
             inTable: editor.isActive("table"),
+            selectionEmpty: editor.state.selection.empty,
             canUndo: editor.can().undo(),
             canRedo: editor.can().redo(),
           }
@@ -157,6 +335,28 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
   if (!editor || !state) return null
 
   const chain = () => editor.chain().focus()
+
+  const commentButton = onComment ? (
+    <ToolbarButton
+      label="Comment on selection"
+      disabled={state.selectionEmpty}
+      onClick={onComment}
+    >
+      <MessageSquarePlus />
+    </ToolbarButton>
+  ) : null
+
+  // The teacher's annotate-only toolbar carries just the comment action.
+  if (annotateOnly) {
+    return (
+      <div className="bg-background sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-lg border-b px-2 py-2">
+        {commentButton}
+        <span className="text-muted-foreground text-xs">
+          Select text and comment — the essay itself stays read-only.
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-background sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-t-lg border-b px-2 py-2">
@@ -270,6 +470,13 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
       >
         <Redo2 />
       </ToolbarButton>
+
+      {commentButton && (
+        <>
+          <Separator orientation="vertical" className="mx-1 h-6" />
+          {commentButton}
+        </>
+      )}
     </div>
   )
 }

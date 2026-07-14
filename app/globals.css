@@ -182,3 +182,26 @@
 .tiptap th {
   position: relative;
 }
+
+/* Inline-comment highlights. Visible in the editor (.tiptap) and anywhere the
+   read-only renderer opts in with .rt-comments-visible (student essay page,
+   admin review). NOT styled under a bare .prose, so the public thesis shows
+   the commented text plain — highlights never leak onto the shared page. */
+.tiptap .rt-comment,
+.rt-comments-visible .rt-comment {
+  background: rgba(245, 158, 11, 0.22);
+  border-bottom: 2px solid rgba(245, 158, 11, 0.7);
+  border-radius: 2px;
+  padding-bottom: 1px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.tiptap .rt-comment:hover,
+.rt-comments-visible .rt-comment:hover {
+  background: rgba(245, 158, 11, 0.36);
+}
+/* The highlight the user is actively viewing/creating. */
+.tiptap .rt-comment.rt-comment-active,
+.rt-comments-visible .rt-comment.rt-comment-active {
+  background: rgba(245, 158, 11, 0.45);
+}

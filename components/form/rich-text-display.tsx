@@ -12,7 +12,17 @@ import { cn } from "@/lib/utils"
  * it is safe on unauthenticated public pages. Legacy plain-text values are
  * wrapped into paragraphs by parseRichText.
  */
-export function RichTextDisplay({ raw, className }: { raw: string; className?: string }) {
+export function RichTextDisplay({
+  raw,
+  className,
+  showComments = false,
+}: {
+  raw: string
+  className?: string
+  /** Reveal inline-comment highlights (admin review). Off on the public
+   *  thesis so commented text renders plain. */
+  showComments?: boolean
+}) {
   const rendered = useMemo(() => {
     const doc = parseRichText(raw)
     if (!doc || !doc.content?.length) return null
@@ -28,7 +38,13 @@ export function RichTextDisplay({ raw, className }: { raw: string; className?: s
   }
 
   return (
-    <div className={cn("prose prose-sm dark:prose-invert max-w-none", className)}>
+    <div
+      className={cn(
+        "prose prose-sm dark:prose-invert max-w-none",
+        showComments && "rt-comments-visible",
+        className
+      )}
+    >
       {rendered}
     </div>
   )

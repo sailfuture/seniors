@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { RichTextEditor } from "./rich-text-editor"
 import { SaveIndicator } from "./save-indicator"
-import { isRichTextQuestion, richTextWordCount } from "@/lib/rich-text"
+import { isRichTextQuestion, richTextWordCount, extractPlainText } from "@/lib/rich-text"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
@@ -75,6 +75,10 @@ export function EssayEditorPage({
 
   const valueRef = useRef("")
   const dirtyRef = useRef(false)
+  // The prose (plain text) at the last save, to tell a real edit from a
+  // comment-mark-only change (resolving/adding a highlight) — the latter must
+  // not bump last_edited and reorder the teacher's review queue.
+  const savedProseRef = useRef("")
   const responseRef = useRef<StudentResponse | null>(null)
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Bumped when a save starts or completes, so a refresh whose fetch
@@ -106,6 +110,7 @@ export function EssayEditorPage({
           const v = r?.student_response ?? ""
           setValue(v)
           valueRef.current = v
+          savedProseRef.current = extractPlainText(v)
         }
       }
     } catch {
@@ -127,11 +132,13 @@ export function EssayEditorPage({
     try {
       const now = new Date().toISOString()
       const savedValue = valueRef.current
-      const patch = {
-        student_response: savedValue,
-        wordCount: richTextWordCount(savedValue),
-        last_edited: now,
-      }
+      const proseNow = extractPlainText(savedValue)
+      // A comment-mark-only change (same prose) saves the doc but leaves
+      // last_edited/wordCount alone, so annotating doesn't look like an edit.
+      const proseChanged = proseNow !== savedProseRef.current
+      const patch: Record<string, unknown> = proseChanged
+        ? { student_response: savedValue, wordCount: richTextWordCount(savedValue), last_edited: now }
+        : { student_response: savedValue }
       const res = await fetch(`${cfg.responsePatchBase}/${resp.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -140,6 +147,7 @@ export function EssayEditorPage({
       if (!res.ok) throw new Error("save failed")
       saveEpochRef.current++
       if (valueRef.current === savedValue) {
+        savedProseRef.current = proseNow
         dirtyRef.current = false
         setHasDirty(false)
         setSaveStatus("saved")
@@ -299,6 +307,19 @@ export function EssayEditorPage({
           onBlur={handleBlur}
           disabled={isLocked}
           placeholder={question.placeholder}
+          comments={
+            studentId
+              ? {
+                  commentsEndpoint: cfg.commentsEndpoint,
+                  sectionIdField: F.sectionId,
+                  studentId,
+                  sectionId: Number(question[F.sectionId] ?? 0),
+                  fieldName: question.field_name,
+                  viewer: "student",
+                  authorName: session?.user?.name ?? "Student",
+                }
+              : undefined
+          }
         />
       </div>
 
