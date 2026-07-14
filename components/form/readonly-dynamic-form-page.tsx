@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -43,10 +44,8 @@ import type { Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LineItemsTable } from "@/components/line-items-table"
 import { isLineItemsQuestion } from "@/lib/line-items"
-import { RichTextDisplay } from "./rich-text-display"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
 import { ZoomableImage } from "@/components/zoomable-image"
-import { TeacherEssayAnnotator } from "./teacher-essay-annotator"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 
@@ -627,35 +626,28 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         } else if (isLineItemsQuestion(q)) {
           displayValue = <LineItemsTable raw={value} />
         } else if (isRichText || looksLikeRichTextDoc(value)) {
-          // Fall back on the doc shape too, so a stored TipTap essay always
-          // renders as rich text instead of dumping raw JSON, even if the
-          // question's type flag is out of sync.
+          // Essays never render inline here — the teacher opens them as a
+          // full document (with inline + overall commenting and review
+          // actions) from a compact card.
           const hasEssay = !!value && value.trim().length > 0
-          // Only annotate when the student's own editor is locked (submitted or
-          // approved) — otherwise both sides could write student_response and
-          // the teacher's mark save would clobber a live draft.
-          const canAnnotate = hasEssay && !!response && (response.readyReview || response.isComplete)
+          const snippet = hasEssay ? extractPlainText(value).replace(/\s+/g, " ").trim() : ""
           displayValue = (
             <div>
-              {canAnnotate ? (
-                <TeacherEssayAnnotator
-                  key={response!.id}
-                  initialValue={value}
-                  patchUrl={`${cfg.responsePatchBase}/${response!.id}`}
-                  comments={{
-                    commentsEndpoint: cfg.commentsEndpoint,
-                    sectionIdField: F.sectionId,
-                    studentId,
-                    sectionId,
-                    fieldName: q.field_name,
-                    viewer: "teacher",
-                    authorName: session?.user?.name ?? "Teacher",
-                    teachersId: ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null,
-                  }}
-                />
-              ) : (
-                <RichTextDisplay raw={value} showComments />
-              )}
+              <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm">
+                    {snippet ? snippet.slice(0, 110) : <span className="text-muted-foreground italic">No essay written yet.</span>}
+                  </p>
+                  {hasEssay && (
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      {richTextWordCount(value)} words
+                    </p>
+                  )}
+                </div>
+                <Button asChild size="sm" variant="outline" className="shrink-0 bg-white dark:bg-transparent">
+                  <Link href={`${cfg.adminBasePath}/${studentId}/essay/${q.id}`}>Open document</Link>
+                </Button>
+              </div>
               {(q.min_words > 0 || showAiFooter) && (
                 <div className="text-muted-foreground/60 mt-1 flex items-center justify-between gap-2 text-xs">
                   <span>

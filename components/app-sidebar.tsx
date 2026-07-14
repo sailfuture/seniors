@@ -759,6 +759,7 @@ function buildStudentPublicPagesNav(studentId: string | null): { title: string; 
     items: [
       { title: "Life Map", url: `/public/life-map/${studentId}`, isExternal: true },
       { title: "Business Thesis", url: `/public/business-thesis/${studentId}`, isExternal: true },
+      { title: "Transcript", url: `${TRANSCRIPT_BASE}/${studentId}`, isExternal: true },
     ],
   }
 }
@@ -841,20 +842,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         )}
         <NavMain items={navItems} hideLabel={!!studentInfo} loading={sidebarLoading} />
-        {studentId && (
-          <SidebarGroup>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Transcript">
-                  <a href={`${TRANSCRIPT_BASE}/${studentId}`} target="_blank" rel="noopener noreferrer">
-                    <HugeiconsIcon icon={CheckListIcon} strokeWidth={2} />
-                    <span>Transcript</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroup>
-        )}
         {!isAdmin && (
           <SidebarGroup>
             <SidebarGroupLabel>Tools</SidebarGroupLabel>
@@ -924,6 +911,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <a href={`/public/business-thesis/${adminStudentId}`} target="_blank" rel="noopener noreferrer">
                     <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
                     <span>Business Thesis</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Transcript">
+                  <a href={`${TRANSCRIPT_BASE}/${adminStudentId}`} target="_blank" rel="noopener noreferrer">
+                    <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
+                    <span>Transcript</span>
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
