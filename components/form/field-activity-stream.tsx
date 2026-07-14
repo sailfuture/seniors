@@ -125,7 +125,11 @@ export function FieldActivityStream({
         const isStudentAuthored = c.isStudentReply === true
         // "Own" messages sit on the right, like any chat app.
         const own = viewer === "teacher" ? !isStudentAuthored : isStudentAuthored
-        const variant = c.isRevisionFeedback ? "destructive" : own ? "default" : "secondary"
+        // All comments read as light-gray bubbles with dark text; a revision
+        // is a light bubble with red text and a thin red border, not a solid
+        // red block. Alignment + author name distinguish sender.
+        const isRevision = c.isRevisionFeedback === true
+        const variant = isRevision ? "outline" : own ? "secondary" : "muted"
         const align = own ? "end" : "start"
         const authorName = c.teacher_name || (isStudentAuthored ? "Student" : "Teacher")
         const unreadForStudent = viewer === "student" && !isStudentAuthored && !c.isOld
@@ -155,7 +159,14 @@ export function FieldActivityStream({
             )}
 
             <Bubble variant={variant} align={align} className="group/bubble">
-              <BubbleContent>{c.note}</BubbleContent>
+              <BubbleContent
+                className={cn(
+                  isRevision &&
+                    "border-red-300 bg-gray-50 text-red-600 dark:border-red-400/40 dark:bg-muted/40 dark:text-red-400"
+                )}
+              >
+                {c.note}
+              </BubbleContent>
               <div
                 className={cn(
                   "text-muted-foreground mt-1 flex items-center gap-1.5 text-[11px]",
@@ -172,7 +183,7 @@ export function FieldActivityStream({
                 {viewer === "teacher" && readTime && (
                   <>
                     <span>&middot;</span>
-                    <span className="text-green-600">Read {readTime}</span>
+                    <span>Read {readTime}</span>
                   </>
                 )}
                 {viewer === "teacher" && onDelete && c.id != null && (

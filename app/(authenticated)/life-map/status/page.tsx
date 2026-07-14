@@ -11,6 +11,7 @@ export default function LifeMapStatusPage() {
       basePath="/life-map"
       apiConfig={LIFEMAP_API_CONFIG}
       slugify={titleToSlug}
+      adminBasePath="/admin/life-map"
     />
   )
 }

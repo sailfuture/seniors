@@ -11,6 +11,8 @@ const PLAGIARISM_BASE = "https://xsc3-mvx7-r86m.n7e.xano.io/api:-S1CSX2N"
 export interface FormApiConfig {
   templateEndpoint: string
   responsesEndpoint: string
+  /** Cross-student responses (no students_id filter) for admin/teacher views. */
+  allResponsesEndpoint: string
   responsePatchBase: string
   customGroupEndpoint: string
   commentsEndpoint: string
@@ -37,6 +39,7 @@ export interface FormApiConfig {
 export const LIFEMAP_API_CONFIG: FormApiConfig = {
   templateEndpoint: `${LIFEMAP_BASE}/lifeplan_template`,
   responsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses_by_student`,
+  allResponsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses`,
   responsePatchBase: `${LIFEMAP_BASE}/lifemap_responses`,
   customGroupEndpoint: `${LIFEMAP_BASE}/lifemap_custom_group`,
   commentsEndpoint: `${LIFEMAP_BASE}/lifemap_comments`,
@@ -63,6 +66,7 @@ export const BUSINESSTHESIS_API_CONFIG: FormApiConfig = {
   eventPrefix: "bt-",
   templateEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_template`,
   responsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses_by_student`,
+  allResponsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses`,
   responsePatchBase: `${BUSINESSTHESIS_BASE}/businessthesis_responses`,
   customGroupEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_custom_group`,
   commentsEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_comments`,

@@ -160,41 +160,66 @@ function useLifeMapSections(refreshKey: number) {
 interface SectionBadgeCounts {
   readyReview: Map<number, number>
   revisionNeeded: Map<number, number>
+  /** Sections where every published input question has a complete response. */
+  complete: Set<number>
+}
+
+const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
+
+async function fetchNoInputTypeIds(): Promise<Set<number>> {
+  const noInput = new Set<number>()
+  try {
+    const res = await fetch(QUESTION_TYPES_ENDPOINT)
+    if (res.ok) {
+      const types = (await res.json()) as { id: number; noInput?: boolean }[]
+      for (const t of types) if (t.noInput) noInput.add(t.id)
+    }
+  } catch { /* treat as none */ }
+  return noInput
 }
 
 function useSectionReviewCounts(studentId: string | null, refreshKey: number): { counts: SectionBadgeCounts; loading: boolean } {
-  const [counts, setCounts] = useState<SectionBadgeCounts>({ readyReview: new Map(), revisionNeeded: new Map() })
+  const [counts, setCounts] = useState<SectionBadgeCounts>({ readyReview: new Map(), revisionNeeded: new Map(), complete: new Set() })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!studentId) { setCounts({ readyReview: new Map(), revisionNeeded: new Map() }); setLoading(false); return }
+    if (!studentId) { setCounts({ readyReview: new Map(), revisionNeeded: new Map(), complete: new Set() }); setLoading(false); return }
     if (refreshKey > 0) setLoading(true)
     let cancelled = false
     const load = async () => {
       try {
-        const [responsesRes, templateRes] = await Promise.all([
+        const [responsesRes, templateRes, noInput] = await Promise.all([
           fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
           fetch(TEMPLATE_ENDPOINT),
+          fetchNoInputTypeIds(),
         ])
 
         if (cancelled) return
 
         const ready = new Map<number, number>()
         const revision = new Map<number, number>()
+        const complete = new Set<number>()
 
         if (responsesRes.ok && templateRes.ok) {
           const responses: { lifemap_template_id: number; readyReview?: boolean; revisionNeeded?: boolean; isComplete?: boolean; isArchived?: boolean }[] = await responsesRes.json()
-          const templates: { id: number; lifemap_sections_id: number; isArchived?: boolean; isPublished?: boolean }[] = await templateRes.json()
+          const templates: { id: number; lifemap_sections_id: number; isArchived?: boolean; isPublished?: boolean; question_types_id?: number }[] = await templateRes.json()
 
           const templateToSection = new Map<number, number>()
+          // Total input questions per section, to know when a section is fully done.
+          const sectionTotal = new Map<number, number>()
           for (const t of templates) {
-            if (!t.isArchived && t.isPublished) templateToSection.set(t.id, t.lifemap_sections_id)
+            if (t.isArchived || !t.isPublished) continue
+            templateToSection.set(t.id, t.lifemap_sections_id)
+            if (t.question_types_id != null && noInput.has(t.question_types_id)) continue
+            sectionTotal.set(t.lifemap_sections_id, (sectionTotal.get(t.lifemap_sections_id) ?? 0) + 1)
           }
 
+          const sectionComplete = new Map<number, number>()
           for (const r of responses) {
             if (r.isArchived) continue
             const sid = templateToSection.get(r.lifemap_template_id)
             if (!sid) continue
+            if (r.isComplete) sectionComplete.set(sid, (sectionComplete.get(sid) ?? 0) + 1)
             if (r.readyReview && !r.isComplete && !r.revisionNeeded) {
               ready.set(sid, (ready.get(sid) ?? 0) + 1)
             }
@@ -202,9 +227,13 @@ function useSectionReviewCounts(studentId: string | null, refreshKey: number): {
               revision.set(sid, (revision.get(sid) ?? 0) + 1)
             }
           }
+
+          for (const [sid, total] of sectionTotal) {
+            if (total > 0 && (sectionComplete.get(sid) ?? 0) >= total) complete.add(sid)
+          }
         }
 
-        if (!cancelled) { setCounts({ readyReview: ready, revisionNeeded: revision }); setLoading(false) }
+        if (!cancelled) { setCounts({ readyReview: ready, revisionNeeded: revision, complete }); setLoading(false) }
       } catch { if (!cancelled) setLoading(false) }
     }
     load()
@@ -239,38 +268,46 @@ function useSectionReviewCounts(studentId: string | null, refreshKey: number): {
 }
 
 function useBtSectionReviewCounts(studentId: string | null, refreshKey: number): { counts: SectionBadgeCounts; loading: boolean } {
-  const [counts, setCounts] = useState<SectionBadgeCounts>({ readyReview: new Map(), revisionNeeded: new Map() })
+  const [counts, setCounts] = useState<SectionBadgeCounts>({ readyReview: new Map(), revisionNeeded: new Map(), complete: new Set() })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!studentId) { setCounts({ readyReview: new Map(), revisionNeeded: new Map() }); setLoading(false); return }
+    if (!studentId) { setCounts({ readyReview: new Map(), revisionNeeded: new Map(), complete: new Set() }); setLoading(false); return }
     if (refreshKey > 0) setLoading(true)
     let cancelled = false
     const load = async () => {
       try {
-        const [responsesRes, templateRes] = await Promise.all([
+        const [responsesRes, templateRes, noInput] = await Promise.all([
           fetch(`${BT_RESPONSES_ENDPOINT}?students_id=${studentId}`),
           fetch(BT_TEMPLATE_ENDPOINT),
+          fetchNoInputTypeIds(),
         ])
 
         if (cancelled) return
 
         const ready = new Map<number, number>()
         const revision = new Map<number, number>()
+        const complete = new Set<number>()
 
         if (responsesRes.ok && templateRes.ok) {
           const responses: { businessthesis_template_id: number; readyReview?: boolean; revisionNeeded?: boolean; isComplete?: boolean; isArchived?: boolean }[] = await responsesRes.json()
-          const templates: { id: number; businessthesis_sections_id: number; isArchived?: boolean; isPublished?: boolean }[] = await templateRes.json()
+          const templates: { id: number; businessthesis_sections_id: number; isArchived?: boolean; isPublished?: boolean; question_types_id?: number }[] = await templateRes.json()
 
           const templateToSection = new Map<number, number>()
+          const sectionTotal = new Map<number, number>()
           for (const t of templates) {
-            if (!t.isArchived && t.isPublished) templateToSection.set(t.id, t.businessthesis_sections_id)
+            if (t.isArchived || !t.isPublished) continue
+            templateToSection.set(t.id, t.businessthesis_sections_id)
+            if (t.question_types_id != null && noInput.has(t.question_types_id)) continue
+            sectionTotal.set(t.businessthesis_sections_id, (sectionTotal.get(t.businessthesis_sections_id) ?? 0) + 1)
           }
 
+          const sectionComplete = new Map<number, number>()
           for (const r of responses) {
             if (r.isArchived) continue
             const sid = templateToSection.get(r.businessthesis_template_id)
             if (!sid) continue
+            if (r.isComplete) sectionComplete.set(sid, (sectionComplete.get(sid) ?? 0) + 1)
             if (r.readyReview && !r.isComplete && !r.revisionNeeded) {
               ready.set(sid, (ready.get(sid) ?? 0) + 1)
             }
@@ -278,9 +315,13 @@ function useBtSectionReviewCounts(studentId: string | null, refreshKey: number):
               revision.set(sid, (revision.get(sid) ?? 0) + 1)
             }
           }
+
+          for (const [sid, total] of sectionTotal) {
+            if (total > 0 && (sectionComplete.get(sid) ?? 0) >= total) complete.add(sid)
+          }
         }
 
-        if (!cancelled) { setCounts({ readyReview: ready, revisionNeeded: revision }); setLoading(false) }
+        if (!cancelled) { setCounts({ readyReview: ready, revisionNeeded: revision, complete }); setLoading(false) }
       } catch { if (!cancelled) setLoading(false) }
     }
     load()
@@ -483,6 +524,8 @@ function buildStudentNav(
   btRevisionCounts?: Map<number, number>,
   readyReviewCounts?: Map<number, number>,
   btReadyReviewCounts?: Map<number, number>,
+  completeSet?: Set<number>,
+  btCompleteSet?: Set<number>,
 ) {
   const sum = (m?: Map<number, number>) => (m ? [...m.values()].reduce((a, b) => a + b, 0) : 0)
   const mapItems = buildLifeMapNavItems(sections)
@@ -503,14 +546,17 @@ function buildStudentNav(
           badgeBlue: sum(readyReviewCounts),
           isLocked: false,
         },
-        ...mapItems.map((s) => {
+        ...mapItems.map((s, i) => {
           const sec = sections.find((sec) => sec.section_title === s.title)
           return {
             title: s.title,
             url: `/life-map/${s.slug}`,
             badgeRed: sec && revisionCounts ? (revisionCounts.get(sec.id) ?? 0) : 0,
             badgeBlue: sec && readyReviewCounts ? (readyReviewCounts.get(sec.id) ?? 0) : 0,
+            complete: sec ? (completeSet?.has(sec.id) ?? false) : false,
             isLocked: sec?.isLocked ?? false,
+            // Divider between Review Status and the section list.
+            separatorBefore: i === 0,
           }
         }),
       ],
@@ -528,14 +574,16 @@ function buildStudentNav(
           badgeBlue: sum(btReadyReviewCounts),
           isLocked: false,
         },
-        ...btItems.map((s) => {
+        ...btItems.map((s, i) => {
           const sec = btSections.find((sc) => btTitleToSlug(sc.section_title) === s.slug)
           return {
             title: s.title,
             url: `/business-thesis/${s.slug}`,
             badgeRed: sec && btRevisionCounts ? (btRevisionCounts.get(sec.id) ?? 0) : 0,
             badgeBlue: sec && btReadyReviewCounts ? (btReadyReviewCounts.get(sec.id) ?? 0) : 0,
+            complete: sec ? (btCompleteSet?.has(sec.id) ?? false) : false,
             isLocked: sec?.isLocked ?? false,
+            separatorBefore: i === 0,
           }
         }),
       ],
@@ -604,6 +652,8 @@ function getTeacherStudentNav(
   revisionCounts?: Map<number, number>,
   btReadyReviewCounts?: Map<number, number>,
   btRevisionCounts?: Map<number, number>,
+  completeSet?: Set<number>,
+  btCompleteSet?: Set<number>,
 ) {
   const mapItems = buildLifeMapNavItems(sections)
   const btItems = buildBusinessSectionItems(btSections)
@@ -624,6 +674,7 @@ function getTeacherStudentNav(
             url: `/admin/life-map/${studentId}/${s.slug}`,
             badgeBlue: sec && readyReviewCounts ? (readyReviewCounts.get(sec.id) ?? 0) : 0,
             badgeRed: sec && revisionCounts ? (revisionCounts.get(sec.id) ?? 0) : 0,
+            complete: sec ? (completeSet?.has(sec.id) ?? false) : false,
           }
         }),
       },
@@ -646,6 +697,7 @@ function getTeacherStudentNav(
             url: `/admin/business-thesis/${studentId}/${s.slug}`,
             badgeBlue: sec && btReadyReviewCounts ? (btReadyReviewCounts.get(sec.id) ?? 0) : 0,
             badgeRed: sec && btRevisionCounts ? (btRevisionCounts.get(sec.id) ?? 0) : 0,
+            complete: sec ? (btCompleteSet?.has(sec.id) ?? false) : false,
           }
         }),
       },
@@ -659,19 +711,21 @@ interface NavBadgeData {
   commentCounts?: Map<number, number>
   revisionCounts?: Map<number, number>
   readyReviewCounts?: Map<number, number>
+  completeSet?: Set<number>
   btCommentCounts?: Map<number, number>
   btRevisionCounts?: Map<number, number>
   btReadyReviewCounts?: Map<number, number>
+  btCompleteSet?: Set<number>
 }
 
 function getNavFromPathname(pathname: string, isAdmin: boolean, sections: LifeMapSection[], btSections: BusinessThesisSection[], badges: NavBadgeData, students: StudentListItem[]) {
   if (pathname.startsWith("/admin/")) {
-    return getTeacherStudentNav(pathname, sections, btSections, badges.readyReviewCounts, badges.revisionCounts, badges.btReadyReviewCounts, badges.btRevisionCounts) ?? buildTeacherBaseNav(sections, btSections, pathname, students)
+    return getTeacherStudentNav(pathname, sections, btSections, badges.readyReviewCounts, badges.revisionCounts, badges.btReadyReviewCounts, badges.btRevisionCounts, badges.completeSet, badges.btCompleteSet) ?? buildTeacherBaseNav(sections, btSections, pathname, students)
   }
   if (isAdmin) {
     return buildTeacherBaseNav(sections, btSections, pathname, students)
   }
-  return buildStudentNav(sections, btSections, pathname, badges.revisionCounts, badges.btRevisionCounts, badges.readyReviewCounts, badges.btReadyReviewCounts)
+  return buildStudentNav(sections, btSections, pathname, badges.revisionCounts, badges.btRevisionCounts, badges.readyReviewCounts, badges.btReadyReviewCounts, badges.completeSet, badges.btCompleteSet)
 }
 
 function buildStudentPublicPagesNav(studentId: string | null): { title: string; url: string; icon: React.ReactNode; items: { title: string; url: string; isExternal?: boolean }[] } | null {
@@ -714,9 +768,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     commentCounts: commentCounts,
     revisionCounts: reviewCounts.revisionNeeded,
     readyReviewCounts: reviewCounts.readyReview,
+    completeSet: reviewCounts.complete,
     btCommentCounts: btCommentCounts,
     btRevisionCounts: btReviewCounts.revisionNeeded,
     btReadyReviewCounts: btReviewCounts.readyReview,
+    btCompleteSet: btReviewCounts.complete,
   }, studentList)
   const studentInfo = useStudentInfo(adminStudentId)
   const publicPagesNav = !isAdmin ? buildStudentPublicPagesNav(ownStudentId) : null

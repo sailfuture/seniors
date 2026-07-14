@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowRight01Icon, SquareLock02Icon } from "@hugeicons/core-free-icons"
+import { ArrowRight01Icon, SquareLock02Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
 
 type NavItem = {
   title: string
@@ -35,7 +35,9 @@ type NavItem = {
     url: string
     badgeRed?: number
     badgeBlue?: number
+    complete?: boolean
     isLocked?: boolean
+    separatorBefore?: boolean
   }[]
 }
 
@@ -87,35 +89,47 @@ function NavCollapsibleItem({ item, pathname, loading }: { item: NavItem; pathna
                 <SidebarMenuSub>
                   {item.items?.map((subItem) => {
                     const isActive = pathname === subItem.url || pathname.startsWith(subItem.url + "/")
+                    const hasBadges =
+                      (subItem.badgeRed != null && subItem.badgeRed > 0) ||
+                      (subItem.badgeBlue != null && subItem.badgeBlue > 0)
                     return (
-                      <SidebarMenuSubItem key={subItem.title}>
-                        {subItem.isLocked ? (
-                          <SidebarMenuSubButton className="cursor-not-allowed opacity-50">
-                            <span className="flex-1">{subItem.title}</span>
-                            <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="text-muted-foreground ml-auto size-3.5 shrink-0" />
-                          </SidebarMenuSubButton>
-                        ) : (
-                          <SidebarMenuSubButton asChild className={isActive ? "bg-muted font-semibold" : ""}>
-                            <Link href={subItem.url}>
+                      <div key={subItem.title}>
+                        {subItem.separatorBefore && <SidebarSeparator className="my-1.5" />}
+                        <SidebarMenuSubItem>
+                          {subItem.isLocked ? (
+                            <SidebarMenuSubButton className="cursor-not-allowed opacity-50">
                               <span className="flex-1">{subItem.title}</span>
-                              {((subItem.badgeRed != null && subItem.badgeRed > 0) || (subItem.badgeBlue != null && subItem.badgeBlue > 0)) && (
-                                <span className="ml-auto flex shrink-0 items-center gap-1">
-                                  {subItem.badgeRed != null && subItem.badgeRed > 0 && (
-                                    <span className="flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
-                                      {subItem.badgeRed}
-                                    </span>
-                                  )}
-                                  {subItem.badgeBlue != null && subItem.badgeBlue > 0 && (
-                                    <span className="flex size-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
-                                      {subItem.badgeBlue}
-                                    </span>
-                                  )}
-                                </span>
-                              )}
-                            </Link>
-                          </SidebarMenuSubButton>
-                        )}
-                      </SidebarMenuSubItem>
+                              <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="text-muted-foreground ml-auto size-3.5 shrink-0" />
+                            </SidebarMenuSubButton>
+                          ) : (
+                            <SidebarMenuSubButton asChild className={isActive ? "bg-muted font-semibold" : ""}>
+                              <Link href={subItem.url}>
+                                <span className="flex-1">{subItem.title}</span>
+                                {hasBadges ? (
+                                  <span className="ml-auto flex shrink-0 items-center gap-1">
+                                    {subItem.badgeRed != null && subItem.badgeRed > 0 && (
+                                      <span className="flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
+                                        {subItem.badgeRed}
+                                      </span>
+                                    )}
+                                    {subItem.badgeBlue != null && subItem.badgeBlue > 0 && (
+                                      <span className="flex size-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
+                                        {subItem.badgeBlue}
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : subItem.complete ? (
+                                  <HugeiconsIcon
+                                    icon={CheckmarkCircle02Icon}
+                                    strokeWidth={2}
+                                    className="ml-auto size-4 shrink-0 text-green-600"
+                                  />
+                                ) : null}
+                              </Link>
+                            </SidebarMenuSubButton>
+                          )}
+                        </SidebarMenuSubItem>
+                      </div>
                     )
                   })}
                 </SidebarMenuSub>

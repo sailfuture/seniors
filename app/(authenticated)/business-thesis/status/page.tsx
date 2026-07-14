@@ -11,6 +11,7 @@ export default function BusinessThesisStatusPage() {
       basePath="/business-thesis"
       apiConfig={BUSINESSTHESIS_API_CONFIG}
       slugify={btTitleToSlug}
+      adminBasePath="/admin/business-thesis"
     />
   )
 }

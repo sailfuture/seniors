@@ -66,7 +66,7 @@ import { isLineItemsQuestion } from "@/lib/line-items"
 import { RichTextPreviewCard } from "./rich-text-preview-card"
 import { extractPlainText, isRichTextQuestion, richTextWordCount } from "@/lib/rich-text"
 import { useSaveRegister } from "@/lib/save-context"
-import { useRefreshRegister } from "@/lib/refresh-context"
+import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
@@ -161,6 +161,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const { data: session } = useSession()
   const { register: registerSave, unregister: unregisterSave } = useSaveRegister()
   const { register: registerRefresh, unregister: unregisterRefresh } = useRefreshRegister()
+  const bumpSidebar = useBumpSidebar()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
@@ -672,6 +673,11 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           if (wasRevision) {
             window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: -1, type: "revision" } }))
           }
+          // Reopening a completed answer drops the section out of "fully
+          // complete"; that set only recomputes on a sidebar refetch, so bump it.
+          if (!!prevResp?.isComplete !== !!patch.isComplete) {
+            bumpSidebar()
+          }
 
           setResponses((prev) => {
             const next = new Map(prev)
@@ -688,7 +694,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         if (!silent) setUpdatingStatus((prev) => { const next = new Set(prev); next.delete(templateId); return next })
       }
     },
-    [studentId, sectionId, responses, localValues, questions, cfg, F]
+    [studentId, sectionId, responses, localValues, questions, cfg, F, bumpSidebar]
   )
 
   if (loading) {
@@ -1494,6 +1500,7 @@ function DynamicField({
           value={value}
           minWords={question.min_words > 0 ? question.min_words : undefined}
           disabled={isDimmed}
+          plagiarism={plagiarism}
         />
       )}
 

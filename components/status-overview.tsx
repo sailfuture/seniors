@@ -17,6 +17,8 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import type { FormApiConfig } from "@/lib/form-api-config"
+import { AdminReviewQueue } from "@/components/admin-review-queue"
+import { StudentReviewStatus } from "@/components/student-review-status"
 
 interface TemplateQuestion {
   id: number
@@ -311,7 +313,9 @@ export function ProductStatusCard({
             ))}
           </div>
         ) : !studentId ? (
-          <p className="text-muted-foreground px-6 py-6 text-center text-sm italic">No student found.</p>
+          <p className="text-muted-foreground px-6 py-6 text-center text-sm italic">
+            No student account is linked to this login.
+          </p>
         ) : (
           <Table>
             <TableHeader>
@@ -443,6 +447,7 @@ export function StatusOverview({
   apiConfig,
   slugify,
   studentId: studentIdProp,
+  adminBasePath,
 }: {
   title: string
   basePath: string
@@ -450,15 +455,40 @@ export function StatusOverview({
   slugify: (title: string) => string
   /** Defaults to the signed-in student; pass explicitly for teacher views. */
   studentId?: string
+  /** Where admin rows link, e.g. "/admin/life-map". Enables the teacher queue. */
+  adminBasePath?: string
 }) {
   const { data: session, status: sessionStatus } = useSession()
-  const sessionStudentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
+  const user = session?.user as Record<string, unknown> | undefined
+  const role = user?.role as string | undefined
+  const sessionStudentId = user?.students_id as string | undefined
   const studentId =
     studentIdProp !== undefined
       ? studentIdProp
       : sessionStatus === "loading"
         ? undefined
         : (sessionStudentId ?? null)
+
+  // Admins have no students_id; show them the consolidated cross-student queue
+  // rather than their own (empty) status.
+  if (studentIdProp === undefined && role === "admin" && adminBasePath) {
+    return (
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+        <div>
+          <h1 className="text-2xl font-bold">{title} — Review Queue</h1>
+          <p className="text-muted-foreground mt-1">
+            Every student&apos;s work that needs your attention: submissions pending review and outstanding revision requests.
+          </p>
+        </div>
+        <AdminReviewQueue
+          apiConfig={apiConfig}
+          adminBasePath={adminBasePath}
+          slugify={slugify}
+          defaultExpanded
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -468,13 +498,11 @@ export function StatusOverview({
           Everything that needs your attention: revision requests, pending reviews, and unread teacher comments.
         </p>
       </div>
-      <ProductStatusCard
+      <StudentReviewStatus
         apiConfig={apiConfig}
         slugify={slugify}
         studentId={studentId}
         basePath={basePath}
-        variant="student"
-        defaultExpanded
       />
     </div>
   )
