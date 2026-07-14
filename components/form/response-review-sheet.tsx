@@ -283,7 +283,7 @@ export function ResponseReviewSheet({
         {/* Full-width review actions */}
         <div className="flex items-center gap-2 border-t px-6 py-3">
           {(status.isComplete || status.revisionNeeded) ? (
-            <Button variant="outline" className="flex-1 text-muted-foreground" disabled={acting} onClick={() => applyAction("ready")}>
+            <Button variant="outline" className="flex-1 bg-white dark:bg-transparent" disabled={acting} onClick={() => applyAction("ready")}>
               Undo review
             </Button>
           ) : (

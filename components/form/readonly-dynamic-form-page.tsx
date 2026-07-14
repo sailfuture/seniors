@@ -749,9 +749,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                           <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
                         </div>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
-                          className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                          className="h-6 bg-white px-2 text-[10px] dark:bg-transparent"
                           title="Undo — return to review"
                           onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
                         >
@@ -768,9 +768,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                         </div>
                         {!studentEditedSinceRevision && (
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                            className="h-6 bg-white px-2 text-[10px] dark:bg-transparent"
                             title="Undo — return to review"
                             onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
                           >

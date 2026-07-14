@@ -243,7 +243,7 @@ export function TeacherComment({
                 {(responseStatus.isComplete || responseStatus.revisionNeeded) && onUndoStatus && (
                   <Button
                     variant="outline"
-                    className="flex-1 gap-1.5 text-muted-foreground"
+                    className="flex-1 gap-1.5 bg-white dark:bg-transparent"
                     onClick={() => { onUndoStatus(); setOpen(false) }}
                   >
                     Undo review
