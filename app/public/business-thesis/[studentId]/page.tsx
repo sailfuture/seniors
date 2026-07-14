@@ -41,6 +41,7 @@ import { LineItemsTable } from "@/components/line-items-table"
 import { LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
 import { RichTextDisplay } from "@/components/form/rich-text-display"
 import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc } from "@/lib/rich-text"
+import { aspectRatioCss } from "@/lib/image-ratio"
 import { StatusBadge, statusOf, groupStatusOf } from "@/components/field-status"
 import { icons as lucideIcons } from "lucide-react"
 
@@ -76,6 +77,7 @@ interface TemplateQuestion {
   dropdownOptions?: string[]
   public_display_title?: string
   public_display_description?: string
+  image_aspect_ratio?: string
   _question_types?: { id: number; type: string; noInput?: boolean }
   [key: string]: unknown
 }
@@ -983,17 +985,31 @@ function QuestionBlock({
 
   if (isImage && hasImageResponse) {
     const imgSrc = response.image_response!.path || response.image_response!.url
+    // Honor the question's configured crop ratio; when it's "free" the upload
+    // was already cropped to the student's chosen shape, so show it at its
+    // natural aspect rather than stretching it into a tall cover box.
+    const ratioCss = aspectRatioCss(question.image_aspect_ratio)
     return (
       <Card className="flex h-full flex-col gap-0 border-gray-200 py-0 shadow-none">
-        <CardContent className="flex-1 p-0">
-          <ZoomableImage
-            src={resolveImageUrl(imgSrc)}
-            alt={title || "Student upload"}
-            className="rounded-t-xl"
-            imgClassName="h-full w-full object-cover"
-            imgStyle={{ minHeight: compact ? "200px" : "280px" }}
-            caption={title || description}
-          />
+        <CardContent className="p-0">
+          {ratioCss ? (
+            <div className="w-full overflow-hidden rounded-t-xl" style={{ aspectRatio: ratioCss }}>
+              <ZoomableImage
+                src={resolveImageUrl(imgSrc)}
+                alt={title || "Student upload"}
+                imgClassName="h-full w-full object-cover"
+                caption={title || description}
+              />
+            </div>
+          ) : (
+            <ZoomableImage
+              src={resolveImageUrl(imgSrc)}
+              alt={title || "Student upload"}
+              className="rounded-t-xl"
+              imgClassName="h-auto w-full"
+              caption={title || description}
+            />
+          )}
         </CardContent>
         {(title || description || status) && (
           <CardFooter className="flex-col items-start gap-0.5 border-t-0 bg-white">
