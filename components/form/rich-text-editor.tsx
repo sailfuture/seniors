@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useEditor, useEditorState, EditorContent, type Editor } from "@tiptap/react"
-import StarterKit from "@tiptap/starter-kit"
 import { Placeholder } from "@tiptap/extensions"
 import {
   Bold,
@@ -16,6 +15,7 @@ import {
   ListOrdered,
   TextQuote,
   Minus,
+  Table as TableIcon,
   Undo2,
   Redo2,
 } from "lucide-react"
@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { parseRichText, serializeRichText, type RichTextDoc } from "@/lib/rich-text"
+import { richTextExtensions } from "@/lib/rich-text-extensions"
 
 /**
  * Controlled TipTap editor: `value` is the serialized JSON string stored in
@@ -64,7 +65,7 @@ export function RichTextEditor({
       markLoadError()
     },
     extensions: [
-      StarterKit,
+      ...richTextExtensions,
       Placeholder.configure({
         placeholder: placeholder || "Start writing...",
       }),
@@ -74,7 +75,7 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class:
-          "prose prose-neutral dark:prose-invert max-w-none min-h-[55vh] px-1 py-4 focus:outline-none",
+          "prose prose-neutral dark:prose-invert max-w-none min-h-[55vh] px-6 py-8 sm:px-10 focus:outline-none",
       },
     },
     onUpdate: ({ editor }) => {
@@ -146,6 +147,7 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
             bulletList: editor.isActive("bulletList"),
             orderedList: editor.isActive("orderedList"),
             blockquote: editor.isActive("blockquote"),
+            inTable: editor.isActive("table"),
             canUndo: editor.can().undo(),
             canRedo: editor.can().redo(),
           }
@@ -157,7 +159,7 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
   const chain = () => editor.chain().focus()
 
   return (
-    <div className="bg-background sticky top-0 z-10 flex flex-wrap items-center gap-0.5 border-b py-2">
+    <div className="bg-background sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-t-lg border-b px-2 py-2">
       <ToolbarButton
         label="Bold"
         active={state.bold}
@@ -239,6 +241,17 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
         onClick={() => chain().setHorizontalRule().run()}
       >
         <Minus />
+      </ToolbarButton>
+      <ToolbarButton
+        label={state.inTable ? "Delete table" : "Insert table"}
+        active={state.inTable}
+        onClick={() =>
+          state.inTable
+            ? chain().deleteTable().run()
+            : chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+        }
+      >
+        <TableIcon />
       </ToolbarButton>
 
       <Separator orientation="vertical" className="mx-1 h-6" />

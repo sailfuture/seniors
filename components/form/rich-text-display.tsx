@@ -2,8 +2,8 @@
 
 import { useMemo } from "react"
 import { renderToReactElement } from "@tiptap/static-renderer/pm/react"
-import StarterKit from "@tiptap/starter-kit"
 import { parseRichText } from "@/lib/rich-text"
+import { richTextExtensions } from "@/lib/rich-text-extensions"
 import { cn } from "@/lib/utils"
 
 /**
@@ -17,7 +17,7 @@ export function RichTextDisplay({ raw, className }: { raw: string; className?: s
     const doc = parseRichText(raw)
     if (!doc || !doc.content?.length) return null
     try {
-      return renderToReactElement({ content: doc, extensions: [StarterKit] })
+      return renderToReactElement({ content: doc, extensions: richTextExtensions })
     } catch {
       return null
     }

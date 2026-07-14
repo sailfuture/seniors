@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -39,15 +39,15 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { TeacherComment } from "./teacher-comment"
-import { BlurredFitImage } from "./blurred-fit-image"
 import type { Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LineItemsTable } from "@/components/line-items-table"
 import { isLineItemsQuestion } from "@/lib/line-items"
 import { RichTextDisplay } from "./rich-text-display"
-import { extractPlainText, isRichTextQuestion, richTextWordCount } from "@/lib/rich-text"
+import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
+import { ZoomableImage } from "@/components/zoomable-image"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
-import { useRefreshRegister } from "@/lib/refresh-context"
+import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -206,6 +206,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const focusApplied = useRef(false)
   const { data: session } = useSession()
   const { register: registerRefresh, unregister: unregisterRefresh } = useRefreshRegister()
+  const bumpSidebar = useBumpSidebar()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
@@ -442,6 +443,11 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           if (nowRevision !== wasRevision) {
             window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: nowRevision ? 1 : -1, type: "revision" } }))
           }
+          // A completion change can flip a section's green "fully complete"
+          // check; that set is only recomputed on a sidebar refetch, so bump it.
+          if (!!prevResp?.isComplete !== !!patch.isComplete) {
+            bumpSidebar()
+          }
 
           setResponses((prev) => {
             const next = new Map(prev)
@@ -486,7 +492,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         if (!silent) toast.error("Failed to update status")
       }
     },
-    [session, studentId, sectionId, questions, responses, cfg, F]
+    [session, studentId, sectionId, questions, responses, cfg, F, bumpSidebar]
   )
 
   if (loading) {
@@ -563,7 +569,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         if (isImage) {
           const url = getImageUrl(imageValue)
           displayValue = url ? (
-            <BlurredFitImage src={url} alt={q.field_label} className="rounded-lg border" />
+            <ZoomableImage src={url} alt={q.field_label} className="rounded-lg border" caption={q.field_label} />
           ) : (
             <div className="text-muted-foreground flex h-32 items-center justify-center rounded-lg border border-dashed text-sm">
               No image uploaded
@@ -612,7 +618,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           )
         } else if (isLineItemsQuestion(q)) {
           displayValue = <LineItemsTable raw={value} />
-        } else if (isRichText) {
+        } else if (isRichText || looksLikeRichTextDoc(value)) {
+          // Fall back on the doc shape too, so a stored TipTap essay always
+          // renders as rich text instead of dumping raw JSON, even if the
+          // question's type flag is out of sync.
           displayValue = (
             <div>
               <RichTextDisplay raw={value} />
@@ -975,6 +984,10 @@ function PlagiarismScoresInline({ data }: { data: GptZeroResult }) {
   )
 }
 
+// Bumped each time a group is manually expanded, so every completed question
+// inside opens with it instead of needing a click on each one.
+const ReadonlyGroupExpandContext = createContext(0)
+
 function CollapsibleQuestionCard({
   fieldName,
   colSpan,
@@ -993,6 +1006,16 @@ function CollapsibleQuestionCard({
   children: React.ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(isComplete)
+
+  // When the surrounding group is expanded, open this question too. Adjusting
+  // state during render (comparing against the last-seen key) is React's
+  // recommended pattern for reacting to a changing value without an effect.
+  const groupExpandKey = useContext(ReadonlyGroupExpandContext)
+  const [lastExpandKey, setLastExpandKey] = useState(groupExpandKey)
+  if (groupExpandKey !== lastExpandKey) {
+    setLastExpandKey(groupExpandKey)
+    if (groupExpandKey > 0) setCollapsed(false)
+  }
 
   return (
     <div
@@ -1070,12 +1093,19 @@ function ReadonlyGroupCard({
   renderQuestionList: (qs: TemplateQuestion[], flat?: boolean) => React.ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(allComplete)
+  const [expandKey, setExpandKey] = useState(0)
+
+  const toggleCollapsed = () => {
+    // Expanding the group opens every completed question inside it too.
+    if (collapsed) setExpandKey((k) => k + 1)
+    setCollapsed((v) => !v)
+  }
 
   return (
     <Card className="overflow-hidden !pt-0 !gap-0">
       <div
         className="cursor-pointer border-b px-6 py-4 select-none"
-        onClick={() => setCollapsed((v) => !v)}
+        onClick={toggleCollapsed}
       >
         <div className="flex items-center justify-between">
           <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1170,18 +1200,20 @@ function ReadonlyGroupCard({
       <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}>
         <div className="overflow-hidden">
           <CardContent className="p-6">
-            {hasDisplayType ? (() => {
-              const displayExpansion = group[F.displayTypesExpansion] as { id: number; columns?: number } | undefined
-              const cols = displayExpansion?.columns ?? 4
-              const colClass = cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : cols === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
-              return cols === 1 ? renderQuestionList(gQuestions) : (
-                <div className={`grid gap-3 ${colClass}`}>
-                  {renderQuestionList(gQuestions, true)}
-                </div>
-              )
-            })() : (
-              renderQuestionList(gQuestions)
-            )}
+            <ReadonlyGroupExpandContext.Provider value={expandKey}>
+              {hasDisplayType ? (() => {
+                const displayExpansion = group[F.displayTypesExpansion] as { id: number; columns?: number } | undefined
+                const cols = displayExpansion?.columns ?? 4
+                const colClass = cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : cols === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
+                return cols === 1 ? renderQuestionList(gQuestions) : (
+                  <div className={`grid gap-3 ${colClass}`}>
+                    {renderQuestionList(gQuestions, true)}
+                  </div>
+                )
+              })() : (
+                renderQuestionList(gQuestions)
+              )}
+            </ReadonlyGroupExpandContext.Provider>
           </CardContent>
         </div>
       </div>

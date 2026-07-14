@@ -289,8 +289,11 @@ export function EssayEditorPage({
         </div>
       )}
 
-      <div className="mt-4">
+      {/* Document frame: the editor sits as a white "page" on a light-gray
+          surround, so the writing surface reads like a real document. */}
+      <div className="mt-4 rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20">
         <RichTextEditor
+          className="rounded-lg border bg-white shadow-sm dark:bg-card"
           value={value}
           onChange={handleChange}
           onBlur={handleBlur}
