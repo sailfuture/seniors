@@ -54,6 +54,10 @@ const BT_TEMPLATE_ENDPOINT = `${BT_BASE}/businessthesis_template`
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
 
+// Per-student graduation transcript, keyed by the student's id.
+const TRANSCRIPT_BASE =
+  "https://professionalism.sailfutureacademy.org/graduation-requirements"
+
 interface StudentInfo {
   name: string
   email: string
@@ -533,7 +537,7 @@ function buildStudentNav(
   const btItems = buildBusinessSectionItems(btSections)
   const onLifeMap = pathname.startsWith("/life-map")
   const onBusiness = pathname.startsWith("/business-thesis")
-  return [
+  const groups = [
     {
       title: "Life Map",
       url: `/life-map`,
@@ -590,6 +594,11 @@ function buildStudentNav(
       ],
     },
   ]
+
+  // Inside a product only that product's nav shows; the home page shows both.
+  if (onBusiness) return groups.filter((g) => g.title === "Business Thesis")
+  if (onLifeMap) return groups.filter((g) => g.title === "Life Map")
+  return groups
 }
 
 function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThesisSection[], pathname: string, students: StudentListItem[]) {
@@ -832,6 +841,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         )}
         <NavMain items={navItems} hideLabel={!!studentInfo} loading={sidebarLoading} />
+        {studentId && (
+          <SidebarGroup>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Transcript">
+                  <a href={`${TRANSCRIPT_BASE}/${studentId}`} target="_blank" rel="noopener noreferrer">
+                    <HugeiconsIcon icon={CheckListIcon} strokeWidth={2} />
+                    <span>Transcript</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
         {!isAdmin && (
           <SidebarGroup>
             <SidebarGroupLabel>Tools</SidebarGroupLabel>

@@ -210,7 +210,7 @@ export function UnitEconomicsFlow({
   const flowKey = `${components.map((c) => `${c.name}:${c.cost}`).join("|")}|${unitCost}|${salePrice}|${margin}|${brand.primary}`
 
   return (
-    <div className="h-[380px] w-full">
+    <div className="h-[380px] w-full overflow-hidden rounded-xl border border-gray-200">
       <ReactFlow
         key={flowKey}
         defaultNodes={nodes}

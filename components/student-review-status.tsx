@@ -522,23 +522,24 @@ export function StudentReviewStatus({
 
   return (
     <div className="space-y-6">
-      {/* Revisions requested — grouped by section */}
-      <StatusCard dot="bg-red-500" title="Revisions requested" count={revisionCount}>
-        {revisionCount === 0 ? (
-          <Empty text="No revisions requested." />
+      {/* Pending review — top; grouped by section; rows open the detail sheet */}
+      <StatusCard dot="bg-blue-500" title="Pending review" count={pendingCount}>
+        {pendingCount === 0 ? (
+          <Empty text="Nothing waiting on your teacher." />
         ) : (
           <div className="divide-y">
-            {revisionsBySection.map((g) => (
+            {pendingBySection.map((g) => (
               <div key={g.section.id}>
                 <SectionHeader title={g.section.section_title} />
                 {g.items.map(({ q, r }) => (
                   <button
                     key={q.id}
                     type="button"
-                    onClick={() => setSheet({ kind: "revision", fieldName: q.field_name, questionId: q.id })}
+                    onClick={() =>
+                      setSheet({ kind: "comment", fieldName: q.field_name, questionId: q.id, sectionId: g.section.id })
+                    }
                     className="hover:bg-muted/50 flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors"
                   >
-                    <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="text-red-500 size-4 shrink-0" />
                     <RowLabel label={q.field_label} preview={previewOf(q, r)} />
                     <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
                       {relativeDate(toTs(r.last_edited) ?? r.created_at ?? null)}
@@ -552,7 +553,7 @@ export function StudentReviewStatus({
         )}
       </StatusCard>
 
-      {/* Unread comments — above pending, grouped by section */}
+      {/* Unread comments — under pending review, grouped by section */}
       <StatusCard dot="bg-gray-400" title="Unread comments" count={unreadCount}>
         {unreadCount === 0 ? (
           <Empty text="No unread comments." />
@@ -597,24 +598,23 @@ export function StudentReviewStatus({
         )}
       </StatusCard>
 
-      {/* Pending review — grouped by section; rows open the detail sheet */}
-      <StatusCard dot="bg-blue-500" title="Pending review" count={pendingCount}>
-        {pendingCount === 0 ? (
-          <Empty text="Nothing waiting on your teacher." />
+      {/* Revisions requested — bottom; grouped by section */}
+      <StatusCard dot="bg-red-500" title="Revisions requested" count={revisionCount}>
+        {revisionCount === 0 ? (
+          <Empty text="No revisions requested." />
         ) : (
           <div className="divide-y">
-            {pendingBySection.map((g) => (
+            {revisionsBySection.map((g) => (
               <div key={g.section.id}>
                 <SectionHeader title={g.section.section_title} />
                 {g.items.map(({ q, r }) => (
                   <button
                     key={q.id}
                     type="button"
-                    onClick={() =>
-                      setSheet({ kind: "comment", fieldName: q.field_name, questionId: q.id, sectionId: g.section.id })
-                    }
+                    onClick={() => setSheet({ kind: "revision", fieldName: q.field_name, questionId: q.id })}
                     className="hover:bg-muted/50 flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors"
                   >
+                    <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="text-red-500 size-4 shrink-0" />
                     <RowLabel label={q.field_label} preview={previewOf(q, r)} />
                     <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
                       {relativeDate(toTs(r.last_edited) ?? r.created_at ?? null)}
