@@ -156,7 +156,7 @@ export function NavMain({
   const pathname = usePathname()
 
   return (
-    <SidebarGroup>
+    <SidebarGroup className={hideLabel ? "pt-0" : ""}>
       {!hideLabel && <SidebarGroupLabel>Navigation</SidebarGroupLabel>}
       <SidebarMenu>
         {items.map((item) => (

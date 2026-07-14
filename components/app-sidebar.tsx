@@ -818,7 +818,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       )}
       <SidebarContent>
         {studentInfo && (
-          <SidebarGroup>
+          <SidebarGroup className="pb-0">
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip="Student List">

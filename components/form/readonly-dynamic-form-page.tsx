@@ -547,6 +547,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const qNeedsRevision = response?.revisionNeeded === true
         const isSubmitted = response && (response.readyReview || response.isComplete || response.revisionNeeded)
         const qIsDimmed = qIsComplete || qNeedsRevision
+        const relativeTime = formatRelativeTime(response?.last_edited)
+        // The AI/originality report and last-edited time sit together in the
+        // field's lower-right; only text answers have a GPTZero report.
+        const showAiFooter = !!(gptzero && isSubmitted)
 
         let studentEditedSinceRevision = false
         if (qNeedsRevision && response) {
@@ -652,12 +656,22 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               ) : (
                 <RichTextDisplay raw={value} showComments />
               )}
-              {(q.min_words > 0 || (gptzero && isSubmitted)) && (
-                <div className="text-muted-foreground/60 mt-1 flex items-center justify-between text-xs">
+              {(q.min_words > 0 || showAiFooter) && (
+                <div className="text-muted-foreground/60 mt-1 flex items-center justify-between gap-2 text-xs">
                   <span>
                     {q.min_words > 0 ? `${richTextWordCount(value)} / ${q.min_words} words` : ""}
                   </span>
-                  {gptzero && isSubmitted && <PlagiarismScoresInline data={gptzero} />}
+                  {showAiFooter && (
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      <PlagiarismScoresInline data={gptzero!} />
+                      {relativeTime && (
+                        <>
+                          <span className="text-muted-foreground/40">&mdash;</span>
+                          <span>{relativeTime}</span>
+                        </>
+                      )}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -668,19 +682,27 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               <p className={`whitespace-pre-wrap text-sm ${qIsDimmed ? "" : "font-semibold"}`}>
                 {value || "—"}
               </p>
-              {isLong && (q.min_words > 0 || (gptzero && isSubmitted)) && (
-                <div className="text-muted-foreground/60 mt-1 flex items-center justify-between text-xs">
+              {isLong && (q.min_words > 0 || showAiFooter) && (
+                <div className="text-muted-foreground/60 mt-1 flex items-center justify-between gap-2 text-xs">
                   <span>
                     {isLong && q.min_words > 0 ? `${getWordCount(value)} / ${q.min_words} words` : ""}
                   </span>
-                  {gptzero && isSubmitted && <PlagiarismScoresInline data={gptzero} />}
+                  {showAiFooter && (
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      <PlagiarismScoresInline data={gptzero!} />
+                      {relativeTime && (
+                        <>
+                          <span className="text-muted-foreground/40">&mdash;</span>
+                          <span>{relativeTime}</span>
+                        </>
+                      )}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
           )
         }
-
-        const relativeTime = formatRelativeTime(response?.last_edited)
 
         return (
           <CollapsibleQuestionCard
@@ -693,7 +715,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             displayValue={displayValue}
           >
               <div className="flex items-center gap-2">
-                {relativeTime && (
+                {relativeTime && !showAiFooter && (
                   <span className="text-muted-foreground/60 text-[11px]">{relativeTime}</span>
                 )}
                 <TeacherComment
