@@ -112,9 +112,12 @@ export function UnitEconomicsFlow({
   const brand = useBrandTheme()
 
   const { nodes, edges } = useMemo(() => {
-    const primary = brand.primary ?? "#111827"
     const primaryInk = brand.hasBrand ? brand.primaryInk : "#111827"
     const edgeColor = brand.hasBrand ? brand.primaryInk : "#9CA3AF"
+    // Solid, weighted connectors read as prominent flow lines against the
+    // dotted grid behind them.
+    const edgeStyle = { stroke: edgeColor, strokeWidth: 2, strokeLinecap: "round" as const, opacity: 0.9 }
+    const edgeMarker = { type: MarkerType.Arrow, color: edgeColor, width: 20, height: 20, strokeWidth: 1.5 }
 
     const costVal = unitCost
     const priceVal = salePrice
@@ -139,8 +142,8 @@ export function UnitEconomicsFlow({
         id: `e-comp-${i}`,
         source: `comp-${i}`,
         target: "cost",
-        style: { stroke: edgeColor, strokeWidth: 1.5, strokeDasharray: "1 6", strokeLinecap: "round", opacity: 0.75 },
-        markerEnd: { type: MarkerType.Arrow, color: edgeColor, width: 18, height: 18, strokeWidth: 1.25 },
+        style: edgeStyle,
+        markerEnd: edgeMarker,
       })
     })
 
@@ -182,7 +185,7 @@ export function UnitEconomicsFlow({
         value: money(marginVal),
         caption: marginDerived ? "= sale price − unit cost" : "sale price − unit cost",
         border: primaryInk,
-        tint: brand.hasBrand ? `${primary}12` : undefined,
+        tint: "#FFFFFF",
         accent: primaryInk,
         hasTarget: true,
       },
@@ -193,8 +196,8 @@ export function UnitEconomicsFlow({
         id: `e-${source}-margin`,
         source,
         target: "margin",
-        style: { stroke: edgeColor, strokeWidth: 1.5, strokeDasharray: "1 6", strokeLinecap: "round", opacity: 0.75 },
-        markerEnd: { type: MarkerType.Arrow, color: edgeColor, width: 18, height: 18, strokeWidth: 1.25 },
+        style: edgeStyle,
+        markerEnd: edgeMarker,
       })
     }
 
@@ -230,7 +233,7 @@ export function UnitEconomicsFlow({
         preventScrolling={false}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#E5E7EB" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={2} color="#CBD5E1" />
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
     </div>

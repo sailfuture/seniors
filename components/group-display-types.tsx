@@ -274,12 +274,16 @@ function GalleryDisplay({
       <div className={`grid items-stretch gap-4 ${gridCols}`}>
         {populated.map((item) => (
           <div key={item.key} className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <ZoomableImage
-              src={item.url}
-              alt={item.title || item.descriptions[0] || "Gallery image"}
-              imgClassName="aspect-[4/3] w-full object-cover"
-              caption={item.title || item.descriptions[0]}
-            />
+            {/* Fixed-ratio image box that never stretches, so every card's
+                image is the same height and the titles below line up. */}
+            <div className="aspect-[4/3] w-full shrink-0 overflow-hidden">
+              <ZoomableImage
+                src={item.url}
+                alt={item.title || item.descriptions[0] || "Gallery image"}
+                imgClassName="h-full w-full object-cover"
+                caption={item.title || item.descriptions[0]}
+              />
+            </div>
             {(item.title || item.descriptions.length > 0) && (
               <div className="flex flex-1 flex-col gap-1 border-t border-gray-200 px-4 py-3">
                 {item.title && (
@@ -380,110 +384,120 @@ function CompetitorMapDisplay({
 
   return (
     <div className="space-y-5">
-      {/* Map — y grows upward: low/low bottom-left, high/high top-right */}
-      <div className="relative w-full overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: "3 / 1" }}>
-        {/* Corner quadrant labels */}
-        <span className="absolute left-3 top-2 z-10 text-[11px] text-muted-foreground/60">
-          High {yAxisLabel} / Low {xAxisLabel}
-        </span>
-        <span className="absolute right-3 top-2 z-10 text-[11px] text-muted-foreground/60">
-          High {yAxisLabel} / High {xAxisLabel}
-        </span>
-        <span className="absolute bottom-2 left-3 z-10 text-[11px] text-muted-foreground/60">
-          Low {yAxisLabel} / Low {xAxisLabel}
-        </span>
-        <span className="absolute bottom-2 right-3 z-10 text-[11px] text-muted-foreground/60">
-          Low {yAxisLabel} / High {xAxisLabel}
-        </span>
+      {/* Positioning map framed by its axes — a 2-row grid so the Y-axis
+          label (row 1, col 1) centers against the plot box height while the
+          X-axis label (row 2, col 2) sits centered beneath the grid. The
+          100×100 plot therefore falls within both axis labels. */}
+      <div className="grid grid-cols-[auto_1fr] gap-x-2 sm:gap-x-3">
+        {/* Y axis label — centered against the plot box (grid row 1) */}
+        <div className="flex items-center justify-center">
+          <span className="rotate-180 whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl]">
+            {yAxisLabel}
+          </span>
+        </div>
 
-        {/* Grid lines — quarter grid with an emphasized center cross */}
-        {[12.5, 25, 37.5, 50, 62.5, 75, 87.5].map((p) => (
-          <div
-            key={`v-${p}`}
-            className={`absolute top-0 h-full w-px ${p === 50 ? "bg-gray-300" : "bg-gray-100"}`}
-            style={{ left: `${p}%` }}
-          />
-        ))}
-        {[25, 50, 75].map((p) => (
-          <div
-            key={`h-${p}`}
-            className={`absolute left-0 h-px w-full ${p === 50 ? "bg-gray-300" : "bg-gray-100"}`}
-            style={{ top: `${p}%` }}
-          />
-        ))}
+        {/* Plot grid — y grows upward: low/low bottom-left, high/high top-right */}
+        <div className="relative w-full min-w-0 overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: "3 / 1" }}>
+          {/* Corner quadrant labels */}
+          <span className="absolute left-3 top-2 z-10 text-[11px] text-muted-foreground/60">
+            High {yAxisLabel} / Low {xAxisLabel}
+          </span>
+          <span className="absolute right-3 top-2 z-10 text-[11px] text-muted-foreground/60">
+            High {yAxisLabel} / High {xAxisLabel}
+          </span>
+          <span className="absolute bottom-2 left-3 z-10 text-[11px] text-muted-foreground/60">
+            Low {yAxisLabel} / Low {xAxisLabel}
+          </span>
+          <span className="absolute bottom-2 right-3 z-10 text-[11px] text-muted-foreground/60">
+            Low {yAxisLabel} / High {xAxisLabel}
+          </span>
 
-        {/* Axis labels in shadow badges */}
-        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+          {/* Grid lines — quarter grid with an emphasized center cross */}
+          {[12.5, 25, 37.5, 50, 62.5, 75, 87.5].map((p) => (
+            <div
+              key={`v-${p}`}
+              className={`absolute top-0 h-full w-px ${p === 50 ? "bg-gray-300" : "bg-gray-100"}`}
+              style={{ left: `${p}%` }}
+            />
+          ))}
+          {[25, 50, 75].map((p) => (
+            <div
+              key={`h-${p}`}
+              className={`absolute left-0 h-px w-full ${p === 50 ? "bg-gray-300" : "bg-gray-100"}`}
+              style={{ top: `${p}%` }}
+            />
+          ))}
+
+          {/* Entities: a dot marks the exact coordinate; the name chip floats
+              beside it. Coordinates 0–100 map into an inset field (MX/MY) so a
+              point at an extreme value stays fully inside the box instead of
+              being clipped at the edge. The chip flips below the dot when the
+              dot sits near the top so it never runs off. */}
+          {hasData && entities.map((entity, idx) => {
+            if (!entity.name) return null
+            const xPercent = Math.max(0, Math.min(100, entity.x))
+            const yPercent = Math.max(0, Math.min(100, entity.y))
+            const MX = 26
+            const MY = 24
+            const fromLeft = `calc(${MX}px + (100% - ${MX * 2}px) * ${xPercent / 100})`
+            const fromBottom = `calc(${MY}px + (100% - ${MY * 2}px) * ${yPercent / 100})`
+            const fromTop = `calc(${MY}px + (100% - ${MY * 2}px) * ${(100 - yPercent) / 100})`
+            const dotNearTop = yPercent >= 55
+            const chipStyle: React.CSSProperties = dotNearTop
+              ? {
+                  left: `clamp(92px, ${fromLeft}, calc(100% - 92px))`,
+                  top: `min(calc(${fromTop} + 12px), calc(100% - 40px))`,
+                }
+              : {
+                  left: `clamp(92px, ${fromLeft}, calc(100% - 92px))`,
+                  bottom: `min(calc(${fromBottom} + 12px), calc(100% - 40px))`,
+                }
+            return (
+              <React.Fragment key={idx}>
+                <div
+                  className="absolute z-20 -translate-x-1/2 translate-y-1/2"
+                  style={{ left: fromLeft, bottom: fromBottom }}
+                >
+                  <span
+                    className="block size-3 rounded-full border-2 border-white shadow-md"
+                    style={{ background: entity.isMine ? myChipBorder : "#9CA3AF" }}
+                  />
+                </div>
+                <div className="absolute z-10 -translate-x-1/2" style={chipStyle}>
+                  <div
+                    title={entity.name}
+                    className={`flex max-w-[170px] items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-2.5 shadow-sm ${
+                      entity.isMine ? "border-2" : "border border-gray-200"
+                    }`}
+                    style={entity.isMine ? { borderColor: myChipBorder } : undefined}
+                  >
+                    {entity.logoUrl ? (
+                      <div className="size-6 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
+                        <img
+                          src={entity.logoUrl}
+                          alt={entity.name}
+                          className="size-full object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-600">
+                        {entity.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="truncate text-xs font-medium text-gray-700">
+                      {entity.name}
+                    </span>
+                  </div>
+                </div>
+              </React.Fragment>
+            )
+          })}
+        </div>
+
+        {/* X axis label — row 2 under the plot column, centered on the grid */}
+        <div className="col-start-2 mt-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {xAxisLabel}
         </div>
-        <div className="absolute left-1 top-1/2 z-10 origin-center -translate-y-1/2 -rotate-90 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
-          {yAxisLabel}
-        </div>
-
-        {/* Entities: a dot marks the exact coordinate; the name chip floats
-            beside it. Coordinates 0–100 map into an inset field (MX/MY) so a
-            point at an extreme value stays fully inside the box instead of
-            being clipped at the edge. The chip flips below the dot when the
-            dot sits near the top so it never runs off. */}
-        {hasData && entities.map((entity, idx) => {
-          if (!entity.name) return null
-          const xPercent = Math.max(0, Math.min(100, entity.x))
-          const yPercent = Math.max(0, Math.min(100, entity.y))
-          const MX = 26
-          const MY = 24
-          const fromLeft = `calc(${MX}px + (100% - ${MX * 2}px) * ${xPercent / 100})`
-          const fromBottom = `calc(${MY}px + (100% - ${MY * 2}px) * ${yPercent / 100})`
-          const fromTop = `calc(${MY}px + (100% - ${MY * 2}px) * ${(100 - yPercent) / 100})`
-          const dotNearTop = yPercent >= 55
-          const chipStyle: React.CSSProperties = dotNearTop
-            ? {
-                left: `clamp(92px, ${fromLeft}, calc(100% - 92px))`,
-                top: `min(calc(${fromTop} + 12px), calc(100% - 40px))`,
-              }
-            : {
-                left: `clamp(92px, ${fromLeft}, calc(100% - 92px))`,
-                bottom: `min(calc(${fromBottom} + 12px), calc(100% - 40px))`,
-              }
-          return (
-            <React.Fragment key={idx}>
-              <div
-                className="absolute z-20 -translate-x-1/2 translate-y-1/2"
-                style={{ left: fromLeft, bottom: fromBottom }}
-              >
-                <span
-                  className="block size-3 rounded-full border-2 border-white shadow-md"
-                  style={{ background: entity.isMine ? myChipBorder : "#9CA3AF" }}
-                />
-              </div>
-              <div className="absolute z-10 -translate-x-1/2" style={chipStyle}>
-                <div
-                  title={entity.name}
-                  className={`flex max-w-[170px] items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-2.5 shadow-sm ${
-                    entity.isMine ? "border-2" : "border border-gray-200"
-                  }`}
-                  style={entity.isMine ? { borderColor: myChipBorder } : undefined}
-                >
-                  {entity.logoUrl ? (
-                    <div className="size-6 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
-                      <img
-                        src={entity.logoUrl}
-                        alt={entity.name}
-                        className="size-full object-contain"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-600">
-                      {entity.name.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <span className="truncate text-xs font-medium text-gray-700">
-                    {entity.name}
-                  </span>
-                </div>
-              </div>
-            </React.Fragment>
-          )
-        })}
       </div>
 
       {/* Company cards */}
