@@ -437,6 +437,19 @@ export default function PublicBusinessThesisPage({
                   })}
                 </SidebarMenu>
               </SidebarGroup>
+              <SidebarGroup>
+                <SidebarGroupLabel>Export</SidebarGroupLabel>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild tooltip="Print / PDF">
+                      <a href={`/public/business-thesis/${studentId}/print`} target="_blank" rel="noopener noreferrer">
+                        <lucideIcons.Printer />
+                        <span>Print / PDF</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroup>
             </SidebarContent>
           </Sidebar>
 

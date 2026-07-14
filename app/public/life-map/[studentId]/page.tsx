@@ -358,6 +358,19 @@ export default function PublicLifeMapPage({
                   })}
                 </SidebarMenu>
               </SidebarGroup>
+              <SidebarGroup>
+                <SidebarGroupLabel>Export</SidebarGroupLabel>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild tooltip="Print / PDF">
+                      <a href={`/public/life-map/${studentId}/print`} target="_blank" rel="noopener noreferrer">
+                        <lucideIcons.Printer />
+                        <span>Print / PDF</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroup>
             </SidebarContent>
           </Sidebar>
 
@@ -858,7 +871,7 @@ function ResponseDisplay({
   if (typeId === QUESTION_TYPE.DATE) {
     const dateVal = response.date_response || text
     if (!dateVal) return <p className="text-muted-foreground text-sm italic">—</p>
-    return <p className="text-foreground text-sm font-bold">{formatDate(dateVal)}</p>
+    return <p className="text-foreground text-sm font-normal">{formatDate(dateVal)}</p>
   }
 
   if (typeId === QUESTION_TYPE.CURRENCY) {

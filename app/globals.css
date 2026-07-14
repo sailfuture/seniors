@@ -205,3 +205,23 @@
 .rt-comments-visible .rt-comment.rt-comment-active {
   background: rgba(245, 158, 11, 0.45);
 }
+
+/* ── Print document (US Letter, 8.5×11) ──────────────────────────────────
+   Used by the /public/…/print routes. The @page Letter rule is injected by
+   the PrintDocument component itself (Lightning CSS strips named @page
+   rules, and a global one here would force Letter on every app page), so
+   only route-scoped print polish lives in this stylesheet. */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  .print-doc {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-doc a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
