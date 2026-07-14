@@ -188,7 +188,7 @@ function UnitEconomicsDisplay({
 
 const QUESTION_TYPE_SHORT_TEXT = 2
 
-interface GallerySlide {
+export interface GallerySlide {
   imageQ: TemplateQuestion
   titleQ: TemplateQuestion | null
   descQs: TemplateQuestion[]
@@ -201,7 +201,7 @@ interface GallerySlide {
 // labeled like a name/title attaches to the next image, any other short
 // text attaches to the previous image as its description. Questions of any
 // other type (e.g. a long response) become intro text above the grid.
-function buildGallerySlides(questions: TemplateQuestion[]): {
+export function buildGallerySlides(questions: TemplateQuestion[]): {
   slides: GallerySlide[]
   intro: TemplateQuestion[]
 } {
@@ -332,16 +332,26 @@ interface MapEntity {
   isMine?: boolean
 }
 
-function CompetitorMapDisplay({
-  questions,
-  responseMap,
-}: {
-  questions: TemplateQuestion[]
+export interface CompetitorMapCardData {
+  label: string
+  entity: MapEntity
+  positioning: string
+}
+
+export interface CompetitorMapData {
+  xAxisLabel: string
+  yAxisLabel: string
+  entities: MapEntity[]
+  cards: CompetitorMapCardData[]
+  hasData: boolean
+}
+
+/** Field-name-driven extraction of the competitor map's data, shared by the
+    public display and the print document. */
+export function getCompetitorMapData(
+  questions: TemplateQuestion[],
   responseMap: Map<number, StudentResponse>
-  mode: string
-}) {
-  const brand = useBrandTheme()
-  const myChipBorder = brand.primary ?? "#111827"
+): CompetitorMapData {
   const xAxisLabel = getTextValue("x_axis_label", questions, responseMap) || "X Axis"
   const yAxisLabel = getTextValue("y_axis_label", questions, responseMap) || "Y Axis"
 
@@ -373,8 +383,6 @@ function CompetitorMapDisplay({
     },
   ]
 
-  const hasData = entities.some((e) => e.name)
-
   const labels = [
     { label: "Competitor 1", idx: 0, positioningField: "company_1_positioning" },
     { label: "Competitor 2", idx: 1, positioningField: "company_2_positioning" },
@@ -382,8 +390,27 @@ function CompetitorMapDisplay({
     { label: "My Company", idx: 3, positioningField: "my_company_positioning" },
   ]
 
+  return {
+    xAxisLabel,
+    yAxisLabel,
+    entities,
+    hasData: entities.some((e) => e.name),
+    cards: labels.map(({ label, idx, positioningField }) => ({
+      label,
+      entity: entities[idx],
+      positioning: getTextValue(positioningField, questions, responseMap),
+    })),
+  }
+}
+
+/** The framed plot on its own — axis labels, 100×100 grid, entity chips. */
+export function CompetitorMapPlot({ data }: { data: CompetitorMapData }) {
+  const brand = useBrandTheme()
+  const myChipBorder = brand.primary ?? "#111827"
+  const { xAxisLabel, yAxisLabel, entities, hasData } = data
+
   return (
-    <div className="space-y-5">
+    <>
       {/* Positioning map framed by its axes — a 2-row grid so the Y-axis
           label (row 1, col 1) centers against the plot box height while the
           X-axis label (row 2, col 2) sits centered beneath the grid. The
@@ -499,12 +526,26 @@ function CompetitorMapDisplay({
           {xAxisLabel}
         </div>
       </div>
+    </>
+  )
+}
+
+function CompetitorMapDisplay({
+  questions,
+  responseMap,
+}: {
+  questions: TemplateQuestion[]
+  responseMap: Map<number, StudentResponse>
+  mode: string
+}) {
+  const data = getCompetitorMapData(questions, responseMap)
+  return (
+    <div className="space-y-5">
+      <CompetitorMapPlot data={data} />
 
       {/* Company cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {labels.map(({ label, idx, positioningField }) => {
-          const entity = entities[idx]
-          const positioning = getTextValue(positioningField, questions, responseMap)
+        {data.cards.map(({ label, entity, positioning }, idx) => {
           return (
             <Card key={idx} className="gap-0 border-gray-200 py-0 shadow-none">
               <CardContent className="p-3">

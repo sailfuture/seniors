@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon, PrinterIcon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
@@ -13,11 +13,17 @@ import {
   useGoogleFont,
   type BrandTheme,
 } from "@/components/brand-display"
-import { GroupDisplayRenderer, DISPLAY_TYPE } from "@/components/group-display-types"
-import { LineItemsTable } from "@/components/line-items-table"
-import { isLineItemsQuestion, LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
+import {
+  GroupDisplayRenderer,
+  DISPLAY_TYPE,
+  getCompetitorMapData,
+  CompetitorMapPlot,
+  buildGallerySlides,
+} from "@/components/group-display-types"
+import { LineItemsTable, ProductLineItemsTable } from "@/components/line-items-table"
+import { isLineItemsQuestion, parseLineItemProducts, LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
 import { RichTextDisplay } from "@/components/form/rich-text-display"
-import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc } from "@/lib/rich-text"
+import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc, parseRichText } from "@/lib/rich-text"
 import type { FormApiConfig } from "@/lib/form-api-config"
 
 const STUDENTS_ENDPOINT =
@@ -313,8 +319,6 @@ export function PrintDocument({
   const title = isBusiness ? brand.companyName || "Business Thesis" : studentName || "Life Map"
   const titleFont = brand.primaryFont ? { fontFamily: `"${brand.primaryFont}", inherit` } : undefined
   const accent = brand.hasBrand ? brand.primaryInk : "#111827"
-  // Running header text for the printed pages; quotes would break the CSS string.
-  const runningHeader = `${title} — ${docLabel}`.replace(/["\\]/g, "")
 
   if (loading) {
     return (
@@ -330,32 +334,14 @@ export function PrintDocument({
       {/* Letter sizing and fragmentation rules live here, not in globals.css:
           the @page rule only exists while a print route is mounted (so other
           app pages keep the browser's default paper), and Lightning CSS
-          strips both named @page rules and these break-inside declarations
-          from the compiled stylesheet. The break rules keep cards, images,
-          and table rows from being sliced across page boundaries — that is
-          what clipped the competitor-map description cards. */}
+          strips both @page rules and these break-inside declarations from the
+          compiled stylesheet. Headers and page numbers are real in-sheet
+          elements — content is measured and packed into one-page sheets — so
+          they work in every browser, unlike @page margin boxes. */}
       <style>{`
         @page {
           size: letter;
           margin: 0.75in;
-          @top-center {
-            content: "${runningHeader}";
-            font-family: ui-sans-serif, system-ui, sans-serif;
-            font-size: 7pt;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: #9ca3af;
-          }
-          @bottom-center {
-            content: "Page " counter(page);
-            font-family: ui-sans-serif, system-ui, sans-serif;
-            font-size: 7pt;
-            color: #9ca3af;
-          }
-        }
-        /* The cover carries its own masthead — no running header there. */
-        @page :first {
-          @top-center { content: none; }
         }
         @media print {
           .print-doc [data-slot="card"],
@@ -452,62 +438,17 @@ export function PrintDocument({
           </div>
         </section>
 
-        {/* ── Sections ── */}
-        {printSections.map(({ section, ungrouped, groupBlocks }, i) => (
-          <section
-            key={section.id}
-            className="flex min-h-[11in] flex-col break-before-page bg-white p-[0.75in] shadow-md ring-1 ring-black/5 print:min-h-0 print:p-0 print:shadow-none print:ring-0"
-          >
-            <header className="mb-7 border-b border-gray-200 pb-5">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold tabular-nums" style={{ color: accent }}>
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span className="h-px w-8" style={{ background: accent }} />
-                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">{docLabel}</span>
-              </div>
-              <h2 className="mt-2 text-3xl font-bold tracking-tight" style={titleFont}>
-                {section.section_title}
-              </h2>
-              {(section.description || section.section_description) && (
-                <p className="mt-2 max-w-[6in] text-sm leading-relaxed text-gray-500">
-                  {section.description || section.section_description}
-                </p>
-              )}
-            </header>
-
-            {ungrouped.length > 0 && (
-              <div className="mb-8">
-                <QuestionGrid questions={ungrouped} responseMap={responseMap} brand={brand} />
-              </div>
-            )}
-
-            {groupBlocks.map(({ group, questions }) => (
-              <GroupBlock
-                key={group.id}
-                group={group}
-                questions={questions}
-                responseMap={responseMap}
-                brand={brand}
-                accent={accent}
-                displayTypesField={F.displayTypesId}
-              />
-            ))}
-
-            {ungrouped.length === 0 && groupBlocks.length === 0 && (
-              <p className="text-xs italic text-gray-400">
-                No approved content in this section yet.
-              </p>
-            )}
-
-            {/* Subtle in-sheet footer for the screen preview; the printed
-                pages carry their own running footer with real page numbers. */}
-            <div className="mt-auto flex items-center justify-between pt-8 text-[8px] uppercase tracking-[0.14em] text-gray-300 print:hidden">
-              <span>{title}</span>
-              <span>{docLabel}</span>
-            </div>
-          </section>
-        ))}
+        {/* ── Sections, measured and packed into one-page sheets ── */}
+        <PaginatedSheets
+          printSections={printSections}
+          responseMap={responseMap}
+          brand={brand}
+          accent={accent}
+          titleFont={titleFont}
+          displayTypesField={F.displayTypesId}
+          title={title}
+          docLabel={docLabel}
+        />
 
         {printSections.length === 0 && (
           <section className="bg-white p-[0.75in] text-center shadow-md ring-1 ring-black/5 print:p-0 print:shadow-none print:ring-0">
@@ -520,22 +461,157 @@ export function PrintDocument({
   )
 }
 
-function GroupBlock({
-  group,
-  questions,
-  responseMap,
-  brand,
-  accent,
-  displayTypesField,
-}: {
-  group: CustomGroup
-  questions: TemplateQuestion[]
-  responseMap: Map<number, StudentResponse>
-  brand: BrandTheme
-  accent: string
+/**
+ * A group becomes a run of independently-placeable blocks (heading rides
+ * with the first one), so the paginator can flow long groups across
+ * fixed-height pages instead of producing an oversized sheet:
+ * - competitor map → the plot, then one full-width card row per company
+ * - gallery → intro text rows, then 2-up image-card rows
+ * - unit economics → one cost table per product
+ * - everything else (incl. CHART/TABLE and Google Budget's iframe) → its
+ *   underlying answers as question rows
+ */
+function buildGroupPrintBlocks(
+  sectionId: number,
+  group: CustomGroup,
+  questions: TemplateQuestion[],
+  responseMap: Map<number, StudentResponse>,
+  brand: BrandTheme,
+  accent: string,
   displayTypesField: string
-}) {
+): PrintBlock[] {
+  const base = `s${sectionId}-g${group.id}`
   const displayTypeId = Number(group[displayTypesField]) || null
+  const hasApprovedImage = questions.some(
+    (q) => typeIdOf(q) === QUESTION_TYPE.IMAGE_UPLOAD && hasContent(q, responseMap.get(q.id))
+  )
+
+  const bodies: PrintBlock[] = []
+  if (displayTypeId === DISPLAY_TYPE.UNIT_ECONOMICS) {
+    // The interactive flow diagram becomes its printable table equivalent,
+    // one per product so each table can land on its own page.
+    const lineItemsQ = questions.find((q) => isLineItemsQuestion(q))
+    const raw = lineItemsQ ? (responseMap.get(lineItemsQ.id)?.student_response ?? "") : ""
+    const products = parseLineItemProducts(raw).filter((p) => p.rows.length > 0)
+    products.forEach((p, i) =>
+      bodies.push({
+        id: `${base}-p${i}`,
+        node: (
+          <div className="break-inside-avoid">
+            <ProductLineItemsTable product={p} />
+          </div>
+        ),
+      })
+    )
+    if (bodies.length === 0) bodies.push({ id: `${base}-none`, node: <LineItemsTable raw={raw} /> })
+  } else if (displayTypeId === DISPLAY_TYPE.COMPETITOR_MAP) {
+    const data = getCompetitorMapData(questions, responseMap)
+    bodies.push({
+      id: `${base}-plot`,
+      node: (
+        <div className="break-inside-avoid">
+          <CompetitorMapPlot data={data} />
+        </div>
+      ),
+    })
+    data.cards
+      .filter((c) => c.entity.name || c.positioning)
+      .forEach((c, i) =>
+        bodies.push({
+          id: `${base}-card${i}`,
+          node: (
+            <div className="rounded-lg border border-gray-200 p-4 break-inside-avoid">
+              <div className="flex items-center gap-3">
+                {c.entity.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={c.entity.logoUrl}
+                    alt=""
+                    className="size-8 shrink-0 rounded-full border border-gray-200 object-contain"
+                  />
+                ) : (
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500">
+                    {(c.entity.name || "?").charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{c.entity.name || "—"}</p>
+                  <p className="text-[10px] text-gray-400">{c.label}</p>
+                </div>
+              </div>
+              {c.positioning && (
+                <p className="mt-2.5 whitespace-pre-wrap text-[12px] leading-relaxed text-gray-600">
+                  {c.positioning}
+                </p>
+              )}
+            </div>
+          ),
+        })
+      )
+  } else if (displayTypeId === DISPLAY_TYPE.GALLERY && hasApprovedImage) {
+    // The slides are built from — and return — this module's own question
+    // objects; the cast just restores their wider type.
+    const { slides, intro } = buildGallerySlides(questions) as unknown as {
+      slides: { imageQ: TemplateQuestion; titleQ: TemplateQuestion | null; descQs: TemplateQuestion[] }[]
+      intro: TemplateQuestion[]
+    }
+    buildQuestionRows(
+      intro.filter((q) => hasContent(q, responseMap.get(q.id))),
+      responseMap,
+      brand
+    ).forEach((node, i) => bodies.push({ id: `${base}-intro${i}`, node }))
+    const cards = slides
+      .map((s) => {
+        const r = responseMap.get(s.imageQ.id)
+        const src = r?.isComplete ? r.image_response?.path || r.image_response?.url : undefined
+        if (!src) return null
+        const cardTitle = s.titleQ ? (responseMap.get(s.titleQ.id)?.student_response ?? "").trim() : ""
+        const desc =
+          s.descQs.map((dq) => (responseMap.get(dq.id)?.student_response ?? "").trim()).filter(Boolean)[0] ?? ""
+        return { key: s.imageQ.id, src: resolveImageUrl(src), cardTitle, desc }
+      })
+      .filter((c): c is { key: number; src: string; cardTitle: string; desc: string } => !!c)
+    for (let i = 0; i < cards.length; i += 2) {
+      bodies.push({
+        id: `${base}-imgs${i}`,
+        node: (
+          <div className="grid grid-cols-2 gap-x-10">
+            {cards.slice(i, i + 2).map((c) => (
+              <div key={c.key} className="overflow-hidden rounded-lg border border-gray-200 break-inside-avoid">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={c.src} alt={c.cardTitle || "Gallery image"} className="aspect-[4/3] w-full object-cover" />
+                {(c.cardTitle || c.desc) && (
+                  <div className="border-t border-gray-200 px-3 py-2">
+                    {c.cardTitle && <p className="text-xs font-semibold">{c.cardTitle}</p>}
+                    {c.desc && <p className="mt-0.5 text-[11px] leading-snug text-gray-500">{c.desc}</p>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ),
+      })
+    }
+  } else if (displayTypeId === DISPLAY_TYPE.TRANSPORTATION_BUDGET) {
+    bodies.push({
+      id: `${base}-table`,
+      node: (
+        <div className="break-inside-avoid">
+          <GroupDisplayRenderer
+            displayTypeId={displayTypeId}
+            questions={questions}
+            responseMap={responseMap}
+            mode="public"
+          />
+        </div>
+      ),
+    })
+  } else {
+    buildQuestionRows(printableGridQuestions(questions, responseMap), responseMap, brand).forEach((node, i) =>
+      bodies.push({ id: `${base}-row${i}`, node })
+    )
+  }
+
   const sourceEntries = questions
     .map((q) => ({ q, r: responseMap.get(q.id) }))
     .filter(
@@ -544,61 +620,11 @@ function GroupBlock({
         r?.isComplete &&
         (r.source_link || r.title_of_source || r.author_name_or_publisher)
     )
-
-  // Only these display types have a renderer that prints faithfully; a
-  // gallery without a single approved image would print placeholder boxes,
-  // so it falls back to the generic grid (approved text only) too. Anything
-  // else — including CHART/TABLE, which the screen renderer doesn't draw
-  // either, and Google Budget's iframe — prints its underlying answers.
-  const hasApprovedImage = questions.some(
-    (q) => typeIdOf(q) === QUESTION_TYPE.IMAGE_UPLOAD && hasContent(q, responseMap.get(q.id))
-  )
-  const printRendered =
-    displayTypeId === DISPLAY_TYPE.COMPETITOR_MAP ||
-    displayTypeId === DISPLAY_TYPE.TRANSPORTATION_BUDGET ||
-    (displayTypeId === DISPLAY_TYPE.GALLERY && hasApprovedImage)
-
-  let body: React.ReactNode
-  if (displayTypeId === DISPLAY_TYPE.UNIT_ECONOMICS) {
-    // The interactive flow diagram becomes its printable table equivalent.
-    const lineItemsQ = questions.find((q) => isLineItemsQuestion(q))
-    const raw = lineItemsQ ? (responseMap.get(lineItemsQ.id)?.student_response ?? "") : ""
-    body = <LineItemsTable raw={raw} />
-  } else if (printRendered) {
-    // The map/table renders are one visual unit — don't slice them across a
-    // page boundary (galleries are long; their cards break individually).
-    body = (
-      <div className={displayTypeId === DISPLAY_TYPE.GALLERY ? undefined : "break-inside-avoid"}>
-        <GroupDisplayRenderer
-          displayTypeId={displayTypeId!}
-          questions={questions}
-          responseMap={responseMap}
-          mode="public"
-        />
-      </div>
-    )
-  } else {
-    body = (
-      <QuestionGrid
-        questions={printableGridQuestions(questions, responseMap)}
-        responseMap={responseMap}
-        brand={brand}
-      />
-    )
-  }
-
-  return (
-    <div className="mb-8">
-      <div className="mb-4 flex items-center gap-2.5 break-after-avoid">
-        <span className="h-4 w-1 rounded-full" style={{ background: accent }} />
-        <h3 className="text-lg font-semibold tracking-tight">{group.group_name}</h3>
-      </div>
-      {group.group_description && (
-        <p className="-mt-2 mb-4 text-xs leading-relaxed text-gray-500">{group.group_description}</p>
-      )}
-      {body}
-      {sourceEntries.length > 0 && (
-        <div className="mt-4 border-t border-gray-100 pt-3">
+  if (sourceEntries.length > 0) {
+    bodies.push({
+      id: `${base}-sources`,
+      node: (
+        <div className="border-t border-gray-100 pt-3 break-inside-avoid">
           <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-400">Sources</p>
           {sourceEntries.map(({ q, r }) => (
             <p key={q.id} className="text-[11px] leading-snug text-gray-500">
@@ -606,7 +632,66 @@ function GroupBlock({
             </p>
           ))}
         </div>
+      ),
+    })
+  }
+
+  // The heading rides with the first body block so it can't be orphaned at
+  // the bottom of a page.
+  const heading = (
+    <div className="mb-4">
+      <div className="flex items-center gap-2.5">
+        <span className="h-4 w-1 rounded-full" style={{ background: accent }} />
+        <h3 className="text-lg font-semibold tracking-tight">{group.group_name}</h3>
+      </div>
+      {group.group_description && (
+        <p className="mt-2 text-xs leading-relaxed text-gray-500">{group.group_description}</p>
       )}
+    </div>
+  )
+  return bodies.map((b, i) =>
+    i === 0
+      ? {
+          id: b.id,
+          node: (
+            <div>
+              {heading}
+              {b.node}
+            </div>
+          ),
+        }
+      : b
+  )
+}
+
+/** Half-width cells: images (so logos and reference shots pair up side by
+    side in a 2-wide grid) and genuinely short answers. Anything
+    paragraph-length takes the full page width — many "short response"
+    questions hold long prose. */
+function isHalfCell(q: TemplateQuestion, r: StudentResponse | undefined): boolean {
+  const typeId = typeIdOf(q)
+  if (typeId === QUESTION_TYPE.IMAGE_UPLOAD) return true
+  const textLen = (r?.student_response ?? "").trim().length
+  return isShortType(typeId) && textLen <= 140
+}
+
+function QuestionCell({
+  q,
+  r,
+  brand,
+  half,
+}: {
+  q: TemplateQuestion
+  r: StudentResponse
+  brand: BrandTheme
+  half: boolean
+}) {
+  return (
+    <div className={`${half ? "" : "col-span-2"} break-inside-avoid`}>
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+        {q.public_display_title || q.field_label}
+      </p>
+      <PrintValue q={q} r={r} brand={brand} />
     </div>
   )
 }
@@ -623,7 +708,6 @@ function QuestionGrid({
   return (
     <div className="grid grid-cols-2 gap-x-10 gap-y-6">
       {questions.map((q) => {
-        const typeId = typeIdOf(q)
         if (q._question_types?.noInput) {
           return (
             <p
@@ -636,23 +720,311 @@ function QuestionGrid({
         }
         const r = responseMap.get(q.id)
         if (!hasContent(q, r)) return null
-        // Half-width cells: images (so logos and reference shots pair up
-        // side by side, flowing into a 2-wide grid) and genuinely short
-        // answers. Anything paragraph-length takes the full page width —
-        // many "short response" questions hold long prose.
-        const isImage = typeId === QUESTION_TYPE.IMAGE_UPLOAD
-        const textLen = (r!.student_response ?? "").trim().length
-        const half = isImage || (isShortType(typeId) && textLen <= 140)
-        return (
-          <div key={q.id} className={`${half ? "" : "col-span-2"} break-inside-avoid`}>
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-              {q.public_display_title || q.field_label}
-            </p>
-            <PrintValue q={q} r={r!} brand={brand} />
-          </div>
-        )
+        return <QuestionCell key={q.id} q={q} r={r!} brand={brand} half={isHalfCell(q, r)} />
       })}
     </div>
+  )
+}
+
+/** Pack the ungrouped questions into row nodes (pairs of half-width cells,
+    or one full-width cell) so the paginator can measure and place each row. */
+function buildQuestionRows(
+  questions: TemplateQuestion[],
+  responseMap: Map<number, StudentResponse>,
+  brand: BrandTheme
+): React.ReactNode[] {
+  const rows: React.ReactNode[] = []
+  let pending: TemplateQuestion | null = null
+  const push = (...qs: TemplateQuestion[]) => {
+    rows.push(
+      <div key={qs.map((q) => q.id).join("-")} className="grid grid-cols-2 gap-x-10">
+        {qs.map((q) => (
+          <QuestionCell key={q.id} q={q} r={responseMap.get(q.id)!} brand={brand} half={isHalfCell(q, responseMap.get(q.id))} />
+        ))}
+      </div>
+    )
+  }
+  const flushPending = () => {
+    if (pending) {
+      push(pending)
+      pending = null
+    }
+  }
+  for (const q of questions) {
+    if (q._question_types?.noInput) {
+      flushPending()
+      rows.push(
+        <p
+          key={`h-${q.id}`}
+          className="border-b border-gray-100 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500"
+        >
+          {q.public_display_title || q.field_label}
+        </p>
+      )
+      continue
+    }
+    const r = responseMap.get(q.id)
+    const text = r?.student_response ?? ""
+    const typeId = typeIdOf(q)
+    // Long essays split at the paragraph level so they flow across
+    // fixed-height pages instead of forcing an oversized sheet.
+    if ((typeId === RICH_TEXT_TYPE_ID || looksLikeRichTextDoc(text)) && !isHalfCell(q, r)) {
+      flushPending()
+      const nodes = (parseRichText(text)?.content ?? []) as unknown[]
+      if (nodes.length > 1) {
+        const CHUNK = 2
+        for (let i = 0; i < nodes.length; i += CHUNK) {
+          rows.push(
+            <div key={`rt-${q.id}-${i}`} className="break-inside-avoid">
+              {i === 0 && (
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                  {q.public_display_title || q.field_label}
+                </p>
+              )}
+              <RichTextDisplay
+                raw={JSON.stringify({ type: "doc", content: nodes.slice(i, i + CHUNK) })}
+                className="text-[13px] leading-relaxed"
+              />
+            </div>
+          )
+        }
+        continue
+      }
+    }
+    if (isHalfCell(q, r)) {
+      if (pending) {
+        push(pending, q)
+        pending = null
+      } else {
+        pending = q
+      }
+    } else {
+      flushPending()
+      push(q)
+    }
+  }
+  flushPending()
+  return rows
+}
+
+interface PrintBlock {
+  id: string
+  node: React.ReactNode
+}
+
+interface PageSpec {
+  sIdx: number
+  blockIds: string[]
+  /** A single block taller than one page; the sheet grows instead of clipping. */
+  oversized: boolean
+  /** 0 for the section's first page, 1+ for continuation pages. */
+  contIndex: number
+}
+
+// Usable block height per page: 9.5in (Letter minus margins) is 912px at
+// 96dpi; reserve room for the footer strip, continuation header, and a
+// safety margin so screen measurements never overflow the printed page.
+const PAGE_BUDGET = 820
+const BLOCK_GAP = 24
+
+/**
+ * Renders every section as true 8.5×11 sheets: each section's content is
+ * measured off-screen at page width, packed into pages, and re-rendered as
+ * fixed-height sheets with a running footer and real page numbers — accurate
+ * on screen and in the PDF, in every browser.
+ */
+function PaginatedSheets({
+  printSections,
+  responseMap,
+  brand,
+  accent,
+  titleFont,
+  displayTypesField,
+  title,
+  docLabel,
+}: {
+  printSections: { section: SectionInfo; ungrouped: TemplateQuestion[]; groupBlocks: { group: CustomGroup; questions: TemplateQuestion[] }[] }[]
+  responseMap: Map<number, StudentResponse>
+  brand: BrandTheme
+  accent: string
+  titleFont?: React.CSSProperties
+  displayTypesField: string
+  title: string
+  docLabel: string
+}) {
+  const measureRef = useRef<HTMLDivElement | null>(null)
+  // The layout is keyed to the block list it was measured from, so new
+  // content automatically derives back to "not measured yet" — no reset
+  // effect needed.
+  const [layout, setLayout] = useState<{ source: unknown; pages: PageSpec[] } | null>(null)
+
+  const sectionsBlocks = useMemo(() => {
+    return printSections.map(({ section, ungrouped, groupBlocks }, i) => {
+      const blocks: PrintBlock[] = [
+        {
+          id: `s${section.id}-header`,
+          node: (
+            <header className="border-b border-gray-200 pb-5">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold tabular-nums" style={{ color: accent }}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span className="h-px w-8" style={{ background: accent }} />
+                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">{docLabel}</span>
+              </div>
+              <h2 className="mt-2 text-3xl font-bold tracking-tight" style={titleFont}>
+                {section.section_title}
+              </h2>
+              {(section.description || section.section_description) && (
+                <p className="mt-2 max-w-[6in] text-sm leading-relaxed text-gray-500">
+                  {section.description || section.section_description}
+                </p>
+              )}
+            </header>
+          ),
+        },
+      ]
+      buildQuestionRows(ungrouped, responseMap, brand).forEach((node, ri) => {
+        blocks.push({ id: `s${section.id}-row-${ri}`, node })
+      })
+      for (const { group, questions } of groupBlocks) {
+        blocks.push(
+          ...buildGroupPrintBlocks(section.id, group, questions, responseMap, brand, accent, displayTypesField)
+        )
+      }
+      if (ungrouped.length === 0 && groupBlocks.length === 0) {
+        blocks.push({
+          id: `s${section.id}-empty`,
+          node: <p className="text-xs italic text-gray-400">No approved content in this section yet.</p>,
+        })
+      }
+      return { section, blocks }
+    })
+  }, [printSections, responseMap, brand, accent, titleFont, displayTypesField, docLabel])
+
+  const blockById = useMemo(() => {
+    const m = new Map<string, React.ReactNode>()
+    for (const s of sectionsBlocks) for (const b of s.blocks) m.set(b.id, b.node)
+    return m
+  }, [sectionsBlocks])
+
+  const pages = layout && layout.source === sectionsBlocks ? layout.pages : null
+
+  useEffect(() => {
+    if (pages !== null) return
+    const el = measureRef.current
+    if (!el) return
+    let cancelled = false
+    const withTimeout = (p: Promise<unknown>, ms: number) =>
+      Promise.race([p.catch(() => {}), new Promise((res) => setTimeout(res, ms))])
+    const whenLoaded = (img: HTMLImageElement) =>
+      img.complete
+        ? Promise.resolve()
+        : new Promise<void>((res) => {
+            img.addEventListener("load", () => res(), { once: true })
+            img.addEventListener("error", () => res(), { once: true })
+          })
+    const run = async () => {
+      // Heights are only real once images and webfonts are in — but never
+      // stall the layout on a hung request; measure with what has arrived.
+      const imgs = Array.from(el.querySelectorAll("img")) as HTMLImageElement[]
+      await withTimeout(Promise.all(imgs.map(whenLoaded)), 6000)
+      await withTimeout(document.fonts?.ready ?? Promise.resolve(), 2500)
+      const container = measureRef.current
+      if (cancelled || !container) return
+      const heights = new Map<string, number>()
+      for (const child of Array.from(container.children) as HTMLElement[]) {
+        if (child.dataset.bid) heights.set(child.dataset.bid, child.getBoundingClientRect().height)
+      }
+      const out: PageSpec[] = []
+      sectionsBlocks.forEach(({ blocks }, sIdx) => {
+        let cur: string[] = []
+        let used = 0
+        let cont = 0
+        const flush = (oversized = false) => {
+          if (!cur.length) return
+          out.push({ sIdx, blockIds: cur, oversized, contIndex: cont })
+          cont += 1
+          cur = []
+          used = 0
+        }
+        for (const b of blocks) {
+          const bh = (heights.get(b.id) ?? 0) + BLOCK_GAP
+          if (used > 0 && used + bh > PAGE_BUDGET) flush()
+          cur.push(b.id)
+          used += bh
+          if (cur.length === 1 && used > PAGE_BUDGET) flush(true)
+        }
+        flush()
+      })
+      if (!cancelled) setLayout({ source: sectionsBlocks, pages: out })
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [pages, sectionsBlocks])
+
+  if (pages === null) {
+    return (
+      <>
+        {/* Off-screen measuring pass at exact page-content width. */}
+        <div
+          ref={measureRef}
+          aria-hidden
+          className="pointer-events-none fixed left-[-10000px] top-0 w-[7in] print:hidden"
+        >
+          {sectionsBlocks.flatMap((s) => s.blocks).map((b) => (
+            <div key={b.id} data-bid={b.id}>
+              {b.node}
+            </div>
+          ))}
+        </div>
+        <section className="flex h-[11in] items-center justify-center bg-white shadow-md ring-1 ring-black/5">
+          <p className="text-sm text-gray-400">Laying out pages…</p>
+        </section>
+      </>
+    )
+  }
+
+  const totalPages = pages.length + 1 // + cover
+
+  return (
+    <>
+      {pages.map((page, pi) => {
+        const { section } = sectionsBlocks[page.sIdx]
+        return (
+          <section
+            key={`${section.id}-${page.contIndex}`}
+            className={`flex flex-col overflow-hidden break-before-page bg-white p-[0.75in] shadow-md ring-1 ring-black/5 print:p-0 print:shadow-none print:ring-0 ${
+              page.oversized
+                ? "min-h-[11in] print:min-h-0 print:overflow-visible"
+                : "h-[11in] print:h-[9.5in]"
+            }`}
+          >
+            {page.contIndex > 0 && (
+              <div className="mb-5 flex items-center justify-between text-[8px] uppercase tracking-[0.14em] text-gray-400">
+                <span>{section.section_title} — continued</span>
+                <span>{title}</span>
+              </div>
+            )}
+            <div className="space-y-6">
+              {page.blockIds.map((id) => (
+                <div key={id}>{blockById.get(id)}</div>
+              ))}
+            </div>
+            <div className="mt-auto flex items-center justify-between pt-6 text-[8px] uppercase tracking-[0.14em] text-gray-400">
+              <span>
+                {title} — {docLabel}
+              </span>
+              <span>
+                Page {pi + 2} of {totalPages}
+              </span>
+            </div>
+          </section>
+        )
+      })}
+    </>
   )
 }
 
