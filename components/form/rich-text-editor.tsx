@@ -92,6 +92,7 @@ export function RichTextEditor({
   comments,
   annotateOnly = false,
   minHeightClass = "min-h-[55vh]",
+  bodyClassName = "px-6 py-8 sm:px-10",
 }: {
   value: string
   onChange: (value: string) => void
@@ -103,6 +104,8 @@ export function RichTextEditor({
   annotateOnly?: boolean
   /** Editor body min-height (a full page by default; pass min-h-0 when inline). */
   minHeightClass?: string
+  /** Padding around the document body — its page margins. */
+  bodyClassName?: string
 }) {
   const lastEmitted = useRef(value)
   const [loadError, setLoadError] = useState(false)
@@ -137,7 +140,7 @@ export function RichTextEditor({
     editable: !disabled,
     editorProps: {
       attributes: {
-        class: `prose prose-neutral dark:prose-invert max-w-none ${minHeightClass} px-6 py-8 sm:px-10 focus:outline-none`,
+        class: `prose prose-neutral dark:prose-invert max-w-none ${minHeightClass} ${bodyClassName} focus:outline-none`,
       },
       // Annotate-only (teacher): permit selection + our comment command, but
       // block every content mutation so the student's prose is never edited.
@@ -309,7 +312,7 @@ function EditorToolbar({
   annotateOnly?: boolean
   onComment?: () => void
 }) {
-  const state = useEditorState({
+  const liveState = useEditorState({
     editor,
     selector: ({ editor }) =>
       editor
@@ -332,7 +335,28 @@ function EditorToolbar({
         : null,
   })
 
-  if (!editor || !state) return null
+  if (!editor) return null
+
+  // useEditorState can be null on the first render — before the editor's first
+  // transaction — which would hide the toolbar until the teacher clicks into
+  // the page. Fall back to a neutral state so it shows the moment the editor
+  // mounts.
+  const state = liveState ?? {
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+    h1: false,
+    h2: false,
+    h3: false,
+    bulletList: false,
+    orderedList: false,
+    blockquote: false,
+    inTable: false,
+    selectionEmpty: true,
+    canUndo: false,
+    canRedo: false,
+  }
 
   const chain = () => editor.chain().focus()
 

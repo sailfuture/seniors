@@ -17,11 +17,14 @@ export function TeacherEssayAnnotator({
   initialValue,
   patchUrl,
   comments,
+  bodyClassName,
 }: {
   initialValue: string
   /** Full URL of the response to PATCH, e.g. `${responsePatchBase}/${id}`. */
   patchUrl: string
   comments: RichTextCommentConfig
+  /** Page margins around the document body. */
+  bodyClassName?: string
 }) {
   const [value, setValue] = useState(initialValue)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -49,6 +52,8 @@ export function TeacherEssayAnnotator({
     [persist]
   )
 
+  // No overflow-hidden on the editor container: an overflow ancestor would
+  // become the sticky toolbar's scrollport and stop it pinning to the viewport.
   return (
     <RichTextEditor
       className="rounded-lg border bg-white dark:bg-card"
@@ -56,6 +61,7 @@ export function TeacherEssayAnnotator({
       onChange={handleChange}
       annotateOnly
       minHeightClass="min-h-0"
+      bodyClassName={bodyClassName}
       comments={comments}
     />
   )

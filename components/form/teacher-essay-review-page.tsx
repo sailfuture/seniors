@@ -292,7 +292,7 @@ export function TeacherEssayReviewPage({
   const minWords = question.min_words && question.min_words > 0 ? question.min_words : null
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 p-4 md:p-6">
+    <div className="w-full flex-1 bg-white p-4 md:p-6 dark:bg-background">
       <div className="flex items-center justify-between gap-2">
         <BackButton href={backHref} />
         {studentName && <span className="text-muted-foreground text-sm font-medium">{studentName}</span>}
@@ -312,14 +312,15 @@ export function TeacherEssayReviewPage({
         </div>
       )}
 
-      {/* Document frame: the essay sits as a white "page" on a light-gray
-          surround so it reads like a real document to annotate. */}
-      <div className="mt-4 rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20">
+      {/* The essay is a full-width white "page" with set margins; the sticky
+          toolbar rides at the top so commenting is always one click away. */}
+      <div className="mt-4">
         {canAnnotate ? (
           <TeacherEssayAnnotator
             key={response.id}
             initialValue={value}
             patchUrl={`${cfg.responsePatchBase}/${response.id}`}
+            bodyClassName="px-6 py-10 sm:px-12 lg:px-24"
             comments={{
               commentsEndpoint: cfg.commentsEndpoint,
               sectionIdField: F.sectionId,
@@ -332,7 +333,7 @@ export function TeacherEssayReviewPage({
             }}
           />
         ) : (
-          <div className="rounded-lg border bg-white p-4 dark:bg-card">
+          <div className="rounded-xl border bg-white px-6 py-10 sm:px-12 lg:px-24 dark:bg-card">
             {hasEssay ? (
               <RichTextDisplay raw={value} showComments />
             ) : (
