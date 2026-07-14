@@ -27,6 +27,8 @@ export interface FormApiConfig {
   gptzeroEndpoint?: string
   gptzeroDeleteBase?: string
   eventPrefix?: string
+  /** Admin route base for this product, e.g. `/admin/business-thesis`. */
+  adminBasePath: string
   fields: {
     sectionId: string
     customGroupId: string
@@ -37,6 +39,7 @@ export interface FormApiConfig {
 }
 
 export const LIFEMAP_API_CONFIG: FormApiConfig = {
+  adminBasePath: "/admin/life-map",
   templateEndpoint: `${LIFEMAP_BASE}/lifeplan_template`,
   responsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses_by_student`,
   allResponsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses`,
@@ -64,6 +67,7 @@ export const LIFEMAP_API_CONFIG: FormApiConfig = {
 
 export const BUSINESSTHESIS_API_CONFIG: FormApiConfig = {
   eventPrefix: "bt-",
+  adminBasePath: "/admin/business-thesis",
   templateEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_template`,
   responsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses_by_student`,
   allResponsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses`,

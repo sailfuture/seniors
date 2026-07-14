@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -64,6 +65,8 @@ interface QueueRow {
   sectionTitle: string
   preview: string
   when: number | null
+  /** Rich-text essays open the full document for inline commenting, not the sheet. */
+  isEssay: boolean
   target: ReviewTarget
 }
 
@@ -158,6 +161,7 @@ export function AdminReviewQueue({
 }) {
   const cfg = apiConfig
   const F = cfg.fields
+  const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState<Record<GroupKey, QueueRow[]>>({ pending: [], revisions: [] })
@@ -197,6 +201,7 @@ export function AdminReviewQueue({
           const student = studentById.get(String(r.students_id))
           if (!student) return null
           const studentName = `${student.firstName} ${student.lastName}`.trim()
+          const isEssay = isRichTextQuestion(q) || looksLikeRichTextDoc(r.student_response ?? "")
           return {
             key: `${group}-${r.id}`,
             responseId: r.id,
@@ -206,6 +211,7 @@ export function AdminReviewQueue({
             sectionTitle: section.section_title,
             preview: previewOf(q, r),
             when: toTimestamp(r.last_edited) ?? r.created_at ?? null,
+            isEssay,
             target: {
               response: {
                 id: r.id,
@@ -255,8 +261,14 @@ export function AdminReviewQueue({
     }
   }, [cfg, F, slugify, onlyStudentId])
 
-  const openRow = (target: ReviewTarget) => {
-    setSheetTarget(target)
+  const openRow = (row: QueueRow) => {
+    // A rich-text essay opens as a full document so the teacher can comment
+    // inline; everything else reviews in the side sheet.
+    if (row.isEssay) {
+      router.push(`${cfg.adminBasePath}/${row.target.response.students_id}/essay/${row.target.question.id}`)
+      return
+    }
+    setSheetTarget(row.target)
     setSheetOpen(true)
   }
 
@@ -329,7 +341,7 @@ function ReviewCard({
   expanded: boolean
   canToggle: boolean
   onToggle: () => void
-  onOpen: (target: ReviewTarget) => void
+  onOpen: (row: QueueRow) => void
   viewAllHref?: string
 }) {
   const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy])
@@ -394,7 +406,7 @@ function ReviewCard({
                   <button
                     key={row.key}
                     type="button"
-                    onClick={() => onOpen(row.target)}
+                    onClick={() => onOpen(row)}
                     className="hover:bg-muted/50 flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors"
                   >
                     {/* Question name and the actual response, same size, bullet-separated. */}
