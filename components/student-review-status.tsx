@@ -20,10 +20,16 @@ import { ArrowRight01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import type { Comment } from "@/lib/form-types"
 import { FieldActivityStream } from "@/components/form/field-activity-stream"
+import { RichTextDisplay } from "@/components/form/rich-text-display"
+import { ZoomableImage } from "@/components/zoomable-image"
+import { LineItemsTable } from "@/components/line-items-table"
+import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
+import { isLineItemsQuestion } from "@/lib/line-items"
 
 const QUESTION_TYPE = {
   LONG_RESPONSE: 1,
   SHORT_RESPONSE: 2,
+  IMAGE_UPLOAD: 4,
 }
 
 interface TemplateQuestion {
@@ -41,6 +47,7 @@ interface TemplateQuestion {
 interface StudentResponse {
   id: number
   student_response: string
+  image_response?: Record<string, unknown> | null
   students_id?: string | number | null
   isArchived?: boolean
   isComplete?: boolean
@@ -78,6 +85,72 @@ function relativeDate(ts: number | null): string {
   const weeks = Math.floor(days / 7)
   if (weeks < 5) return `${weeks}w ago`
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+}
+
+function resolveImageUrl(image: Record<string, unknown> | null | undefined): string | null {
+  if (!image) return null
+  const path = (image.path ?? image.url) as string | undefined
+  if (!path) return null
+  return path.startsWith("http") ? path : `https://xsc3-mvx7-r86m.n7e.xano.io${path}`
+}
+
+/** One-line preview of a response, same size as the question label. */
+function previewOf(q: TemplateQuestion, r: StudentResponse): string {
+  if ((q.question_types_id ?? null) === QUESTION_TYPE.IMAGE_UPLOAD) return "Image submission"
+  if (isLineItemsQuestion(q)) return "Cost / product breakdown"
+  const raw = r.student_response ?? ""
+  const text = isRichTextQuestion(q) || looksLikeRichTextDoc(raw) ? extractPlainText(raw) : raw
+  const t = text.trim().replace(/\s+/g, " ")
+  if (!t) return "—"
+  return t.length > 90 ? `${t.slice(0, 90)}…` : t
+}
+
+/** Group items (which each carry a section) by section, in section order. */
+function groupBySection<T extends { section: SectionInfo }>(items: T[]): { section: SectionInfo; items: T[] }[] {
+  const groups = new Map<number, { section: SectionInfo; items: T[] }>()
+  for (const it of items) {
+    const g = groups.get(it.section.id) ?? { section: it.section, items: [] }
+    g.items.push(it)
+    groups.set(it.section.id, g)
+  }
+  return [...groups.values()].sort((a, b) => (a.section.order ?? 0) - (b.section.order ?? 0))
+}
+
+/** Read-only render of a response, for the detail sheet. */
+function ResponseView({ q, r }: { q: TemplateQuestion; r: StudentResponse | undefined }) {
+  if (!r) return null
+  const typeId = q.question_types_id ?? null
+  const value = r.student_response ?? ""
+  if (typeId === QUESTION_TYPE.IMAGE_UPLOAD) {
+    const url = resolveImageUrl(r.image_response)
+    return url ? (
+      <ZoomableImage src={url} alt={q.field_label} className="rounded-lg border" caption={q.field_label} />
+    ) : (
+      <p className="text-muted-foreground text-sm italic">No image uploaded.</p>
+    )
+  }
+  if (isLineItemsQuestion(q)) return <LineItemsTable raw={value} />
+  if (isRichTextQuestion(q) || looksLikeRichTextDoc(value)) return <RichTextDisplay raw={value} />
+  return <p className="whitespace-pre-wrap text-sm leading-relaxed">{value || "—"}</p>
+}
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div className="bg-muted/40 text-muted-foreground px-4 py-1.5 text-xs font-semibold uppercase tracking-wide">
+      {title}
+    </div>
+  )
+}
+
+/** The question name and its response, same size, bullet-separated, truncated. */
+function RowLabel({ label, preview }: { label: string; preview: string }) {
+  return (
+    <span className="min-w-0 flex-1 truncate text-sm">
+      <span className="font-medium">{label}</span>
+      <span className="text-muted-foreground"> &middot; </span>
+      <span className="font-normal">{preview}</span>
+    </span>
+  )
 }
 
 interface SheetTarget {
@@ -177,53 +250,47 @@ export function StudentReviewStatus({
     [sectionById, F]
   )
 
-  // --- Derived lists -------------------------------------------------------
-  const { revisionsBySection, pending, unread } = useMemo(() => {
-    const revItems: { q: TemplateQuestion; r: StudentResponse; section: SectionInfo }[] = []
-    const pendItems: { q: TemplateQuestion; r: StudentResponse; section: SectionInfo }[] = []
-    for (const r of responses.values()) {
-      const q = questionById.get(Number(r[F.templateId]))
-      if (!q) continue
-      const section = sectionOf(q)
-      if (!section || section.isLocked) continue
-      if (r.isComplete) continue
-      if (r.revisionNeeded) revItems.push({ q, r, section })
-      else if (r.readyReview) pendItems.push({ q, r, section })
-    }
+  // --- Derived lists (all grouped by section) ------------------------------
+  const { revisionsBySection, pendingBySection, unreadBySection, revisionCount, pendingCount, unreadCount } =
+    useMemo(() => {
+      const revItems: { q: TemplateQuestion; r: StudentResponse; section: SectionInfo }[] = []
+      const pendItems: { q: TemplateQuestion; r: StudentResponse; section: SectionInfo }[] = []
+      for (const r of responses.values()) {
+        const q = questionById.get(Number(r[F.templateId]))
+        if (!q) continue
+        const section = sectionOf(q)
+        if (!section || section.isLocked) continue
+        if (r.isComplete) continue
+        if (r.revisionNeeded) revItems.push({ q, r, section })
+        else if (r.readyReview) pendItems.push({ q, r, section })
+      }
 
-    // Group revisions by section, in section order.
-    const groups = new Map<number, { section: SectionInfo; items: typeof revItems }>()
-    for (const it of revItems) {
-      const g = groups.get(it.section.id) ?? { section: it.section, items: [] }
-      g.items.push(it)
-      groups.set(it.section.id, g)
-    }
-    const revisionsBySection = [...groups.values()].sort(
-      (a, b) => (a.section.order ?? 0) - (b.section.order ?? 0)
-    )
-    for (const g of revisionsBySection) {
-      g.items.sort((a, b) => a.q.field_label.localeCompare(b.q.field_label))
-    }
+      const revisionsBySection = groupBySection(revItems)
+      const pendingBySection = groupBySection(pendItems)
+      for (const g of [...revisionsBySection, ...pendingBySection]) {
+        g.items.sort((a, b) => a.q.field_label.localeCompare(b.q.field_label))
+      }
 
-    pendItems.sort(
-      (a, b) =>
-        (a.section.order ?? 0) - (b.section.order ?? 0) || a.q.field_label.localeCompare(b.q.field_label)
-    )
+      const unreadItems: { c: Comment; q?: TemplateQuestion; section: SectionInfo; when: number | null }[] = []
+      for (const c of comments) {
+        if (c.isOld || c.isComplete || c.isStudentReply || c.thread_id) continue
+        const q = questionByField.get(c.field_name)
+        const section = sectionById.get(Number(c[F.sectionId]))
+        if (!section || section.isLocked) continue
+        unreadItems.push({ c, q, section, when: toTs(c.created_at as number | undefined) })
+      }
+      const unreadBySection = groupBySection(unreadItems)
+      for (const g of unreadBySection) g.items.sort((a, b) => (b.when ?? 0) - (a.when ?? 0))
 
-    const unreadItems: { c: Comment; q?: TemplateQuestion; section?: SectionInfo; when: number | null }[] = []
-    for (const c of comments) {
-      if (c.isOld || c.isComplete || c.isStudentReply) continue
-      const q = questionByField.get(c.field_name)
-      const section = sectionById.get(Number(c[F.sectionId]))
-      if (!section || section.isLocked) continue
-      unreadItems.push({ c, q, section, when: toTs(c.created_at as number | undefined) })
-    }
-    unreadItems.sort((a, b) => (b.when ?? 0) - (a.when ?? 0))
-
-    return { revisionsBySection, pending: pendItems, unread: unreadItems }
-  }, [responses, comments, questionById, questionByField, sectionById, sectionOf, F])
-
-  const revisionCount = revisionsBySection.reduce((n, g) => n + g.items.length, 0)
+      return {
+        revisionsBySection,
+        pendingBySection,
+        unreadBySection,
+        revisionCount: revItems.length,
+        pendingCount: pendItems.length,
+        unreadCount: unreadItems.length,
+      }
+    }, [responses, comments, questionById, questionByField, sectionById, sectionOf, F])
 
   // --- Comment handlers (used by the sheets) -------------------------------
   const handleMarkRead = useCallback(
@@ -463,9 +530,7 @@ export function StudentReviewStatus({
           <div className="divide-y">
             {revisionsBySection.map((g) => (
               <div key={g.section.id}>
-                <div className="bg-muted/40 text-muted-foreground px-4 py-1.5 text-xs font-semibold uppercase tracking-wide">
-                  {g.section.section_title}
-                </div>
+                <SectionHeader title={g.section.section_title} />
                 {g.items.map(({ q, r }) => (
                   <button
                     key={q.id}
@@ -474,7 +539,7 @@ export function StudentReviewStatus({
                     className="hover:bg-muted/50 flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors"
                   >
                     <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="text-red-500 size-4 shrink-0" />
-                    <span className="flex-1 text-sm font-medium">{q.field_label}</span>
+                    <RowLabel label={q.field_label} preview={previewOf(q, r)} />
                     <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
                       {relativeDate(toTs(r.last_edited) ?? r.created_at ?? null)}
                     </span>
@@ -487,72 +552,78 @@ export function StudentReviewStatus({
         )}
       </StatusCard>
 
-      {/* Pending review */}
-      <StatusCard dot="bg-blue-500" title="Pending review" count={pending.length}>
-        {pending.length === 0 ? (
-          <Empty text="Nothing waiting on your teacher." />
+      {/* Unread comments — above pending, grouped by section */}
+      <StatusCard dot="bg-gray-400" title="Unread comments" count={unreadCount}>
+        {unreadCount === 0 ? (
+          <Empty text="No unread comments." />
         ) : (
           <div className="divide-y">
-            {pending.map(({ q, r, section }) => (
-              <button
-                key={q.id}
-                type="button"
-                onClick={() =>
-                  router.push(`${basePath}/${slugify(section.section_title)}?focus=${encodeURIComponent(q.field_name)}`)
-                }
-                className="hover:bg-muted/50 flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors"
-              >
-                <span className="bg-blue-500 size-1.5 shrink-0 rounded-full" />
-                <span className="flex-1 text-sm font-medium">{q.field_label}</span>
-                <span className="text-muted-foreground hidden shrink-0 text-xs sm:inline">{section.section_title}</span>
-                <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
-                  {relativeDate(toTs(r.last_edited) ?? r.created_at ?? null)}
-                </span>
-                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="text-muted-foreground/40 size-4 shrink-0" />
-              </button>
+            {unreadBySection.map((g) => (
+              <div key={g.section.id}>
+                <SectionHeader title={g.section.section_title} />
+                {g.items.map(({ c, q, when }) => {
+                  const fieldLabel = q?.field_label ?? (c.field_name === "_section_comment" ? "Section comment" : c.field_name)
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() =>
+                        setSheet({
+                          kind: "comment",
+                          fieldName: c.field_name,
+                          questionId: q?.id ?? null,
+                          sectionId: Number(c[F.sectionId]),
+                          groupId: c[F.customGroupId] != null ? Number(c[F.customGroupId]) || null : null,
+                        })
+                      }
+                      className="hover:bg-muted/50 flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="line-clamp-1 text-sm">
+                          <span className="font-medium">{c.note}</span>
+                          <span className="text-muted-foreground"> &middot; {fieldLabel}</span>
+                        </span>
+                        {c.teacher_name && (
+                          <span className="text-muted-foreground/70 text-xs">{c.teacher_name}</span>
+                        )}
+                      </span>
+                      <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{relativeDate(when)}</span>
+                    </button>
+                  )
+                })}
+              </div>
             ))}
           </div>
         )}
       </StatusCard>
 
-      {/* Unread comments */}
-      <StatusCard dot="bg-gray-400" title="Unread comments" count={unread.length}>
-        {unread.length === 0 ? (
-          <Empty text="No unread comments." />
+      {/* Pending review — grouped by section; rows open the detail sheet */}
+      <StatusCard dot="bg-blue-500" title="Pending review" count={pendingCount}>
+        {pendingCount === 0 ? (
+          <Empty text="Nothing waiting on your teacher." />
         ) : (
           <div className="divide-y">
-            {unread.map(({ c, q, section, when }) => {
-              const fieldLabel = q?.field_label ?? (c.field_name === "_section_comment" ? "Section comment" : c.field_name)
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() =>
-                    setSheet({
-                      kind: "comment",
-                      fieldName: c.field_name,
-                      questionId: q?.id ?? null,
-                      sectionId: Number(c[F.sectionId]),
-                      groupId: c[F.customGroupId] != null ? Number(c[F.customGroupId]) || null : null,
-                    })
-                  }
-                  className="hover:bg-muted/50 flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors"
-                >
-                  <span className="bg-gray-400 mt-1.5 size-1.5 shrink-0 rounded-full" />
-                  <span className="min-w-0 flex-1">
-                    <span className="line-clamp-1 text-sm">
-                      <span className="font-medium">{c.note}</span>
-                      <span className="text-muted-foreground"> &middot; {fieldLabel}</span>
+            {pendingBySection.map((g) => (
+              <div key={g.section.id}>
+                <SectionHeader title={g.section.section_title} />
+                {g.items.map(({ q, r }) => (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() =>
+                      setSheet({ kind: "comment", fieldName: q.field_name, questionId: q.id, sectionId: g.section.id })
+                    }
+                    className="hover:bg-muted/50 flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors"
+                  >
+                    <RowLabel label={q.field_label} preview={previewOf(q, r)} />
+                    <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
+                      {relativeDate(toTs(r.last_edited) ?? r.created_at ?? null)}
                     </span>
-                    <span className="text-muted-foreground/70 text-xs">
-                      {c.teacher_name ? `${c.teacher_name} · ` : ""}
-                      {section?.section_title}
-                    </span>
-                  </span>
-                  <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{relativeDate(when)}</span>
-                </button>
-              )
-            })}
+                    <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="text-muted-foreground/40 size-4 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            ))}
           </div>
         )}
       </StatusCard>
@@ -566,14 +637,23 @@ export function StudentReviewStatus({
             </SheetTitle>
             <SheetDescription className="sr-only">Teacher comments and your replies</SheetDescription>
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto px-6 py-4">
-            <FieldActivityStream
-              comments={sheetComments}
-              viewer="student"
-              responseStatus={openStatus}
-              lastEdited={openResponse?.last_edited}
-              onMarkRead={handleMarkRead}
-            />
+          <div className="flex-1 overflow-y-auto">
+            {openField && openResponse && sheet?.fieldName !== "_section_comment" && (
+              <div className="border-b px-6 py-4">
+                <p className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">Your response</p>
+                <ResponseView q={openField} r={openResponse} />
+              </div>
+            )}
+            <div className="px-6 py-4">
+              <FieldActivityStream
+                comments={sheetComments}
+                viewer="student"
+                responseStatus={openStatus}
+                lastEdited={openResponse?.last_edited}
+                onMarkRead={handleMarkRead}
+                scrollToLatest={sheet?.kind === "comment"}
+              />
+            </div>
           </div>
           {openField && sheet?.fieldName !== "_section_comment" && (
             <ReplyBox onSend={(note) => handleReply(sheet!.fieldName, note)} />

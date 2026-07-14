@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,6 +76,7 @@ export function FieldActivityStream({
   lastEdited,
   onDelete,
   onMarkRead,
+  scrollToLatest = false,
   className,
 }: {
   /** Comments already scoped to this field. */
@@ -88,6 +89,8 @@ export function FieldActivityStream({
   onDelete?: (commentId: number) => Promise<void>
   /** Student-side: mark an unread teacher comment as read. */
   onMarkRead?: (commentId: number) => void
+  /** Scroll the newest comment into view on open and when one is added. */
+  scrollToLatest?: boolean
   className?: string
 }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
@@ -96,6 +99,14 @@ export function FieldActivityStream({
   const sorted = [...comments].sort(
     (a, b) => parseTimestamp(a.created_at) - parseTimestamp(b.created_at)
   )
+
+  // Land on the most recent comment when the thread opens (and follow new ones).
+  const bottomRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (scrollToLatest && sorted.length > 0) {
+      bottomRef.current?.scrollIntoView({ block: "end" })
+    }
+  }, [scrollToLatest, sorted.length])
 
   const handleConfirmDelete = async () => {
     if (confirmDeleteId == null || !onDelete) return
@@ -152,7 +163,7 @@ export function FieldActivityStream({
                 <MarkerIcon>
                   <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="text-red-500" />
                 </MarkerIcon>
-                <MarkerContent className="font-medium">Revision requested</MarkerContent>
+                <MarkerContent className="font-medium text-red-600">Revision requested</MarkerContent>
               </Marker>
             )}
 
@@ -214,6 +225,9 @@ export function FieldActivityStream({
       })}
 
       {responseStatus && <CurrentStatusMarker status={responseStatus} lastEdited={lastEdited} />}
+
+      {/* Scroll target for "jump to the newest comment on open". */}
+      <div ref={bottomRef} aria-hidden />
 
       <AlertDialog
         open={confirmDeleteId != null}

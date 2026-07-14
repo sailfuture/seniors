@@ -201,6 +201,7 @@ export function TeacherComment({
                 responseStatus={responseStatus}
                 lastEdited={lastEdited}
                 onDelete={onDelete}
+                scrollToLatest={open}
               />
             </div>
           </div>

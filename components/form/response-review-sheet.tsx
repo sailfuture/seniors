@@ -254,7 +254,7 @@ export function ResponseReviewSheet({
                 <Skeleton className="h-10 w-2/3" />
               </div>
             ) : (
-              <FieldActivityStream comments={comments} viewer="teacher" onDelete={handleDelete} />
+              <FieldActivityStream comments={comments} viewer="teacher" onDelete={handleDelete} scrollToLatest />
             )}
           </div>
         </div>

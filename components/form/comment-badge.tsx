@@ -160,6 +160,7 @@ export function CommentBadge({
                 responseStatus={responseStatus}
                 lastEdited={lastEdited}
                 onMarkRead={handleMarkSingleRead}
+                scrollToLatest={open}
               />
             </div>
           </div>

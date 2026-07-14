@@ -84,6 +84,15 @@ function initials(name: string): string {
 
 function formatWhen(ts: number | null): string {
   if (!ts) return "—"
+  // Relative down to the minute within the last week; absolute date beyond.
+  const diff = Math.floor((Date.now() - ts) / 1000)
+  if (diff < 45) return "just now"
+  const mins = Math.floor(diff / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 7) return `${days}d ago`
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
@@ -104,18 +113,23 @@ function previewOf(q: TemplateQuestion, r: StudentResponse): string {
   return t.length > 110 ? `${t.slice(0, 110)}…` : t
 }
 
-/** Group rows by student, newest-active student first. */
-function groupByStudent(rows: QueueRow[]): { name: string; image?: string; rows: QueueRow[] }[] {
-  const byName = new Map<string, QueueRow[]>()
+type GroupMode = "student" | "section"
+
+/** Group rows by student (global queue) or by section (single-student page),
+ *  freshest group first. */
+function groupRows(rows: QueueRow[], mode: GroupMode): { label: string; image?: string; rows: QueueRow[] }[] {
+  const keyOf = (r: QueueRow) => (mode === "section" ? r.sectionTitle : r.studentName)
+  const byKey = new Map<string, QueueRow[]>()
   for (const r of rows) {
-    const arr = byName.get(r.studentName) ?? []
+    const k = keyOf(r)
+    const arr = byKey.get(k) ?? []
     arr.push(r)
-    byName.set(r.studentName, arr)
+    byKey.set(k, arr)
   }
-  return [...byName.entries()]
-    .map(([name, list]) => ({
-      name,
-      image: list[0]?.studentImage,
+  return [...byKey.entries()]
+    .map(([label, list]) => ({
+      label,
+      image: mode === "student" ? list[0]?.studentImage : undefined,
       rows: list.sort((a, b) => (b.when ?? 0) - (a.when ?? 0)),
     }))
     .sort((a, b) => (b.rows[0]?.when ?? 0) - (a.rows[0]?.when ?? 0))
@@ -276,6 +290,7 @@ export function AdminReviewQueue({
           key={key}
           meta={GROUP_META[key]}
           rows={groups[key]}
+          groupBy={onlyStudentId ? "section" : "student"}
           loading={loading}
           expanded={defaultExpanded || expanded.has(key)}
           canToggle={!defaultExpanded}
@@ -299,6 +314,7 @@ export function AdminReviewQueue({
 function ReviewCard({
   meta,
   rows,
+  groupBy,
   loading,
   expanded,
   canToggle,
@@ -308,6 +324,7 @@ function ReviewCard({
 }: {
   meta: { label: string; dot: string; empty: string }
   rows: QueueRow[]
+  groupBy: GroupMode
   loading: boolean
   expanded: boolean
   canToggle: boolean
@@ -315,20 +332,20 @@ function ReviewCard({
   onOpen: (target: ReviewTarget) => void
   viewAllHref?: string
 }) {
-  const studentGroups = useMemo(() => groupByStudent(rows), [rows])
+  const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy])
 
   // Cap the number of data rows shown when collapsed, without splitting groups awkwardly.
   let shown = 0
   const visibleGroups = expanded
-    ? studentGroups
-    : studentGroups
+    ? groups
+    : groups
         .map((g) => {
           if (shown >= ROW_CAP) return null
           const take = g.rows.slice(0, Math.max(0, ROW_CAP - shown))
           shown += take.length
           return { ...g, rows: take }
         })
-        .filter(Boolean) as typeof studentGroups
+        .filter(Boolean) as typeof groups
 
   return (
     <Card className="gap-0 py-0">
@@ -362,13 +379,15 @@ function ReviewCard({
         ) : (
           <div className="divide-y">
             {visibleGroups.map((g) => (
-              <div key={g.name}>
+              <div key={g.label}>
                 <div className="bg-muted/40 flex items-center gap-2 px-4 py-1.5">
-                  <Avatar className="size-5">
-                    <AvatarImage src={g.image} />
-                    <AvatarFallback className="text-[9px]">{initials(g.name)}</AvatarFallback>
-                  </Avatar>
-                  <span className="text-xs font-semibold">{g.name}</span>
+                  {groupBy === "student" && (
+                    <Avatar className="size-5">
+                      <AvatarImage src={g.image} />
+                      <AvatarFallback className="text-[9px]">{initials(g.label)}</AvatarFallback>
+                    </Avatar>
+                  )}
+                  <span className="text-xs font-semibold">{g.label}</span>
                   <span className="text-muted-foreground text-xs">({g.rows.length})</span>
                 </div>
                 {g.rows.map((row) => (
@@ -376,21 +395,23 @@ function ReviewCard({
                     key={row.key}
                     type="button"
                     onClick={() => onOpen(row.target)}
-                    className="hover:bg-muted/50 flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors"
+                    className="hover:bg-muted/50 flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors"
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{row.questionLabel}</span>
-                        <span className="text-muted-foreground hidden shrink-0 text-xs sm:inline">
-                          {row.sectionTitle}
-                        </span>
-                      </div>
-                      <p className="text-muted-foreground mt-0.5 line-clamp-1 text-xs italic">{row.preview}</p>
-                    </div>
+                    {/* Question name and the actual response, same size, bullet-separated. */}
+                    <p className="min-w-0 flex-1 truncate text-sm">
+                      <span className="font-medium">{row.questionLabel}</span>
+                      <span className="text-muted-foreground"> &middot; </span>
+                      <span className="font-normal">{row.preview}</span>
+                    </p>
+                    {groupBy === "student" && (
+                      <span className="text-muted-foreground hidden shrink-0 text-xs sm:inline">
+                        {row.sectionTitle}
+                      </span>
+                    )}
                     <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
                       {formatWhen(row.when)}
                     </span>
-                    <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="text-muted-foreground/40 mt-0.5 size-4 shrink-0" />
+                    <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="text-muted-foreground/40 size-4 shrink-0" />
                   </button>
                 ))}
               </div>
