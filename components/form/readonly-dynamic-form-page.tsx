@@ -576,7 +576,11 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         if (isImage) {
           const url = getImageUrl(imageValue)
           displayValue = url ? (
-            <ZoomableImage src={url} alt={q.field_label} className="rounded-lg border" caption={q.field_label} />
+            // Fixed frame: the image sits centered at its natural aspect, and
+            // a blurred copy of itself fills the space around it.
+            <div className="h-72 overflow-hidden rounded-lg border">
+              <ZoomableImage src={url} alt={q.field_label} blurredFit caption={q.field_label} />
+            </div>
           ) : (
             <div className="text-muted-foreground flex h-32 items-center justify-center rounded-lg border border-dashed text-sm">
               No image uploaded

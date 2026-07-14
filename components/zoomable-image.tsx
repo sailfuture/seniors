@@ -14,6 +14,7 @@ export function ZoomableImage({
   imgStyle,
   className = "",
   caption,
+  blurredFit = false,
 }: {
   src: string
   alt: string
@@ -21,6 +22,9 @@ export function ZoomableImage({
   imgStyle?: React.CSSProperties
   className?: string
   caption?: string
+  /** Center the image (object-contain) over a blurred, blown-up copy of
+   *  itself, so any empty space fills with the picture's own colors. */
+  blurredFit?: boolean
 }) {
   const [open, setOpen] = useState(false)
 
@@ -46,10 +50,18 @@ export function ZoomableImage({
         aria-label={alt ? `View ${alt}` : "View image"}
         className={`group relative block h-full w-full cursor-zoom-in overflow-hidden ${className}`}
       >
+        {blurredFit && (
+          <img
+            src={src}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-xl"
+          />
+        )}
         <img
           src={src}
           alt={alt}
-          className={`${imgClassName} transition-transform duration-500 ease-out motion-safe:group-hover:scale-[1.04]`}
+          className={`${blurredFit ? "relative z-[1] mx-auto h-full w-auto max-w-full object-contain" : ""} ${imgClassName} transition-transform duration-500 ease-out motion-safe:group-hover:scale-[1.04]`}
           style={imgStyle}
         />
         <span className="pointer-events-none absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/30" />
