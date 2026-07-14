@@ -224,4 +224,6 @@
     color: inherit;
     text-decoration: none;
   }
+  /* break-inside rules live in PrintDocument's injected <style> — Lightning
+     CSS strips them from this stylesheet. */
 }

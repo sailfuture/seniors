@@ -302,10 +302,10 @@ export function PrintDocument({
           })
           .filter((g): g is { group: CustomGroup; questions: TemplateQuestion[] } => !!g)
 
-        if (ungroupedWithContent.length === 0 && groupBlocks.length === 0) return null
+        // Every section prints — an empty one keeps its page and header so
+        // the document always shows the full outline.
         return { section, ungrouped: ungroupedWithContent, groupBlocks }
       })
-      .filter((s): s is NonNullable<typeof s> => !!s)
   }, [sections, templates, groups, responseMap, F.sectionId, F.customGroupId])
 
   const isBusiness = product === "business-thesis"
@@ -313,6 +313,8 @@ export function PrintDocument({
   const title = isBusiness ? brand.companyName || "Business Thesis" : studentName || "Life Map"
   const titleFont = brand.primaryFont ? { fontFamily: `"${brand.primaryFont}", inherit` } : undefined
   const accent = brand.hasBrand ? brand.primaryInk : "#111827"
+  // Running header text for the printed pages; quotes would break the CSS string.
+  const runningHeader = `${title} — ${docLabel}`.replace(/["\\]/g, "")
 
   if (loading) {
     return (
@@ -325,11 +327,44 @@ export function PrintDocument({
   return (
     <BrandThemeProvider theme={brand}>
     <div className="print-doc min-h-screen bg-gray-200/70 print:bg-white">
-      {/* Letter sizing lives here, not in globals.css: the rule only exists
-          while a print route is mounted, so printing any other app page keeps
-          the browser's default paper. (Lightning CSS strips named @page
-          rules, so a stylesheet-scoped version isn't possible.) */}
-      <style>{`@page { size: letter; margin: 0.75in; }`}</style>
+      {/* Letter sizing and fragmentation rules live here, not in globals.css:
+          the @page rule only exists while a print route is mounted (so other
+          app pages keep the browser's default paper), and Lightning CSS
+          strips both named @page rules and these break-inside declarations
+          from the compiled stylesheet. The break rules keep cards, images,
+          and table rows from being sliced across page boundaries — that is
+          what clipped the competitor-map description cards. */}
+      <style>{`
+        @page {
+          size: letter;
+          margin: 0.75in;
+          @top-center {
+            content: "${runningHeader}";
+            font-family: ui-sans-serif, system-ui, sans-serif;
+            font-size: 7pt;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #9ca3af;
+          }
+          @bottom-center {
+            content: "Page " counter(page);
+            font-family: ui-sans-serif, system-ui, sans-serif;
+            font-size: 7pt;
+            color: #9ca3af;
+          }
+        }
+        /* The cover carries its own masthead — no running header there. */
+        @page :first {
+          @top-center { content: none; }
+        }
+        @media print {
+          .print-doc [data-slot="card"],
+          .print-doc img,
+          .print-doc tr {
+            break-inside: avoid;
+          }
+        }
+      `}</style>
       {/* Screen-only toolbar */}
       <div className="sticky top-0 z-20 border-b bg-white/95 backdrop-blur print:hidden">
         <div className="mx-auto flex w-[8.5in] max-w-full items-center justify-between px-4 py-2.5">
@@ -421,7 +456,7 @@ export function PrintDocument({
         {printSections.map(({ section, ungrouped, groupBlocks }, i) => (
           <section
             key={section.id}
-            className="break-before-page bg-white p-[0.75in] shadow-md ring-1 ring-black/5 print:p-0 print:shadow-none print:ring-0"
+            className="flex min-h-[11in] flex-col break-before-page bg-white p-[0.75in] shadow-md ring-1 ring-black/5 print:min-h-0 print:p-0 print:shadow-none print:ring-0"
           >
             <header className="mb-7 border-b border-gray-200 pb-5">
               <div className="flex items-center gap-3">
@@ -458,6 +493,19 @@ export function PrintDocument({
                 displayTypesField={F.displayTypesId}
               />
             ))}
+
+            {ungrouped.length === 0 && groupBlocks.length === 0 && (
+              <p className="text-xs italic text-gray-400">
+                No approved content in this section yet.
+              </p>
+            )}
+
+            {/* Subtle in-sheet footer for the screen preview; the printed
+                pages carry their own running footer with real page numbers. */}
+            <div className="mt-auto flex items-center justify-between pt-8 text-[8px] uppercase tracking-[0.14em] text-gray-300 print:hidden">
+              <span>{title}</span>
+              <span>{docLabel}</span>
+            </div>
           </section>
         ))}
 
@@ -517,13 +565,17 @@ function GroupBlock({
     const raw = lineItemsQ ? (responseMap.get(lineItemsQ.id)?.student_response ?? "") : ""
     body = <LineItemsTable raw={raw} />
   } else if (printRendered) {
+    // The map/table renders are one visual unit — don't slice them across a
+    // page boundary (galleries are long; their cards break individually).
     body = (
-      <GroupDisplayRenderer
-        displayTypeId={displayTypeId!}
-        questions={questions}
-        responseMap={responseMap}
-        mode="public"
-      />
+      <div className={displayTypeId === DISPLAY_TYPE.GALLERY ? undefined : "break-inside-avoid"}>
+        <GroupDisplayRenderer
+          displayTypeId={displayTypeId!}
+          questions={questions}
+          responseMap={responseMap}
+          mode="public"
+        />
+      </div>
     )
   } else {
     body = (
@@ -584,9 +636,15 @@ function QuestionGrid({
         }
         const r = responseMap.get(q.id)
         if (!hasContent(q, r)) return null
-        const short = isShortType(typeId) && typeId !== null
+        // Half-width cells: images (so logos and reference shots pair up
+        // side by side, flowing into a 2-wide grid) and genuinely short
+        // answers. Anything paragraph-length takes the full page width —
+        // many "short response" questions hold long prose.
+        const isImage = typeId === QUESTION_TYPE.IMAGE_UPLOAD
+        const textLen = (r!.student_response ?? "").trim().length
+        const half = isImage || (isShortType(typeId) && textLen <= 140)
         return (
-          <div key={q.id} className={`${short ? "" : "col-span-2"} break-inside-avoid`}>
+          <div key={q.id} className={`${half ? "" : "col-span-2"} break-inside-avoid`}>
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
               {q.public_display_title || q.field_label}
             </p>
@@ -606,7 +664,7 @@ function PrintValue({ q, r, brand }: { q: TemplateQuestion; r: StudentResponse; 
     const src = resolveImageUrl(r.image_response?.path || r.image_response?.url)
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt={q.field_label} className="max-h-[4in] w-auto max-w-full rounded-md border border-gray-200 break-inside-avoid" />
+      <img src={src} alt={q.field_label} className="w-full rounded-md border border-gray-200 break-inside-avoid" />
     )
   }
   if (typeId === QUESTION_TYPE.CURRENCY) {
