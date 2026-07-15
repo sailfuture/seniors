@@ -47,6 +47,7 @@ import { isLineItemsQuestion } from "@/lib/line-items"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
+import { eventTypeForAction, postResponseEvent } from "@/lib/response-events"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 
 interface GptZeroResult {
@@ -433,6 +434,21 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           body: JSON.stringify(patch),
         })
         if (res.ok) {
+          // Log the transition so activity timelines show the history.
+          {
+            const q = questions.find((qq) => qq.id === templateId)
+            if (q && studentId) {
+              postResponseEvent(cfg, {
+                studentId,
+                templateId,
+                fieldName: q.field_name,
+                sectionId,
+                eventType: eventTypeForAction(action),
+                actorName: session?.user?.name ?? "Teacher",
+                teachersId: ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null,
+              })
+            }
+          }
           // Notify the sidebar badges of the state transition
           const prevResp = responses.get(templateId)
           const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)

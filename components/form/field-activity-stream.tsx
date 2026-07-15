@@ -23,6 +23,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import type { Comment } from "@/lib/form-types"
+import type { ResponseEvent } from "@/lib/response-events"
 
 function parseTimestamp(ts: string | number | undefined | null): number {
   if (!ts) return 0
@@ -69,8 +70,20 @@ interface ResponseStatus {
  * submissions/approvals appear indirectly via revision-feedback comments; the
  * terminal marker always reflects where the input stands right now.
  */
+type TimelineItem =
+  | { kind: "comment"; ts: number; c: Comment }
+  | { kind: "event"; ts: number; e: ResponseEvent }
+
+const EVENT_META: Record<string, { icon: typeof SentIcon; iconClass: string; label: string; labelClass: string }> = {
+  submitted: { icon: SentIcon, iconClass: "text-blue-500", label: "Submitted for review", labelClass: "text-blue-600" },
+  revision_requested: { icon: AlertCircleIcon, iconClass: "text-red-500", label: "Revision requested", labelClass: "text-red-600" },
+  completed: { icon: CheckmarkCircle02Icon, iconClass: "text-green-600", label: "Marked complete", labelClass: "text-green-700" },
+  reopened: { icon: CircleIcon, iconClass: "text-muted-foreground/60", label: "Reopened for review", labelClass: "text-muted-foreground" },
+}
+
 export function FieldActivityStream({
   comments,
+  events = [],
   viewer,
   responseStatus,
   lastEdited,
@@ -81,6 +94,8 @@ export function FieldActivityStream({
 }: {
   /** Comments already scoped to this field. */
   comments: Comment[]
+  /** Review-state transitions for this field, shown as timeline markers. */
+  events?: ResponseEvent[]
   viewer: "teacher" | "student"
   /** Pass to pin the current submission state at the end; omit to hide it. */
   responseStatus?: ResponseStatus | null
@@ -96,9 +111,23 @@ export function FieldActivityStream({
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const sorted = [...comments].sort(
-    (a, b) => parseTimestamp(a.created_at) - parseTimestamp(b.created_at)
-  )
+  // A revision-feedback comment already renders its own red marker, so drop
+  // the revision event fired by the same action to avoid a double marker.
+  const revisionCommentTimes = comments
+    .filter((c) => c.isRevisionFeedback)
+    .map((c) => parseTimestamp(c.created_at))
+  const timeline: TimelineItem[] = [
+    ...comments.map((c): TimelineItem => ({ kind: "comment", ts: parseTimestamp(c.created_at), c })),
+    ...events
+      .filter(
+        (e) =>
+          e.event_type !== "revision_requested" ||
+          !revisionCommentTimes.some((t) => Math.abs(t - parseTimestamp(e.created_at)) < 90_000)
+      )
+      .map((e): TimelineItem => ({ kind: "event", ts: parseTimestamp(e.created_at), e })),
+  ].sort((a, b) => a.ts - b.ts)
+
+  const sorted = timeline.filter((i) => i.kind === "comment").map((i) => (i as { c: Comment }).c)
 
   // Land on the most recent comment when the thread opens (and follow new ones).
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -123,16 +152,40 @@ export function FieldActivityStream({
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
-      {sorted.length === 0 && (
-        <p className="text-muted-foreground py-4 text-center text-sm">No comments yet.</p>
+      {timeline.length === 0 && (
+        <p className="text-muted-foreground py-4 text-center text-sm">No activity yet.</p>
       )}
 
-      {sorted.map((c) => {
-        const ts = parseTimestamp(c.created_at)
+      {timeline.map((item) => {
+        const ts = item.ts
         const day = ts ? dayLabel(ts) : ""
         const showDay = day && day !== lastDay
         if (showDay) lastDay = day
 
+        if (item.kind === "event") {
+          const meta = EVENT_META[item.e.event_type] ?? EVENT_META.reopened
+          return (
+            <div key={`ev-${item.e.id ?? ts}`} className="flex flex-col gap-1">
+              {showDay && (
+                <Marker variant="separator" className="my-1">
+                  <MarkerContent>{day}</MarkerContent>
+                </Marker>
+              )}
+              <Marker variant="separator">
+                <MarkerIcon>
+                  <HugeiconsIcon icon={meta.icon} strokeWidth={2} className={meta.iconClass} />
+                </MarkerIcon>
+                <MarkerContent>
+                  <span className={cn("font-medium", meta.labelClass)}>{meta.label}</span>
+                  {item.e.actor_name && <span className="text-muted-foreground"> &middot; {item.e.actor_name}</span>}
+                  {ts > 0 && <span className="text-muted-foreground"> &middot; {getRelativeTime(ts)}</span>}
+                </MarkerContent>
+              </Marker>
+            </div>
+          )
+        }
+
+        const c = item.c
         const isStudentAuthored = c.isStudentReply === true
         // "Own" messages sit on the right, like any chat app.
         const own = viewer === "teacher" ? !isStudentAuthored : isStudentAuthored

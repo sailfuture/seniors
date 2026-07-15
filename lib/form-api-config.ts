@@ -8,6 +8,9 @@ const BUSINESSTHESIS_BASE =
 
 const PLAGIARISM_BASE = "https://xsc3-mvx7-r86m.n7e.xano.io/api:-S1CSX2N"
 
+// The response event logs live in the shared students API group.
+const EVENTS_BASE = "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC"
+
 export interface FormApiConfig {
   templateEndpoint: string
   responsesEndpoint: string
@@ -27,6 +30,10 @@ export interface FormApiConfig {
   gptzeroEndpoint?: string
   gptzeroDeleteBase?: string
   eventPrefix?: string
+  /** Append-only log of review-state transitions (submit/revision/complete). */
+  responseEventsEndpoint?: string
+  /** Append-only content snapshots for edit history. */
+  responseVersionsEndpoint?: string
   /** Admin route base for this product, e.g. `/admin/business-thesis`. */
   adminBasePath: string
   fields: {
@@ -40,6 +47,8 @@ export interface FormApiConfig {
 
 export const LIFEMAP_API_CONFIG: FormApiConfig = {
   adminBasePath: "/admin/life-map",
+  responseEventsEndpoint: `${EVENTS_BASE}/lifemap_response_events`,
+  responseVersionsEndpoint: `${LIFEMAP_BASE}/lifemap_response_versions`,
   templateEndpoint: `${LIFEMAP_BASE}/lifeplan_template`,
   responsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses_by_student`,
   allResponsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses`,
@@ -68,6 +77,8 @@ export const LIFEMAP_API_CONFIG: FormApiConfig = {
 export const BUSINESSTHESIS_API_CONFIG: FormApiConfig = {
   eventPrefix: "bt-",
   adminBasePath: "/admin/business-thesis",
+  responseEventsEndpoint: `${EVENTS_BASE}/businessthesis_response_events`,
+  responseVersionsEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_response_versions`,
   templateEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_template`,
   responsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses_by_student`,
   allResponsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses`,

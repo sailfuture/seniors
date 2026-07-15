@@ -22,6 +22,12 @@ import { RichTextDisplay } from "./rich-text-display"
 import { LineItemsTable } from "@/components/line-items-table"
 import { isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { isLineItemsQuestion } from "@/lib/line-items"
+import {
+  eventTypeForAction,
+  fetchResponseEvents,
+  postResponseEvent,
+  type ResponseEvent,
+} from "@/lib/response-events"
 
 const IMAGE_UPLOAD = 4
 
@@ -77,6 +83,7 @@ export function ResponseReviewSheet({
   const { data: session } = useSession()
 
   const [comments, setComments] = useState<Comment[]>([])
+  const [events, setEvents] = useState<ResponseEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [note, setNote] = useState("")
   const [posting, setPosting] = useState(false)
@@ -95,11 +102,15 @@ export function ResponseReviewSheet({
     })
     setNote("")
     setComments([]) // don't show the previous submission's thread while loading
+    setEvents([])
     let cancelled = false
     const load = async () => {
       setLoading(true)
       try {
-        const res = await fetch(`${cfg.commentsEndpoint}?students_id=${studentId}`)
+        const [res, evts] = await Promise.all([
+          fetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
+          fetchResponseEvents(cfg, studentId ?? ""),
+        ])
         const data: Comment[] = res.ok ? await res.json() : []
         if (cancelled) return
         setComments(
@@ -111,6 +122,7 @@ export function ResponseReviewSheet({
               !c.thread_id
           )
         )
+        setEvents(evts.filter((e) => e.field_name === fieldName))
       } catch {
         /* leave empty */
       } finally {
@@ -192,6 +204,16 @@ export function ResponseReviewSheet({
           body: JSON.stringify(patch),
         })
         if (res.ok) {
+          // Log the transition so activity timelines show the history.
+          postResponseEvent(cfg, {
+            studentId: String(target.response.students_id),
+            templateId: target.question.id,
+            fieldName: target.question.field_name,
+            sectionId: target.sectionId,
+            eventType: eventTypeForAction(action),
+            actorName: teacherName,
+            teachersId,
+          })
           const eventName = `${cfg.eventPrefix ?? ""}review-update`
           const wasReady = status.readyReview && !status.isComplete && !status.revisionNeeded
           const nowReady = patch.readyReview
@@ -254,7 +276,7 @@ export function ResponseReviewSheet({
                 <Skeleton className="h-10 w-2/3" />
               </div>
             ) : (
-              <FieldActivityStream comments={comments} viewer="teacher" onDelete={handleDelete} scrollToLatest />
+              <FieldActivityStream comments={comments} events={events} viewer="teacher" onDelete={handleDelete} scrollToLatest />
             )}
           </div>
         </div>

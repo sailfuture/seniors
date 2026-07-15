@@ -14,12 +14,20 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
 import { TeacherEssayAnnotator } from "./teacher-essay-annotator"
 import { RichTextDisplay } from "./rich-text-display"
 import { FieldActivityStream } from "./field-activity-stream"
 import { isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import type { Comment } from "@/lib/form-types"
+import {
+  eventTypeForAction,
+  fetchResponseEvents,
+  postResponseEvent,
+  type ResponseEvent,
+} from "@/lib/response-events"
+import { fetchResponseVersions, postResponseVersion, type ResponseVersion } from "@/lib/response-versions"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -50,12 +58,13 @@ interface StudentResponse {
 
 /**
  * Full-page, document-style review of one student's rich-text essay. The
- * teacher reads the essay as a page, highlights text to leave inline anchored
- * comments (annotate-only — no prose edits), leaves overall feedback, and marks
- * the submission complete or requests a revision without returning to the queue.
+ * teacher edits the essay directly, highlights text to leave inline anchored
+ * comments (every open thread — student replies included — is listed under
+ * the document), leaves overall feedback, and marks the submission complete
+ * or requests a revision without returning to the queue.
  *
- * Inline annotation writes to the same student_response the student edits, so it
- * is only enabled once the essay is locked for review (submitted or approved);
+ * Editing writes to the same student_response the student edits, so it is
+ * only enabled once the essay is locked for review (submitted or approved);
  * while the student can still edit, the essay is shown read-only to avoid
  * clobbering a live draft, and only overall feedback is available.
  */
@@ -82,6 +91,9 @@ export function TeacherEssayReviewPage({
   const [response, setResponse] = useState<StudentResponse | null>(null)
   const [studentName, setStudentName] = useState("")
   const [comments, setComments] = useState<Comment[]>([])
+  const [events, setEvents] = useState<ResponseEvent[]>([])
+  const [versions, setVersions] = useState<ResponseVersion[]>([])
+  const [restoreNonce, setRestoreNonce] = useState(0)
   const [note, setNote] = useState("")
   const [posting, setPosting] = useState(false)
   const [acting, setActing] = useState(false)
@@ -139,6 +151,14 @@ export function TeacherEssayReviewPage({
           const students = (await studentsRes.json()) as { id: string; firstName: string; lastName: string }[]
           const s = students.find((x) => String(x.id) === String(studentId))
           if (s) setStudentName(`${s.firstName} ${s.lastName}`.trim())
+        }
+        const [evts, vers] = await Promise.all([
+          fetchResponseEvents(cfg, studentId),
+          fetchResponseVersions(cfg, studentId),
+        ])
+        if (!cancelled) {
+          setEvents(evts)
+          setVersions(vers)
         }
       } catch {
         /* silently fail, like the section form */
@@ -223,6 +243,29 @@ export function TeacherEssayReviewPage({
           setActing(false)
           return
         }
+        // Log the transition so the activity timeline shows the history.
+        if (question) {
+          const evType = eventTypeForAction(action)
+          postResponseEvent(cfg, {
+            studentId,
+            templateId: question.id,
+            fieldName: question.field_name,
+            sectionId,
+            eventType: evType,
+            actorName: teacherName,
+            teachersId,
+          })
+          setEvents((prev) => [
+            ...prev,
+            {
+              students_id: studentId,
+              field_name: question.field_name,
+              event_type: evType,
+              actor_name: teacherName,
+              created_at: Date.now(),
+            },
+          ])
+        }
         const eventName = `${cfg.eventPrefix ?? ""}review-update`
         const wasReady = status.readyReview && !status.isComplete && !status.revisionNeeded
         const nowReady = patch.readyReview
@@ -246,7 +289,7 @@ export function TeacherEssayReviewPage({
         setActing(false)
       }
     },
-    [response, note, postComment, cfg.responsePatchBase, cfg.eventPrefix, status, sectionId, router, backHref]
+    [response, note, postComment, cfg, question, studentId, teacherName, teachersId, status, sectionId, router, backHref]
   )
 
   if (loading) {
@@ -291,6 +334,59 @@ export function TeacherEssayReviewPage({
   const wordCount = richTextWordCount(value)
   const minWords = question.min_words && question.min_words > 0 ? question.min_words : null
 
+  // Preserve the student's original prose the moment the teacher first edits it.
+  const snapshotBeforeEdit = (original: string) => {
+    postResponseVersion(cfg, {
+      studentId,
+      templateId: question.id,
+      fieldName: question.field_name,
+      sectionId,
+      studentResponse: original,
+      reason: "before_teacher_edit",
+      actorName: teacherName,
+    })
+    setVersions((prev) => [
+      ...prev,
+      {
+        students_id: studentId,
+        field_name: question.field_name,
+        student_response: original,
+        wordCount: richTextWordCount(original),
+        reason: "before_teacher_edit",
+        actor_name: teacherName,
+        created_at: Date.now(),
+      },
+    ])
+  }
+
+  // Roll the essay back to a snapshot — recording the current text first, so a
+  // restore is itself reversible — and remount the editor on the new content.
+  const restoreVersion = async (v: ResponseVersion) => {
+    postResponseVersion(cfg, {
+      studentId,
+      templateId: question.id,
+      fieldName: question.field_name,
+      sectionId,
+      studentResponse: response.student_response ?? "",
+      reason: "restored",
+      actorName: teacherName,
+    })
+    try {
+      await fetch(`${cfg.responsePatchBase}/${response.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ student_response: v.student_response }),
+      })
+    } catch {
+      /* best-effort */
+    }
+    setResponse((prev) => (prev ? { ...prev, student_response: v.student_response } : prev))
+    setRestoreNonce((n) => n + 1)
+    setVersions(await fetchResponseVersions(cfg, studentId))
+  }
+
+  const fieldVersions = versions.filter((v) => v.field_name === question.field_name)
+
   return (
     <div className="w-full flex-1 bg-white p-4 md:p-6 dark:bg-background">
       <div className="flex items-center justify-between gap-2">
@@ -308,7 +404,8 @@ export function TeacherEssayReviewPage({
       {hasEssay && !canAnnotate && (
         <div className="bg-muted/50 text-muted-foreground mt-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
           <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 shrink-0 text-blue-500" />
-          The student is still editing this essay, so inline comments are disabled. You can leave overall feedback below.
+          The student is still editing this essay, so inline editing and comments are disabled. You can leave overall
+          feedback below.
         </div>
       )}
 
@@ -317,10 +414,11 @@ export function TeacherEssayReviewPage({
       <div className="mt-4">
         {canAnnotate ? (
           <TeacherEssayAnnotator
-            key={response.id}
+            key={`${response.id}-${restoreNonce}`}
             initialValue={value}
             patchUrl={`${cfg.responsePatchBase}/${response.id}`}
             bodyClassName="px-6 py-10 sm:px-12 lg:px-24"
+            onFirstProseEdit={snapshotBeforeEdit}
             comments={{
               commentsEndpoint: cfg.commentsEndpoint,
               sectionIdField: F.sectionId,
@@ -351,7 +449,12 @@ export function TeacherEssayReviewPage({
       <div className="mt-8">
         <h2 className="text-sm font-semibold">Overall feedback</h2>
         <div className="mt-3">
-          <FieldActivityStream comments={comments} viewer="teacher" onDelete={handleDelete} />
+          <FieldActivityStream
+            comments={comments}
+            events={events.filter((e) => e.field_name === question.field_name)}
+            viewer="teacher"
+            onDelete={handleDelete}
+          />
         </div>
         <div className="mt-3">
           <Textarea
@@ -373,6 +476,15 @@ export function TeacherEssayReviewPage({
           </div>
         </div>
       </div>
+
+      {fieldVersions.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-sm font-semibold">Version history</h2>
+          <div className="mt-3">
+            <VersionHistory versions={fieldVersions} onRestore={restoreVersion} />
+          </div>
+        </div>
+      )}
 
       {/* Review actions stay reachable while the teacher scrolls the essay. */}
       <div className="bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky bottom-0 mt-6 flex items-center gap-2 border-t py-3 backdrop-blur">
@@ -403,6 +515,119 @@ export function TeacherEssayReviewPage({
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+const REASON_LABEL: Record<string, { label: string; cls: string }> = {
+  submitted: { label: "Submitted for review", cls: "text-blue-600" },
+  before_teacher_edit: { label: "Before teacher edit", cls: "text-amber-600" },
+  restored: { label: "Restored", cls: "text-muted-foreground" },
+}
+
+function vts(ts: number | string | undefined): number {
+  if (!ts) return 0
+  return typeof ts === "number" ? ts : Date.parse(String(ts)) || 0
+}
+
+function formatVersionDate(ts: number | string | undefined): string {
+  const ms = vts(ts)
+  if (!ms) return ""
+  return new Date(ms).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+/** Snapshot list with a per-version read-only preview and a two-step Restore. */
+function VersionHistory({
+  versions,
+  onRestore,
+}: {
+  versions: ResponseVersion[]
+  onRestore: (v: ResponseVersion) => Promise<void>
+}) {
+  const sorted = [...versions].sort((a, b) => vts(b.created_at) - vts(a.created_at))
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const [confirmKey, setConfirmKey] = useState<string | null>(null)
+  const [restoring, setRestoring] = useState(false)
+
+  return (
+    <div className="divide-y rounded-lg border">
+      {sorted.map((v, i) => {
+        const key = String(v.id ?? `${v.reason}-${vts(v.created_at)}-${i}`)
+        const meta = REASON_LABEL[v.reason] ?? { label: String(v.reason), cls: "text-muted-foreground" }
+        const open = openKey === key
+        return (
+          <div key={key} className="px-3 py-2.5">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">
+                  <span className={cn("font-medium", meta.cls)}>{meta.label}</span>
+                  {v.actor_name && <span className="text-muted-foreground"> &middot; {v.actor_name}</span>}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  {formatVersionDate(v.created_at)}
+                  {v.wordCount != null ? ` · ${v.wordCount} words` : ""}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 shrink-0 text-xs"
+                onClick={() => setOpenKey(open ? null : key)}
+              >
+                {open ? "Hide" : "Preview"}
+              </Button>
+              {confirmKey === key ? (
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    disabled={restoring}
+                    onClick={() => setConfirmKey(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 bg-white text-xs dark:bg-transparent"
+                    disabled={restoring}
+                    onClick={async () => {
+                      setRestoring(true)
+                      await onRestore(v)
+                      setRestoring(false)
+                      setConfirmKey(null)
+                      setOpenKey(null)
+                    }}
+                  >
+                    {restoring ? "Restoring…" : "Confirm restore"}
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 shrink-0 bg-white text-xs dark:bg-transparent"
+                  onClick={() => setConfirmKey(key)}
+                >
+                  Restore
+                </Button>
+              )}
+            </div>
+            {open && (
+              <div className="bg-muted/30 mt-2 rounded-md border px-3 py-2">
+                <RichTextDisplay raw={v.student_response} className="text-[13px] leading-relaxed" />
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

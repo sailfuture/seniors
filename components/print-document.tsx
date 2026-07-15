@@ -194,6 +194,7 @@ export function PrintDocument({
   const [responses, setResponses] = useState<StudentResponse[]>([])
   const [groups, setGroups] = useState<CustomGroup[]>([])
   const [studentName, setStudentName] = useState("")
+  const [studentImage, setStudentImage] = useState("")
   const [yearGroup, setYearGroup] = useState("")
   const [loading, setLoading] = useState(true)
 
@@ -221,12 +222,13 @@ export function PrintDocument({
       }
       if (groupsRes.ok) setGroups(await groupsRes.json())
       if (studentsRes.ok) {
-        const students: { id: string; firstName: string; lastName: string; yearGroup?: string }[] =
+        const students: { id: string; firstName: string; lastName: string; yearGroup?: string; profileImage?: string }[] =
           await studentsRes.json()
         const match = students.find((s) => String(s.id) === String(studentId))
         if (match) {
           setStudentName(`${match.firstName} ${match.lastName}`)
           if (match.yearGroup) setYearGroup(match.yearGroup)
+          if (match.profileImage) setStudentImage(match.profileImage)
         }
       }
     } catch {
@@ -367,6 +369,15 @@ export function PrintDocument({
                 src={brand.logoUrl}
                 alt=""
                 className="mb-8 size-20 rounded-full border border-gray-200 object-cover"
+              />
+            )}
+            {!isBusiness && studentImage && (
+              // The Life Map cover leads with a large portrait above the name.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={studentImage}
+                alt={studentName}
+                className="mb-8 size-44 rounded-full border-4 border-gray-100 object-cover shadow-sm"
               />
             )}
             <h1 className="text-balance text-5xl font-bold leading-tight tracking-tight" style={titleFont}>

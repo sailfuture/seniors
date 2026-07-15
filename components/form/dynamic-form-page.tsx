@@ -70,6 +70,8 @@ import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 import type { SaveStatus, Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
+import { postResponseEvent } from "@/lib/response-events"
+import { postResponseVersion } from "@/lib/response-versions"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -664,6 +666,32 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           body: JSON.stringify(patch),
         })
         if (res.ok) {
+          // Log the transition so activity timelines show the history.
+          {
+            const q = questions.find((qq) => qq.id === templateId)
+            if (q && studentId) {
+              postResponseEvent(cfg, {
+                studentId,
+                templateId,
+                fieldName: q.field_name,
+                sectionId,
+                eventType: action === "ready" ? "submitted" : "reopened",
+                actorName: session?.user?.name ?? "Student",
+              })
+              // Snapshot rich-text essays at submit so edit history is preserved.
+              if (action === "ready" && isRichTextQuestion(q)) {
+                postResponseVersion(cfg, {
+                  studentId,
+                  templateId,
+                  fieldName: q.field_name,
+                  sectionId,
+                  studentResponse: localValues.get(templateId) ?? responses.get(templateId)?.student_response ?? "",
+                  reason: "submitted",
+                  actorName: session?.user?.name ?? "Student",
+                })
+              }
+            }
+          }
           // Notify the sidebar badges of the state transition
           const prevResp = responses.get(templateId)
           const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)
