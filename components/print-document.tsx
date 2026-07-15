@@ -23,7 +23,7 @@ import {
 import { LineItemsTable, ProductLineItemsTable } from "@/components/line-items-table"
 import { isLineItemsQuestion, parseLineItemProducts, LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
 import { RichTextDisplay } from "@/components/form/rich-text-display"
-import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc, parseRichText } from "@/lib/rich-text"
+import { RICH_TEXT_TYPE_ID, extractPlainText, looksLikeRichTextDoc, parseRichText } from "@/lib/rich-text"
 import type { FormApiConfig } from "@/lib/form-api-config"
 
 const STUDENTS_ENDPOINT =
@@ -506,48 +506,55 @@ function buildGroupPrintBlocks(
     if (bodies.length === 0) bodies.push({ id: `${base}-none`, node: <LineItemsTable raw={raw} /> })
   } else if (displayTypeId === DISPLAY_TYPE.COMPETITOR_MAP) {
     const data = getCompetitorMapData(questions, responseMap)
+    // A square plot fills the page on its own — the graph gets a full page.
     bodies.push({
       id: `${base}-plot`,
       node: (
         <div className="break-inside-avoid">
-          <CompetitorMapPlot data={data} />
+          <CompetitorMapPlot data={data} aspect="1 / 1" />
         </div>
       ),
     })
-    data.cards
-      .filter((c) => c.entity.name || c.positioning)
-      .forEach((c, i) =>
-        bodies.push({
-          id: `${base}-card${i}`,
-          node: (
-            <div className="rounded-lg border border-gray-200 p-4 break-inside-avoid">
-              <div className="flex items-center gap-3">
-                {c.entity.logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={c.entity.logoUrl}
-                    alt=""
-                    className="size-8 shrink-0 rounded-full border border-gray-200 object-contain"
-                  />
-                ) : (
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500">
-                    {(c.entity.name || "?").charAt(0).toUpperCase()}
+    // Cards travel in stacked pairs: two per page minimum, four when the
+    // positioning text is short enough for both pairs to share a page.
+    const cardsData = data.cards.filter((c) => c.entity.name || c.positioning)
+    for (let i = 0; i < cardsData.length; i += 2) {
+      bodies.push({
+        id: `${base}-cards${i}`,
+        node: (
+          <div className="space-y-4">
+            {cardsData.slice(i, i + 2).map((c) => (
+              <div key={c.label} className="rounded-lg border border-gray-200 p-4 break-inside-avoid">
+                <div className="flex items-center gap-3">
+                  {c.entity.logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={c.entity.logoUrl}
+                      alt=""
+                      className="size-8 shrink-0 rounded-full border border-gray-200 object-contain"
+                    />
+                  ) : (
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500">
+                      {(c.entity.name || "?").charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{c.entity.name || "—"}</p>
+                    <p className="text-[10px] text-gray-400">{c.label}</p>
                   </div>
-                )}
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">{c.entity.name || "—"}</p>
-                  <p className="text-[10px] text-gray-400">{c.label}</p>
                 </div>
+                {c.positioning && (
+                  // Clamped so a pair always fits one page.
+                  <p className="mt-2.5 line-clamp-[16] whitespace-pre-wrap text-[12px] leading-relaxed text-gray-600">
+                    {c.positioning}
+                  </p>
+                )}
               </div>
-              {c.positioning && (
-                <p className="mt-2.5 whitespace-pre-wrap text-[12px] leading-relaxed text-gray-600">
-                  {c.positioning}
-                </p>
-              )}
-            </div>
-          ),
-        })
-      )
+            ))}
+          </div>
+        ),
+      })
+    }
   } else if (displayTypeId === DISPLAY_TYPE.GALLERY && hasApprovedImage) {
     // The slides are built from — and return — this module's own question
     // objects; the cast just restores their wider type.
@@ -571,19 +578,21 @@ function buildGroupPrintBlocks(
         return { key: s.imageQ.id, src: resolveImageUrl(src), cardTitle, desc }
       })
       .filter((c): c is { key: number; src: string; cardTitle: string; desc: string } => !!c)
-    for (let i = 0; i < cards.length; i += 2) {
+    // A whole image set stays together on one page: 3-across cropped cards
+    // with clamped captions keep even 9 images inside a single page block.
+    for (let i = 0; i < cards.length; i += 9) {
       bodies.push({
         id: `${base}-imgs${i}`,
         node: (
-          <div className="grid grid-cols-2 gap-x-10">
-            {cards.slice(i, i + 2).map((c) => (
+          <div className="grid grid-cols-3 gap-4">
+            {cards.slice(i, i + 9).map((c) => (
               <div key={c.key} className="overflow-hidden rounded-lg border border-gray-200 break-inside-avoid">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={c.src} alt={c.cardTitle || "Gallery image"} className="aspect-[4/3] w-full object-cover" />
                 {(c.cardTitle || c.desc) && (
-                  <div className="border-t border-gray-200 px-3 py-2">
-                    {c.cardTitle && <p className="text-xs font-semibold">{c.cardTitle}</p>}
-                    {c.desc && <p className="mt-0.5 text-[11px] leading-snug text-gray-500">{c.desc}</p>}
+                  <div className="border-t border-gray-200 px-2.5 py-1.5">
+                    {c.cardTitle && <p className="truncate text-[11px] font-semibold">{c.cardTitle}</p>}
+                    {c.desc && <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-gray-500">{c.desc}</p>}
                   </div>
                 )}
               </div>
@@ -607,9 +616,93 @@ function buildGroupPrintBlocks(
       ),
     })
   } else {
-    buildQuestionRows(printableGridQuestions(questions, responseMap), responseMap, brand).forEach((node, i) =>
-      bodies.push({ id: `${base}-row${i}`, node })
+    const printable = printableGridQuestions(questions, responseMap)
+    const imgQs = printable.filter((q) => typeIdOf(q) === QUESTION_TYPE.IMAGE_UPLOAD)
+    const textQs = printable.filter(
+      (q) => !q._question_types?.noInput && typeIdOf(q) !== QUESTION_TYPE.IMAGE_UPLOAD
     )
+    // Small text+image groups (a messaging location, say) compress to one
+    // media block — texts stacked and clamped on the left, image on the
+    // right — so a family of them shares a single page.
+    const compactMedia =
+      imgQs.length >= 1 &&
+      textQs.length >= 1 &&
+      textQs.length <= 3 &&
+      printable.length === imgQs.length + textQs.length
+    if (compactMedia) {
+      bodies.push({
+        id: `${base}-media`,
+        node: (
+          <div className="grid grid-cols-2 items-start gap-x-10">
+            <div className="space-y-3 break-inside-avoid">
+              {textQs.map((q) => {
+                const r = responseMap.get(q.id)!
+                const raw = r.student_response ?? ""
+                const txt = looksLikeRichTextDoc(raw) ? extractPlainText(raw) : raw
+                return (
+                  <div key={q.id}>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      {q.public_display_title || q.field_label}
+                    </p>
+                    <p className="line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-gray-800">{txt}</p>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="space-y-3 break-inside-avoid">
+              {imgQs.slice(0, 2).map((q) => {
+                const r = responseMap.get(q.id)!
+                const src = resolveImageUrl(r.image_response?.path || r.image_response?.url)
+                return (
+                  <div key={q.id}>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      {q.public_display_title || q.field_label}
+                    </p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={src}
+                      alt={q.field_label}
+                      className="aspect-video w-full rounded-md border border-gray-200 object-cover"
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ),
+      })
+      if (imgQs.length > 2) {
+        buildQuestionRows(imgQs.slice(2), responseMap, brand, true).forEach((node, i) =>
+          bodies.push({ id: `${base}-xrow${i}`, node })
+        )
+      }
+    } else if (imgQs.length >= 3 && textQs.length === 0) {
+      // Image-only groups (reference images) print as one 3-across grid
+      // block so the whole set shares a page.
+      for (let i = 0; i < imgQs.length; i += 9) {
+        bodies.push({
+          id: `${base}-igrid${i}`,
+          node: (
+            <div className="grid grid-cols-3 gap-4">
+              {imgQs.slice(i, i + 9).map((q) => {
+                const r = responseMap.get(q.id)!
+                const src = resolveImageUrl(r.image_response?.path || r.image_response?.url)
+                return (
+                  <div key={q.id} className="overflow-hidden rounded-lg border border-gray-200 break-inside-avoid">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt={q.field_label} className="aspect-[4/3] w-full object-cover" />
+                  </div>
+                )
+              })}
+            </div>
+          ),
+        })
+      }
+    } else {
+      buildQuestionRows(printable, responseMap, brand, true).forEach((node, i) =>
+        bodies.push({ id: `${base}-row${i}`, node })
+      )
+    }
   }
 
   const sourceEntries = questions
@@ -680,48 +773,20 @@ function QuestionCell({
   r,
   brand,
   half,
+  cropImage = false,
 }: {
   q: TemplateQuestion
   r: StudentResponse
   brand: BrandTheme
   half: boolean
+  cropImage?: boolean
 }) {
   return (
     <div className={`${half ? "" : "col-span-2"} break-inside-avoid`}>
       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
         {q.public_display_title || q.field_label}
       </p>
-      <PrintValue q={q} r={r} brand={brand} />
-    </div>
-  )
-}
-
-function QuestionGrid({
-  questions,
-  responseMap,
-  brand,
-}: {
-  questions: TemplateQuestion[]
-  responseMap: Map<number, StudentResponse>
-  brand: BrandTheme
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-x-10 gap-y-6">
-      {questions.map((q) => {
-        if (q._question_types?.noInput) {
-          return (
-            <p
-              key={q.id}
-              className="col-span-2 border-b border-gray-100 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500 break-after-avoid"
-            >
-              {q.public_display_title || q.field_label}
-            </p>
-          )
-        }
-        const r = responseMap.get(q.id)
-        if (!hasContent(q, r)) return null
-        return <QuestionCell key={q.id} q={q} r={r!} brand={brand} half={isHalfCell(q, r)} />
-      })}
+      <PrintValue q={q} r={r} brand={brand} cropImage={cropImage} />
     </div>
   )
 }
@@ -731,7 +796,10 @@ function QuestionGrid({
 function buildQuestionRows(
   questions: TemplateQuestion[],
   responseMap: Map<number, StudentResponse>,
-  brand: BrandTheme
+  brand: BrandTheme,
+  /** Group mode: pair a long text with its neighboring image side by side
+      (text clamped, image cropped) so text+image groups fit one page. */
+  compact = false
 ): React.ReactNode[] {
   const rows: React.ReactNode[] = []
   let pending: TemplateQuestion | null = null
@@ -739,7 +807,14 @@ function buildQuestionRows(
     rows.push(
       <div key={qs.map((q) => q.id).join("-")} className="grid grid-cols-2 gap-x-10">
         {qs.map((q) => (
-          <QuestionCell key={q.id} q={q} r={responseMap.get(q.id)!} brand={brand} half={isHalfCell(q, responseMap.get(q.id))} />
+          <QuestionCell
+            key={q.id}
+            q={q}
+            r={responseMap.get(q.id)!}
+            brand={brand}
+            half={isHalfCell(q, responseMap.get(q.id))}
+            cropImage={compact}
+          />
         ))}
       </div>
     )
@@ -750,7 +825,8 @@ function buildQuestionRows(
       pending = null
     }
   }
-  for (const q of questions) {
+  for (let qi = 0; qi < questions.length; qi++) {
+    const q = questions[qi]
     if (q._question_types?.noInput) {
       flushPending()
       rows.push(
@@ -791,6 +867,45 @@ function buildQuestionRows(
         continue
       }
     }
+    // Compact groups: a paragraph answer followed by its image prints as one
+    // side-by-side row — clamped text, cropped image — so a text+image group
+    // (e.g. a messaging location) fits on a single page.
+    const next = questions[qi + 1]
+    if (
+      compact &&
+      !isHalfCell(q, r) &&
+      typeIdOf(q) !== QUESTION_TYPE.IMAGE_UPLOAD &&
+      next &&
+      typeIdOf(next) === QUESTION_TYPE.IMAGE_UPLOAD &&
+      hasContent(next, responseMap.get(next.id))
+    ) {
+      flushPending()
+      const imgR = responseMap.get(next.id)!
+      const src = resolveImageUrl(imgR.image_response?.path || imgR.image_response?.url)
+      rows.push(
+        <div key={`pair-${q.id}-${next.id}`} className="grid grid-cols-2 items-start gap-x-10">
+          <div className="break-inside-avoid">
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              {q.public_display_title || q.field_label}
+            </p>
+            <p className="line-clamp-[8] whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800">{text}</p>
+          </div>
+          <div className="break-inside-avoid">
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              {next.public_display_title || next.field_label}
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt={next.field_label}
+              className="aspect-video w-full rounded-md border border-gray-200 object-cover"
+            />
+          </div>
+        </div>
+      )
+      qi++
+      continue
+    }
     if (isHalfCell(q, r)) {
       if (pending) {
         push(pending, q)
@@ -810,6 +925,10 @@ function buildQuestionRows(
 interface PrintBlock {
   id: string
   node: React.ReactNode
+  /** Sibling groups sharing a name prefix (e.g. the three "Messaging
+      Location" groups) carry the same key so the paginator keeps the whole
+      family on one page when it fits. */
+  familyKey?: string
 }
 
 interface PageSpec {
@@ -887,11 +1006,27 @@ function PaginatedSheets({
       buildQuestionRows(ungrouped, responseMap, brand).forEach((node, ri) => {
         blocks.push({ id: `s${section.id}-row-${ri}`, node })
       })
-      for (const { group, questions } of groupBlocks) {
-        blocks.push(
-          ...buildGroupPrintBlocks(section.id, group, questions, responseMap, brand, accent, displayTypesField)
+      // Groups whose names share a prefix before ":" (dropping a plural "s")
+      // form a family the paginator tries to keep on a single page.
+      const famKeyOf = (name: string) => name.split(":")[0].trim().toLowerCase().replace(/s$/, "")
+      const famKeys = groupBlocks.map(({ group }) => famKeyOf(group.group_name))
+      groupBlocks.forEach(({ group, questions }, gi) => {
+        const inRun =
+          (gi > 0 && famKeys[gi - 1] === famKeys[gi]) ||
+          (gi < famKeys.length - 1 && famKeys[gi + 1] === famKeys[gi])
+        const gBlocks = buildGroupPrintBlocks(
+          section.id,
+          group,
+          questions,
+          responseMap,
+          brand,
+          accent,
+          displayTypesField
         )
-      }
+        blocks.push(
+          ...(inRun ? gBlocks.map((b) => ({ ...b, familyKey: `s${section.id}-${famKeys[gi]}` })) : gBlocks)
+        )
+      })
       if (ungrouped.length === 0 && groupBlocks.length === 0) {
         blocks.push({
           id: `s${section.id}-empty`,
@@ -948,8 +1083,18 @@ function PaginatedSheets({
           cur = []
           used = 0
         }
-        for (const b of blocks) {
+        for (let bi = 0; bi < blocks.length; bi++) {
+          const b = blocks[bi]
           const bh = (heights.get(b.id) ?? 0) + BLOCK_GAP
+          // Entering a block family: when the whole family fits on a fresh
+          // page but not in the space left, break early so it stays together.
+          if (b.familyKey && used > 0 && blocks[bi - 1]?.familyKey !== b.familyKey) {
+            let famTotal = 0
+            for (let j = bi; j < blocks.length && blocks[j].familyKey === b.familyKey; j++) {
+              famTotal += (heights.get(blocks[j].id) ?? 0) + BLOCK_GAP
+            }
+            if (famTotal <= PAGE_BUDGET && used + famTotal > PAGE_BUDGET) flush()
+          }
           if (used > 0 && used + bh > PAGE_BUDGET) flush()
           cur.push(b.id)
           used += bh
@@ -1028,7 +1173,17 @@ function PaginatedSheets({
   )
 }
 
-function PrintValue({ q, r, brand }: { q: TemplateQuestion; r: StudentResponse; brand: BrandTheme }) {
+function PrintValue({
+  q,
+  r,
+  brand,
+  cropImage = false,
+}: {
+  q: TemplateQuestion
+  r: StudentResponse
+  brand: BrandTheme
+  cropImage?: boolean
+}) {
   const typeId = typeIdOf(q)
   const text = r.student_response ?? ""
 
@@ -1036,7 +1191,11 @@ function PrintValue({ q, r, brand }: { q: TemplateQuestion; r: StudentResponse; 
     const src = resolveImageUrl(r.image_response?.path || r.image_response?.url)
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt={q.field_label} className="w-full rounded-md border border-gray-200 break-inside-avoid" />
+      <img
+        src={src}
+        alt={q.field_label}
+        className={`w-full rounded-md border border-gray-200 break-inside-avoid ${cropImage ? "aspect-video object-cover" : ""}`}
+      />
     )
   }
   if (typeId === QUESTION_TYPE.CURRENCY) {

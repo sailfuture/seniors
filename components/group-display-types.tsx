@@ -403,8 +403,10 @@ export function getCompetitorMapData(
   }
 }
 
-/** The framed plot on its own — axis labels, 100×100 grid, entity chips. */
-export function CompetitorMapPlot({ data }: { data: CompetitorMapData }) {
+/** The framed plot on its own — axis labels, 100×100 grid, entity chips.
+    `aspect` widens or squares the plot (the print page uses a full-page
+    square; the public page keeps the wide banner). */
+export function CompetitorMapPlot({ data, aspect = "3 / 1" }: { data: CompetitorMapData; aspect?: string }) {
   const brand = useBrandTheme()
   const myChipBorder = brand.primary ?? "#111827"
   const { xAxisLabel, yAxisLabel, entities, hasData } = data
@@ -424,7 +426,7 @@ export function CompetitorMapPlot({ data }: { data: CompetitorMapData }) {
         </div>
 
         {/* Plot grid — y grows upward: low/low bottom-left, high/high top-right */}
-        <div className="relative w-full min-w-0 overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: "3 / 1" }}>
+        <div className="relative w-full min-w-0 overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: aspect }}>
           {/* Corner quadrant labels */}
           <span className="absolute left-3 top-2 z-10 text-[11px] text-muted-foreground/60">
             High {yAxisLabel} / Low {xAxisLabel}
