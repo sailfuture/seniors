@@ -307,6 +307,7 @@ export function EssayEditorPage({
           onBlur={handleBlur}
           disabled={isLocked}
           placeholder={question.placeholder}
+          showThreadList
           comments={
             studentId
               ? {

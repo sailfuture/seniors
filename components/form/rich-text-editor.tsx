@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils"
 import { parseRichText, serializeRichText, type RichTextDoc } from "@/lib/rich-text"
 import { richTextExtensions } from "@/lib/rich-text-extensions"
 import { COMMENT_MARK_NAME } from "@/lib/rich-text-comment-mark"
-import { useInlineComments, generateThreadId } from "@/lib/inline-comments"
+import { useInlineComments, generateThreadId, type InlineThread } from "@/lib/inline-comments"
 import { CommentThreadPopover } from "./comment-thread-popover"
 
 export interface RichTextCommentConfig {
@@ -93,6 +93,7 @@ export function RichTextEditor({
   annotateOnly = false,
   minHeightClass = "min-h-[55vh]",
   bodyClassName = "px-6 py-8 sm:px-10",
+  showThreadList = false,
 }: {
   value: string
   onChange: (value: string) => void
@@ -106,6 +107,9 @@ export function RichTextEditor({
   minHeightClass?: string
   /** Padding around the document body — its page margins. */
   bodyClassName?: string
+  /** List every open inline-comment thread below the document (quoted text
+   *  plus the whole exchange), so no comment can hide in a highlight. */
+  showThreadList?: boolean
 }) {
   const lastEmitted = useRef(value)
   const [loadError, setLoadError] = useState(false)
@@ -261,6 +265,38 @@ export function RichTextEditor({
     setActiveThread(null)
   }, [activeThread, editor, inline])
 
+  // Open a thread from the list: scroll its highlight into view first, then
+  // anchor the popover at the highlight's on-screen position.
+  const openThreadFromList = useCallback(
+    (threadId: string, from: number) => {
+      if (!editor) return
+      const domAt = editor.view.domAtPos(from).node
+      const el = (domAt.nodeType === Node.TEXT_NODE ? domAt.parentElement : (domAt as HTMLElement)) as HTMLElement | null
+      el?.scrollIntoView?.({ block: "center" })
+      const coords = editor.view.coordsAtPos(from)
+      setActiveThread({ threadId, isNew: false, anchor: { x: coords.left, y: coords.bottom } })
+    },
+    [editor]
+  )
+
+  // Open threads in document order, with a short quote of the passage each
+  // one anchors to. Threads whose highlight vanished (e.g. the passage was
+  // deleted) are skipped — resolving them is the popover's job.
+  const threadListItems =
+    commentsEnabled && showThreadList && editor
+      ? [...inline.threads.values()]
+          .filter((t) => !t.resolved)
+          .map((t) => {
+            const ranges = threadMarkRanges(editor, t.threadId)
+            if (!ranges.length) return null
+            const from = ranges[0].from
+            const quote = editor.state.doc.textBetween(from, Math.min(ranges[ranges.length - 1].to, from + 140), " ")
+            return { thread: t, from, quote }
+          })
+          .filter((x): x is { thread: InlineThread; from: number; quote: string } => !!x)
+          .sort((a, b) => a.from - b.from)
+      : []
+
   if (loadError) {
     return (
       <div
@@ -287,6 +323,36 @@ export function RichTextEditor({
         />
       )}
       <EditorContent editor={editor} />
+      {threadListItems.length > 0 && (
+        <div className="border-t px-6 py-4 sm:px-10">
+          <p className="text-muted-foreground mb-2 text-[10px] font-semibold uppercase tracking-wider">
+            Inline comments ({threadListItems.length})
+          </p>
+          <div className="space-y-2">
+            {threadListItems.map(({ thread, from, quote }) => (
+              <button
+                key={thread.threadId}
+                type="button"
+                onClick={() => openThreadFromList(thread.threadId, from)}
+                className="bg-muted/30 hover:bg-muted/60 block w-full rounded-lg border px-3 py-2 text-left transition-colors"
+              >
+                <p className="text-muted-foreground truncate text-xs italic">“{quote.trim()}”</p>
+                <div className="mt-1 space-y-0.5">
+                  {thread.comments.map((c) => (
+                    <p key={c.id} className="text-xs leading-snug">
+                      <span className="font-medium">
+                        {c.teacher_name || (c.isStudentReply ? "Student" : "Teacher")}
+                        {c.isStudentReply ? " (student)" : ""}:
+                      </span>{" "}
+                      <span className="text-muted-foreground">{c.note}</span>
+                    </p>
+                  ))}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {activeThread && (
         <CommentThreadPopover
           anchor={activeThread.anchor}
