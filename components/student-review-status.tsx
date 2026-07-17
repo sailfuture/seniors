@@ -296,7 +296,18 @@ export function StudentReviewStatus({
   const handleMarkRead = useCallback(
     async (commentId: number) => {
       const now = new Date().toISOString()
+      // Look the comment up BEFORE the state update — updater callbacks run
+      // deferred, so anything captured inside them is too late to use here.
+      const target = comments.find((c) => c.id === commentId)
       setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, isOld: true, isRead: now } : c)))
+      // The sidebar keeps its own unread counts — tell it one was read, the
+      // same way the section form does, so the badge clears immediately.
+      const sectionId = target ? Number(target[F.sectionId]) || 0 : 0
+      if (sectionId && target && !target.isOld) {
+        window.dispatchEvent(
+          new CustomEvent(`${cfg.eventPrefix ?? ""}comment-read`, { detail: { sectionId, count: 1 } })
+        )
+      }
       try {
         await fetch(`${cfg.commentsEndpoint}/${commentId}`, {
           method: "PATCH",
@@ -307,7 +318,7 @@ export function StudentReviewStatus({
         /* ignore */
       }
     },
-    [cfg.commentsEndpoint]
+    [cfg.commentsEndpoint, cfg.eventPrefix, F, comments]
   )
 
   const handleReply = useCallback(

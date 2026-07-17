@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 import {
   Sheet,
@@ -10,13 +10,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowTurnBackwardIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
 import type { Comment } from "@/lib/form-types"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import { FieldActivityStream } from "./field-activity-stream"
+import { CommentComposer } from "./comment-composer"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { RichTextDisplay } from "./rich-text-display"
 import { LineItemsTable } from "@/components/line-items-table"
@@ -28,6 +28,7 @@ import {
   postResponseEvent,
   type ResponseEvent,
 } from "@/lib/response-events"
+import { useBumpSidebar } from "@/lib/refresh-context"
 
 const IMAGE_UPLOAD = 4
 
@@ -81,12 +82,14 @@ export function ResponseReviewSheet({
   const cfg = apiConfig
   const F = cfg.fields
   const { data: session } = useSession()
+  const bumpSidebar = useBumpSidebar()
 
   const [comments, setComments] = useState<Comment[]>([])
   const [events, setEvents] = useState<ResponseEvent[]>([])
   const [loading, setLoading] = useState(true)
-  const [note, setNote] = useState("")
-  const [posting, setPosting] = useState(false)
+  // The composer keeps its text in its own state (typing must not re-render
+  // this sheet); the draft is mirrored here for the Revision action.
+  const draftRef = useRef("")
   const [acting, setActing] = useState(false)
   const [status, setStatus] = useState({ isComplete: false, readyReview: false, revisionNeeded: false })
 
@@ -100,7 +103,7 @@ export function ResponseReviewSheet({
       readyReview: !!target.response.readyReview,
       revisionNeeded: !!target.response.revisionNeeded,
     })
-    setNote("")
+    draftRef.current = ""
     setComments([]) // don't show the previous submission's thread while loading
     setEvents([])
     let cancelled = false
@@ -140,14 +143,14 @@ export function ResponseReviewSheet({
   const teachersId = ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null
 
   const postComment = useCallback(
-    async (isRevisionFeedback = false): Promise<boolean> => {
-      if (!note.trim() || !target || !studentId) return false
+    async (noteText: string, isRevisionFeedback = false): Promise<boolean> => {
+      if (!noteText.trim() || !target || !studentId) return false
       const payload: Record<string, unknown> = {
         students_id: studentId,
         teachers_id: teachersId,
         field_name: fieldName,
         [F.sectionId]: target.sectionId,
-        note: note.trim(),
+        note: noteText.trim(),
         isOld: false,
         isComplete: false,
         teacher_name: teacherName,
@@ -167,15 +170,8 @@ export function ResponseReviewSheet({
         return false
       }
     },
-    [note, target, studentId, fieldName, teacherName, teachersId, cfg.commentsEndpoint, F.sectionId]
+    [target, studentId, fieldName, teacherName, teachersId, cfg.commentsEndpoint, F.sectionId]
   )
-
-  const handlePost = async () => {
-    setPosting(true)
-    const ok = await postComment(false)
-    setPosting(false)
-    if (ok) setNote("")
-  }
 
   const handleDelete = useCallback(
     async (commentId: number) => {
@@ -197,7 +193,7 @@ export function ResponseReviewSheet({
             : { readyReview: true, isComplete: false, revisionNeeded: false }
       try {
         // A revision request carries the composer text as feedback.
-        if (action === "revision" && note.trim()) await postComment(true)
+        if (action === "revision" && draftRef.current.trim()) await postComment(draftRef.current, true)
         const res = await fetch(`${cfg.responsePatchBase}/${target.response.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -226,6 +222,9 @@ export function ResponseReviewSheet({
             window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId: target.sectionId, delta: nowRevision ? 1 : -1, type: "revision" } }))
           }
           setStatus(patch)
+          // The sidebar's green "section complete" check only recomputes on a
+          // refetch — bump it so completing the last item shows immediately.
+          bumpSidebar()
           onReviewed?.(target.response.id, action)
           onOpenChange(false)
         }
@@ -233,7 +232,7 @@ export function ResponseReviewSheet({
         setActing(false)
       }
     },
-    [target, note, postComment, cfg.responsePatchBase, cfg.eventPrefix, status, onReviewed, onOpenChange]
+    [target, postComment, cfg, status, teacherName, teachersId, bumpSidebar, onReviewed, onOpenChange]
   )
 
   const typeId = target?.question.question_types_id ?? null
@@ -283,23 +282,7 @@ export function ResponseReviewSheet({
 
         {/* Composer */}
         <div className="border-t px-6 py-3">
-          <Textarea
-            placeholder="Add a comment…"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && note.trim() && !posting) {
-                e.preventDefault()
-                handlePost()
-              }
-            }}
-            rows={2}
-          />
-          <div className="mt-2 flex justify-end">
-            <Button size="sm" variant="outline" onClick={handlePost} disabled={!note.trim() || posting}>
-              {posting ? "Posting…" : "Post comment"}
-            </Button>
-          </div>
+          <CommentComposer draftRef={draftRef} onSubmit={(text) => postComment(text, false)} />
         </div>
 
         {/* Full-width review actions */}

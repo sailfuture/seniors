@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
@@ -12,9 +12,9 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { CommentComposer } from "./comment-composer"
 import { TeacherEssayAnnotator } from "./teacher-essay-annotator"
 import { RichTextDisplay } from "./rich-text-display"
 import { FieldActivityStream } from "./field-activity-stream"
@@ -27,6 +27,7 @@ import {
   postResponseEvent,
   type ResponseEvent,
 } from "@/lib/response-events"
+import { useBumpSidebar } from "@/lib/refresh-context"
 import { fetchResponseVersions, postResponseVersion, type ResponseVersion } from "@/lib/response-versions"
 
 const STUDENTS_ENDPOINT =
@@ -85,6 +86,7 @@ export function TeacherEssayReviewPage({
   const { data: session } = useSession()
   const teacherName = session?.user?.name ?? "Teacher"
   const teachersId = ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null
+  const bumpSidebar = useBumpSidebar()
 
   const [loading, setLoading] = useState(true)
   const [question, setQuestion] = useState<TemplateQuestion | null>(null)
@@ -94,8 +96,9 @@ export function TeacherEssayReviewPage({
   const [events, setEvents] = useState<ResponseEvent[]>([])
   const [versions, setVersions] = useState<ResponseVersion[]>([])
   const [restoreNonce, setRestoreNonce] = useState(0)
-  const [note, setNote] = useState("")
-  const [posting, setPosting] = useState(false)
+  // The composer keeps its text in its own state (typing must not re-render
+  // this whole page); the draft is mirrored here for the Revision action.
+  const draftRef = useRef("")
   const [acting, setActing] = useState(false)
   const [status, setStatus] = useState({ isComplete: false, readyReview: false, revisionNeeded: false })
 
@@ -176,14 +179,14 @@ export function TeacherEssayReviewPage({
   const fieldName = question?.field_name
 
   const postComment = useCallback(
-    async (isRevisionFeedback = false): Promise<boolean> => {
-      if (!note.trim() || !response || !fieldName) return false
+    async (noteText: string, isRevisionFeedback = false): Promise<boolean> => {
+      if (!noteText.trim() || !response || !fieldName) return false
       const payload: Record<string, unknown> = {
         students_id: studentId,
         teachers_id: teachersId,
         field_name: fieldName,
         [F.sectionId]: sectionId,
-        note: note.trim(),
+        note: noteText.trim(),
         isOld: false,
         isComplete: false,
         teacher_name: teacherName,
@@ -203,15 +206,8 @@ export function TeacherEssayReviewPage({
         return false
       }
     },
-    [note, response, fieldName, studentId, teachersId, F.sectionId, sectionId, teacherName, cfg.commentsEndpoint]
+    [response, fieldName, studentId, teachersId, F.sectionId, sectionId, teacherName, cfg.commentsEndpoint]
   )
-
-  const handlePost = async () => {
-    setPosting(true)
-    const ok = await postComment(false)
-    setPosting(false)
-    if (ok) setNote("")
-  }
 
   const handleDelete = useCallback(
     async (commentId: number) => {
@@ -233,7 +229,7 @@ export function TeacherEssayReviewPage({
             : { readyReview: true, isComplete: false, revisionNeeded: false }
       try {
         // A revision request carries the composer text as feedback.
-        if (action === "revision" && note.trim()) await postComment(true)
+        if (action === "revision" && draftRef.current.trim()) await postComment(draftRef.current, true)
         const res = await fetch(`${cfg.responsePatchBase}/${response.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -278,6 +274,9 @@ export function TeacherEssayReviewPage({
           window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: nowRevision ? 1 : -1, type: "revision" } }))
         }
         setStatus(patch)
+        // The sidebar's green "section complete" check only recomputes on a
+        // refetch — bump it so completing the last item shows immediately.
+        bumpSidebar()
         // Completing or requesting a revision finishes this review — return to
         // the queue, where the row has moved. Undo keeps the teacher in place.
         if (action === "ready") {
@@ -289,7 +288,7 @@ export function TeacherEssayReviewPage({
         setActing(false)
       }
     },
-    [response, note, postComment, cfg, question, studentId, teacherName, teachersId, status, sectionId, router, backHref]
+    [response, postComment, cfg, question, studentId, teacherName, teachersId, status, sectionId, bumpSidebar, router, backHref]
   )
 
   if (loading) {
@@ -457,23 +456,7 @@ export function TeacherEssayReviewPage({
           />
         </div>
         <div className="mt-3">
-          <Textarea
-            placeholder="Add a comment…"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && note.trim() && !posting) {
-                e.preventDefault()
-                handlePost()
-              }
-            }}
-            rows={2}
-          />
-          <div className="mt-2 flex justify-end">
-            <Button size="sm" variant="outline" onClick={handlePost} disabled={!note.trim() || posting}>
-              {posting ? "Posting…" : "Post comment"}
-            </Button>
-          </div>
+          <CommentComposer draftRef={draftRef} onSubmit={(text) => postComment(text, false)} />
         </div>
       </div>
 

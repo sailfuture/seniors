@@ -117,6 +117,14 @@
   --sidebar-ring: oklch(0.551 0.027 264.364);
 }
 
+/* No rubber-band overscroll: the app shell's fixed header/sidebar can't
+   follow the macOS bounce, so the page visibly tears apart during it.
+   (Outside @layer base so nothing in the cascade can drop it.) */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
