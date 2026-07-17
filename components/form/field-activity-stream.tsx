@@ -89,6 +89,7 @@ export function FieldActivityStream({
   lastEdited,
   onDelete,
   onMarkRead,
+  autoMarkRead = false,
   scrollToLatest = false,
   className,
 }: {
@@ -104,12 +105,31 @@ export function FieldActivityStream({
   onDelete?: (commentId: number) => Promise<void>
   /** Student-side: mark an unread teacher comment as read. */
   onMarkRead?: (commentId: number) => void
+  /**
+   * Student-side: viewing the thread IS reading it — mark every unread
+   * teacher comment read automatically and hide the manual button.
+   */
+  autoMarkRead?: boolean
   /** Scroll the newest comment into view on open and when one is added. */
   scrollToLatest?: boolean
   className?: string
 }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Opening the thread counts as reading it: flag each unread teacher comment
+  // once (the ref survives parent-state churn, so a comment isn't re-marked
+  // while the parent's PATCH is still in flight).
+  const autoMarkedRef = useRef<Set<number>>(new Set())
+  useEffect(() => {
+    if (!autoMarkRead || !onMarkRead || viewer !== "student") return
+    for (const c of comments) {
+      if (c.isOld || c.isStudentReply === true || c.id == null) continue
+      if (autoMarkedRef.current.has(c.id)) continue
+      autoMarkedRef.current.add(c.id)
+      onMarkRead(c.id)
+    }
+  }, [autoMarkRead, onMarkRead, viewer, comments])
 
   // A revision-feedback comment already renders its own red marker, so drop
   // the revision event fired by the same action to avoid a double marker.
@@ -259,7 +279,7 @@ export function FieldActivityStream({
                     <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-3" />
                   </button>
                 )}
-                {unreadForStudent && onMarkRead && c.id != null && (
+                {unreadForStudent && onMarkRead && !autoMarkRead && c.id != null && (
                   <>
                     <span className="size-1.5 rounded-full bg-blue-500" aria-hidden />
                     <button

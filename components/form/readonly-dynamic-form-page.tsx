@@ -156,6 +156,18 @@ function getWordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length
 }
 
+/** Anything the student actually answered — text, an uploaded image, or a
+    source citation — is reviewable, submitted or not. */
+function hasResponseContent(r: StudentResponse | undefined | null): boolean {
+  if (!r) return false
+  const img = r.image_response as { path?: string; url?: string } | null
+  return (
+    (r.student_response ?? "").trim().length > 0 ||
+    !!(img && (img.path || img.url)) ||
+    !!(r.source_link || r.title_of_source || r.author_name_or_publisher)
+  )
+}
+
 function ConfirmAllButton({ readyCount, onConfirmAll }: { readyCount: number; onConfirmAll: () => Promise<void> }) {
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
@@ -196,6 +208,80 @@ function ConfirmAllButton({ readyCount, onConfirmAll }: { readyCount: number; on
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+/** Bulk "send it back": flags every answered, unapproved item in the card
+    for revision, with one optional feedback note for the whole set. */
+function RequestRevisionAllButton({
+  count,
+  onConfirm,
+}: {
+  count: number
+  onConfirm: (feedback: string) => Promise<void>
+}) {
+  const [loading, setLoading] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [feedback, setFeedback] = useState("")
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (o) setFeedback("")
+      }}
+    >
+      <AlertDialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={loading}
+          className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+        >
+          {loading ? (
+            <span className="mr-2 size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <HugeiconsIcon icon={ArrowTurnBackwardIcon} className="mr-1.5 size-4" />
+          )}
+          Revise All ({count})
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            Request revisions on {count} {count === 1 ? "item" : "items"}?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Every answered item here that isn&apos;t approved goes back to the student for another pass —
+            including drafts and image uploads. Add one note explaining what to fix (optional).
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <Textarea
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          placeholder="What should the student revise?"
+          rows={3}
+        />
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-red-600 text-white hover:bg-red-700"
+            onClick={async (e) => {
+              e.preventDefault()
+              setLoading(true)
+              setOpen(false)
+              try {
+                await onConfirm(feedback.trim())
+              } finally {
+                setLoading(false)
+              }
+            }}
+          >
+            Request revisions
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -514,6 +600,42 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     [session, studentId, sectionId, questions, responses, cfg, F, bumpSidebar]
   )
 
+  // One shared feedback note for a bulk revision request, scoped to the
+  // section (or one group) so it lands in the matching activity stream.
+  const postBulkRevisionNote = useCallback(
+    async (note: string, groupId?: number) => {
+      if (!note) return
+      const teacherName = session?.user?.name ?? "Teacher"
+      const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
+      const payload: Record<string, unknown> = {
+        students_id: studentId,
+        teachers_id: teachersId,
+        field_name: "_section_comment",
+        [F.sectionId]: sectionId,
+        note,
+        isOld: false,
+        isComplete: false,
+        teacher_name: teacherName,
+        isRevisionFeedback: true,
+      }
+      if (groupId) payload[F.customGroupId] = groupId
+      try {
+        const res = await fetch(cfg.commentsEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+        if (res.ok) {
+          const created = await res.json()
+          setComments((prev) => [...prev, { ...created, teacher_name: created.teacher_name || teacherName }])
+        }
+      } catch {
+        /* the flags still landed; the note is best-effort */
+      }
+    },
+    [cfg.commentsEndpoint, F, sectionId, studentId, session]
+  )
+
   if (loading) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -561,6 +683,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         const qIsComplete = response?.isComplete === true
         const qNeedsRevision = response?.revisionNeeded === true
         const isSubmitted = response && (response.readyReview || response.isComplete || response.revisionNeeded)
+        // Drafts with real content (an uploaded image, typed text) are still
+        // reviewable — teachers can request a revision without waiting for a
+        // submission.
+        const hasReviewableContent = hasResponseContent(response)
         const qIsDimmed = qIsComplete || qNeedsRevision
         const relativeTime = formatRelativeTime(response?.last_edited)
         // The AI/originality report and last-edited time sit together in the
@@ -744,14 +870,38 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : null}
                   lastEdited={response?.last_edited}
                   onMarkRepliesSeen={handleMarkRepliesSeen}
-                  onMarkCompleteAction={isSubmitted ? () => handleResponseReviewAction(response!.id, q.id, "complete") : undefined}
-                  onRequestRevision={isSubmitted ? () => { setRevisionModal({ responseId: response!.id, templateId: q.id }); setRevisionComment("") } : undefined}
+                  onMarkCompleteAction={isSubmitted || hasReviewableContent ? () => handleResponseReviewAction(response!.id, q.id, "complete") : undefined}
+                  onRequestRevision={isSubmitted || hasReviewableContent ? () => { setRevisionModal({ responseId: response!.id, templateId: q.id }); setRevisionComment("") } : undefined}
                   onUndoStatus={isSubmitted && (response!.isComplete || (response!.revisionNeeded && !studentEditedSinceRevision)) ? () => handleResponseReviewAction(response!.id, q.id, "ready") : undefined}
                 />
                 {response && (() => {
                   if (!isSubmitted) {
                     return (
-                      <span className="text-muted-foreground/50 text-[10px] font-medium uppercase tracking-wide">Draft</span>
+                      <>
+                        {hasReviewableContent && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="size-6"
+                              title="Request revision"
+                              onClick={() => { setRevisionModal({ responseId: response.id, templateId: q.id }); setRevisionComment("") }}
+                            >
+                              <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="size-6"
+                              title="Mark complete"
+                              onClick={() => handleResponseReviewAction(response.id, q.id, "complete")}
+                            >
+                              <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
+                            </Button>
+                          </>
+                        )}
+                        <span className="text-muted-foreground/50 text-[10px] font-medium uppercase tracking-wide">Draft</span>
+                      </>
                     )
                   }
                   if (response.isComplete) {
@@ -899,6 +1049,26 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                         }}
                       />
                     )}
+                    {(() => {
+                      const targets = ungroupedQuestions.filter((q) => {
+                        const r = responses.get(q.id)
+                        return hasResponseContent(r) && !r!.isComplete && !r!.revisionNeeded
+                      })
+                      if (targets.length === 0) return null
+                      return (
+                        <RequestRevisionAllButton
+                          count={targets.length}
+                          onConfirm={async (feedback) => {
+                            for (const q of targets) {
+                              const r = responses.get(q.id)
+                              if (r) await handleResponseReviewAction(r.id, q.id, "revision", undefined, true)
+                            }
+                            await postBulkRevisionNote(feedback)
+                            toast.success(`${targets.length} item${targets.length > 1 ? "s" : ""} sent back for revision`, { duration: 3000 })
+                          }}
+                        />
+                      )
+                    })()}
                   </div>
                 )}
                 <CardContent className="p-6">
@@ -939,6 +1109,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 setComments={setComments}
                 handleDelete={handleDelete}
                 handleResponseReviewAction={handleResponseReviewAction}
+                postBulkRevisionNote={postBulkRevisionNote}
                 responses={responses}
                 gQuestions={gQuestions}
                 hasDisplayType={hasDisplayType}
@@ -1128,6 +1299,7 @@ function ReadonlyGroupCard({
   setComments,
   handleDelete,
   handleResponseReviewAction,
+  postBulkRevisionNote,
   responses,
   gQuestions,
   hasDisplayType,
@@ -1148,6 +1320,7 @@ function ReadonlyGroupCard({
   setComments: React.Dispatch<React.SetStateAction<Comment[]>>
   handleDelete: (id: number) => Promise<void>
   handleResponseReviewAction: (responseId: number, templateId: number, action: "complete" | "revision" | "ready" | "clear", comment?: string, silent?: boolean) => Promise<void>
+  postBulkRevisionNote: (note: string, groupId?: number) => Promise<void>
   responses: Map<number, StudentResponse>
   gQuestions: TemplateQuestion[]
   hasDisplayType: boolean
@@ -1252,6 +1425,26 @@ function ReadonlyGroupCard({
                 }}
               />
             )}
+            {(() => {
+              const targets = gQuestions.filter((q) => {
+                const r = responses.get(q.id)
+                return hasResponseContent(r) && !r!.isComplete && !r!.revisionNeeded
+              })
+              if (targets.length === 0) return null
+              return (
+                <RequestRevisionAllButton
+                  count={targets.length}
+                  onConfirm={async (feedback) => {
+                    for (const q of targets) {
+                      const r = responses.get(q.id)
+                      if (r) await handleResponseReviewAction(r.id, q.id, "revision", undefined, true)
+                    }
+                    await postBulkRevisionNote(feedback, group.id)
+                    toast.success(`${targets.length} item${targets.length > 1 ? "s" : ""} sent back for revision`, { duration: 3000 })
+                  }}
+                />
+              )
+            })()}
           </div>
         </div>
         {!collapsed && group.group_description && (

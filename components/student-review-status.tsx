@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
@@ -190,6 +190,13 @@ export function StudentReviewStatus({
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
   const [comments, setComments] = useState<Comment[]>([])
   const [sheet, setSheet] = useState<SheetTarget | null>(null)
+  // Comments read while a sheet is open stay in the "Unread comments" table
+  // (held) until the sheet closes, then animate off (exiting) before removal.
+  // The ref mirrors `heldRead` so closeSheet always sees the latest set even
+  // when called from a closure captured before the last mark-read.
+  const heldReadRef = useRef<Set<number>>(new Set())
+  const [heldRead, setHeldRead] = useState<ReadonlySet<number>>(new Set())
+  const [exiting, setExiting] = useState<ReadonlySet<number>>(new Set())
 
   useEffect(() => {
     if (studentId === undefined) return
@@ -273,7 +280,11 @@ export function StudentReviewStatus({
 
       const unreadItems: { c: Comment; q?: TemplateQuestion; section: SectionInfo; when: number | null }[] = []
       for (const c of comments) {
-        if (c.isOld || c.isComplete || c.isStudentReply || c.thread_id) continue
+        if (c.isComplete || c.isStudentReply || c.thread_id) continue
+        // Read comments linger in the table while their sheet is open (held)
+        // and through the exit animation (exiting) before dropping out.
+        const lingering = c.id != null && (heldRead.has(c.id) || exiting.has(c.id))
+        if (c.isOld && !lingering) continue
         const q = questionByField.get(c.field_name)
         const section = sectionById.get(Number(c[F.sectionId]))
         if (!section || section.isLocked) continue
@@ -288,9 +299,10 @@ export function StudentReviewStatus({
         unreadBySection,
         revisionCount: revItems.length,
         pendingCount: pendItems.length,
-        unreadCount: unreadItems.length,
+        // Rows animating off no longer count — the header drops immediately.
+        unreadCount: unreadItems.filter(({ c }) => !(c.id != null && exiting.has(c.id))).length,
       }
-    }, [responses, comments, questionById, questionByField, sectionById, sectionOf, F])
+    }, [responses, comments, questionById, questionByField, sectionById, sectionOf, F, heldRead, exiting])
 
   // --- Comment handlers (used by the sheets) -------------------------------
   const handleMarkRead = useCallback(
@@ -300,6 +312,12 @@ export function StudentReviewStatus({
       // deferred, so anything captured inside them is too late to use here.
       const target = comments.find((c) => c.id === commentId)
       setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, isOld: true, isRead: now } : c)))
+      // Hold the freshly-read row in the notification table until the sheet
+      // closes — closeSheet releases it into the exit animation.
+      if (target && !target.isOld) {
+        heldReadRef.current.add(commentId)
+        setHeldRead(new Set(heldReadRef.current))
+      }
       // The sidebar keeps its own unread counts — tell it one was read, the
       // same way the section form does, so the badge clears immediately.
       const sectionId = target ? Number(target[F.sectionId]) || 0 : 0
@@ -320,6 +338,24 @@ export function StudentReviewStatus({
     },
     [cfg.commentsEndpoint, cfg.eventPrefix, F, comments]
   )
+
+  // Closing a sheet releases every comment read during it: the rows collapse
+  // and fade off the notification table, then drop out of the list entirely.
+  const closeSheet = useCallback(() => {
+    setSheet(null)
+    const released = heldReadRef.current
+    if (released.size === 0) return
+    heldReadRef.current = new Set()
+    setHeldRead(new Set())
+    setExiting((prev) => new Set([...prev, ...released]))
+    window.setTimeout(() => {
+      setExiting((prev) => {
+        const next = new Set(prev)
+        for (const id of released) next.delete(id)
+        return next
+      })
+    }, 400)
+  }, [])
 
   const handleReply = useCallback(
     async (fieldName: string, note: string): Promise<boolean> => {
@@ -570,41 +606,47 @@ export function StudentReviewStatus({
           <Empty text="No unread comments." />
         ) : (
           <div className="divide-y">
-            {unreadBySection.map((g) => (
-              <div key={g.section.id}>
-                <SectionHeader title={g.section.section_title} />
-                {g.items.map(({ c, q, when }) => {
-                  const fieldLabel = q?.field_label ?? (c.field_name === "_section_comment" ? "Section comment" : c.field_name)
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() =>
-                        setSheet({
-                          kind: "comment",
-                          fieldName: c.field_name,
-                          questionId: q?.id ?? null,
-                          sectionId: Number(c[F.sectionId]),
-                          groupId: c[F.customGroupId] != null ? Number(c[F.customGroupId]) || null : null,
-                        })
-                      }
-                      className="hover:bg-muted/50 flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="line-clamp-1 text-sm">
-                          <span className="font-medium">{c.note}</span>
-                          <span className="text-muted-foreground"> &middot; {fieldLabel}</span>
-                        </span>
-                        {c.teacher_name && (
-                          <span className="text-muted-foreground/70 text-xs">{c.teacher_name}</span>
-                        )}
-                      </span>
-                      <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{relativeDate(when)}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
+            {unreadBySection.map((g) => {
+              // When every row in a section is leaving, collapse the whole
+              // group (header included) as one block.
+              const groupExiting = g.items.every(({ c }) => c.id != null && exiting.has(c.id))
+              return (
+                <CollapseRow key={g.section.id} exiting={groupExiting}>
+                  <SectionHeader title={g.section.section_title} />
+                  {g.items.map(({ c, q, when }) => {
+                    const fieldLabel = q?.field_label ?? (c.field_name === "_section_comment" ? "Section comment" : c.field_name)
+                    return (
+                      <CollapseRow key={c.id} exiting={!groupExiting && c.id != null && exiting.has(c.id)}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSheet({
+                              kind: "comment",
+                              fieldName: c.field_name,
+                              questionId: q?.id ?? null,
+                              sectionId: Number(c[F.sectionId]),
+                              groupId: c[F.customGroupId] != null ? Number(c[F.customGroupId]) || null : null,
+                            })
+                          }
+                          className="hover:bg-muted/50 flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="line-clamp-1 text-sm">
+                              <span className="font-medium">{c.note}</span>
+                              <span className="text-muted-foreground"> &middot; {fieldLabel}</span>
+                            </span>
+                            {c.teacher_name && (
+                              <span className="text-muted-foreground/70 text-xs">{c.teacher_name}</span>
+                            )}
+                          </span>
+                          <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{relativeDate(when)}</span>
+                        </button>
+                      </CollapseRow>
+                    )
+                  })}
+                </CollapseRow>
+              )
+            })}
           </div>
         )}
       </StatusCard>
@@ -640,7 +682,7 @@ export function StudentReviewStatus({
       </StatusCard>
 
       {/* Comment thread sheet */}
-      <Sheet open={sheet?.kind === "comment"} onOpenChange={(o) => { if (!o) setSheet(null) }}>
+      <Sheet open={sheet?.kind === "comment"} onOpenChange={(o) => { if (!o) closeSheet() }}>
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="border-b px-6 py-4">
             <SheetTitle className="text-base">
@@ -662,6 +704,7 @@ export function StudentReviewStatus({
                 responseStatus={openStatus}
                 lastEdited={openResponse?.last_edited}
                 onMarkRead={handleMarkRead}
+                autoMarkRead
                 scrollToLatest={sheet?.kind === "comment"}
               />
             </div>
@@ -673,7 +716,7 @@ export function StudentReviewStatus({
       </Sheet>
 
       {/* Revision edit sheet */}
-      <Sheet open={sheet?.kind === "revision"} onOpenChange={(o) => { if (!o) setSheet(null) }}>
+      <Sheet open={sheet?.kind === "revision"} onOpenChange={(o) => { if (!o) closeSheet() }}>
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-lg">
           <SheetHeader className="border-b px-6 py-4">
             <SheetTitle className="text-base">{openField?.field_label ?? "Revision"}</SheetTitle>
@@ -689,7 +732,7 @@ export function StudentReviewStatus({
               onSaveDraft={(value) => handleSaveDraft(openResponse.id, openField.id, value)}
               onResubmit={async (value) => {
                 const ok = await handleResubmit(openField, openResponse.id, value)
-                if (ok) setSheet(null)
+                if (ok) closeSheet()
                 return ok
               }}
               onOpenEditor={() => {
@@ -735,6 +778,23 @@ function StatusCard({
 
 function Empty({ text }: { text: string }) {
   return <p className="text-muted-foreground px-6 py-6 text-center text-sm italic">{text}</p>
+}
+
+/**
+ * Animated removal wrapper: while `exiting` is false it renders children
+ * statically; flipping it on collapses the row's height (grid-rows trick,
+ * no measuring) while sliding it left and fading it out.
+ */
+function CollapseRow({ exiting, children }: { exiting: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={`grid transition-all duration-300 ease-out ${
+        exiting ? "-translate-x-3 grid-rows-[0fr] opacity-0" : "translate-x-0 grid-rows-[1fr] opacity-100"
+      }`}
+    >
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </div>
+  )
 }
 
 function ReplyBox({ onSend }: { onSend: (note: string) => Promise<boolean> }) {
@@ -828,6 +888,7 @@ function RevisionEditor({
           responseStatus={{ revisionNeeded: response.revisionNeeded, readyReview: response.readyReview, isComplete: response.isComplete }}
           lastEdited={response.last_edited}
           onMarkRead={onMarkRead}
+          autoMarkRead
         />
 
         <p className="text-muted-foreground mb-2 mt-6 text-xs font-medium uppercase tracking-wide">Your response</p>

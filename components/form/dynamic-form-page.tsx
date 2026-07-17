@@ -170,6 +170,12 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const [localValues, setLocalValues] = useState<Map<number, string>>(new Map())
   const [localSourceValues, setLocalSourceValues] = useState<Map<number, SourceFields>>(new Map())
   const [comments, setComments] = useState<Comment[]>([])
+  // Mirror for callbacks that must read current comments without depending on
+  // the state (a `comments` dep would re-create every field's props per change).
+  const commentsRef = useRef<Comment[]>([])
+  useEffect(() => {
+    commentsRef.current = comments
+  }, [comments])
   const [sectionCommentsOpen, setSectionCommentsOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
@@ -481,12 +487,11 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
 
   const handleMarkRead = useCallback(async (commentIds: number[]) => {
     const now = new Date().toISOString()
-    let readCount = 0
+    // Count BEFORE the state update — updater callbacks run deferred, so a
+    // count captured inside one is still 0 when the dispatch below runs.
+    const readCount = commentsRef.current.filter((c) => c.id != null && commentIds.includes(c.id) && !c.isOld).length
     setComments((prev) =>
-      prev.map((c) => {
-        if (commentIds.includes(c.id!) && !c.isOld) { readCount++; return { ...c, isOld: true, isRead: now } }
-        return commentIds.includes(c.id!) ? { ...c, isOld: true, isRead: now } : c
-      })
+      prev.map((c) => (commentIds.includes(c.id!) ? { ...c, isOld: true, isRead: now } : c))
     )
     if (readCount > 0) dispatchCommentRead(readCount)
     for (const id of commentIds) {
@@ -502,13 +507,8 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
 
   const handleMarkCommentRead = useCallback(async (commentId: number) => {
     const now = new Date().toISOString()
-    let wasUnread = false
-    setComments((prev) =>
-      prev.map((c) => {
-        if (c.id === commentId && !c.isOld) { wasUnread = true }
-        return c.id === commentId ? { ...c, isOld: true, isRead: now } : c
-      })
-    )
+    const wasUnread = commentsRef.current.some((c) => c.id === commentId && !c.isOld)
+    setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, isOld: true, isRead: now } : c)))
     if (wasUnread) dispatchCommentRead(1)
     try {
       await fetch(`${cfg.commentsEndpoint}/${commentId}`, {
@@ -1166,13 +1166,7 @@ function formatRelativeTime(ts: string | number | null | undefined): string | nu
   return date.toLocaleDateString()
 }
 
-function StudentCommentCard({
-  comment: c,
-  onMarkRead,
-}: {
-  comment: Comment
-  onMarkRead?: (commentId: number) => void
-}) {
+function StudentCommentCard({ comment: c }: { comment: Comment }) {
   const commentTime = c.created_at ? formatRelativeTime(
     typeof c.created_at === "number" ? c.created_at : new Date(c.created_at as string).getTime()
   ) : null
@@ -1183,17 +1177,7 @@ function StudentCommentCard({
 
   return (
     <div className={cn("relative rounded-md border p-3 text-sm", isRead && "bg-muted/50")}>
-      {!isRead && c.id != null && onMarkRead && (
-        <button
-          type="button"
-          onClick={() => onMarkRead(c.id!)}
-          className="absolute right-2 top-2 inline-flex size-6 items-center justify-center rounded transition-colors text-muted-foreground/40 hover:text-green-600 hover:bg-accent"
-          title="Mark as read"
-        >
-          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
-        </button>
-      )}
-      <p className={cn("whitespace-pre-wrap", !isRead && "pr-7")}>{c.note}</p>
+      <p className="whitespace-pre-wrap">{c.note}</p>
       <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
         {commentTime && <span>{commentTime}</span>}
         {commentTime && c.teacher_name && <span>&middot;</span>}
@@ -1222,6 +1206,19 @@ function StudentCommentList({
   comments: Comment[]
   onMarkRead?: (commentId: number) => void
 }) {
+  // Opening the sheet counts as reading: flag every unread teacher comment
+  // once (student replies track the TEACHER's read state — leave them alone).
+  const autoMarkedRef = useRef<Set<number>>(new Set())
+  useEffect(() => {
+    if (!onMarkRead) return
+    for (const c of comments) {
+      if (c.isOld || c.isStudentReply === true || c.id == null) continue
+      if (autoMarkedRef.current.has(c.id)) continue
+      autoMarkedRef.current.add(c.id)
+      onMarkRead(c.id)
+    }
+  }, [comments, onMarkRead])
+
   const sorted = [...comments].sort((a, b) => {
     const aUnread = !a.isOld ? 0 : 1
     const bUnread = !b.isOld ? 0 : 1
@@ -1242,7 +1239,7 @@ function StudentCommentList({
   return (
     <div className="space-y-3">
       {sorted.map((c) => (
-        <StudentCommentCard key={c.id} comment={c} onMarkRead={onMarkRead} />
+        <StudentCommentCard key={c.id} comment={c} />
       ))}
     </div>
   )
