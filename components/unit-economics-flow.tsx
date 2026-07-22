@@ -126,16 +126,29 @@ export function UnitEconomicsFlow({
     const nodes: Node[] = []
     const edges: Edge[] = []
 
+    const compW = 200
     const compHeight = 58
     const compGap = 26
-    const compBlockHeight = components.length * compHeight + (components.length - 1) * compGap
+    const pitch = compHeight + compGap
+    const colPitch = compW + 40
+    // The banner is wide and short, so wrap the components into columns of at
+    // most ~4 rows and let the block grow sideways. Odd columns drop half a
+    // pitch: left-column edges then travel through the open lanes between the
+    // staggered rows instead of hiding behind neighboring nodes.
+    const cols = Math.max(1, Math.ceil(components.length / 4))
+    const rows = Math.max(1, Math.ceil(components.length / cols))
+    const stagger = pitch / 2
+    const compBlockHeight = rows * pitch - compGap + (cols > 1 ? stagger : 0)
+    const costX = (cols - 1) * colPitch + compW + 130
     const costY = Math.max(compBlockHeight / 2 - 45, 60)
 
     components.forEach((c, i) => {
+      const col = Math.floor(i / rows)
+      const row = i % rows
       nodes.push({
         id: `comp-${i}`,
         type: "component",
-        position: { x: 0, y: i * (compHeight + compGap) },
+        position: { x: col * colPitch, y: row * pitch + (col % 2 === 1 ? stagger : 0) },
         data: { label: c.name, cost: c.cost, group: c.group },
       })
       edges.push({
@@ -151,7 +164,7 @@ export function UnitEconomicsFlow({
     nodes.push({
       id: "cost",
       type: "stat",
-      position: { x: 330, y: costY },
+      position: { x: costX, y: costY },
       data: {
         label: "Per Unit Cost",
         value: money(costVal),
@@ -165,7 +178,7 @@ export function UnitEconomicsFlow({
     nodes.push({
       id: "price",
       type: "stat",
-      position: { x: 330, y: Math.max(costY - 160, -110) },
+      position: { x: costX, y: Math.max(costY - 160, -110) },
       data: {
         label: "Per Unit Sale Price",
         value: money(priceVal),
@@ -179,7 +192,7 @@ export function UnitEconomicsFlow({
     nodes.push({
       id: "margin",
       type: "stat",
-      position: { x: 660, y: marginY },
+      position: { x: costX + 330, y: marginY },
       data: {
         label: "Per Unit Margin",
         value: money(marginVal),

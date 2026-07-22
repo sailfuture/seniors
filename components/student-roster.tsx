@@ -16,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Link01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { Link01Icon, ArrowRight01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
 
 interface Student {
   id: string
@@ -42,6 +42,9 @@ const LM_RESPONSES_ENDPOINT =
 
 const LM_TEMPLATE_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/lifeplan_template"
+
+const QUESTION_TYPES_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/question_types"
 
 function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
@@ -103,6 +106,7 @@ interface StudentRosterProps {
   responsesEndpoint?: string
   templateEndpoint?: string
   templateIdField?: string
+  sectionIdField?: string
 }
 
 export function StudentRoster({
@@ -113,20 +117,23 @@ export function StudentRoster({
   responsesEndpoint = LM_RESPONSES_ENDPOINT,
   templateEndpoint = LM_TEMPLATE_ENDPOINT,
   templateIdField = "lifemap_template_id",
+  sectionIdField = "lifemap_sections_id",
 }: StudentRosterProps) {
   const router = useRouter()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [reviewCounts, setReviewCounts] = useState<Map<string, number>>(new Map())
+  const [allComplete, setAllComplete] = useState<Set<string>>(new Set())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   const fetchData = useCallback(async () => {
     try {
-      const [studentsRes, reviewsRes, templateRes] = await Promise.all([
+      const [studentsRes, reviewsRes, templateRes, typesRes] = await Promise.all([
         fetch(STUDENTS_ENDPOINT),
         fetch(responsesEndpoint),
         fetch(templateEndpoint),
+        fetch(QUESTION_TYPES_ENDPOINT),
       ])
 
       if (studentsRes.ok) {
@@ -139,15 +146,35 @@ export function StudentRoster({
         setCollapsedGroups(new Set(nonBatch2026))
       }
 
+      // Question types flagged noInput (headers etc.) never require answers,
+      // so they don't count toward a section being fully complete.
+      const noInput = new Set<number>()
+      if (typesRes.ok) {
+        const types = await typesRes.json()
+        if (Array.isArray(types)) {
+          for (const t of types as { id: number; noInput?: boolean }[]) if (t.noInput) noInput.add(t.id)
+        }
+      }
+
       // Only questions that still exist on the form can produce review work;
       // responses on archived/unpublished questions are unreachable in the
-      // section view and must not badge the roster.
+      // section view and must not badge the roster. The same live set drives
+      // the per-section totals for the "everything approved" check, matching
+      // the sidebar's green-check rule.
       const liveTemplateIds = new Set<number>()
+      const templateToSection = new Map<number, number>()
+      const sectionTotal = new Map<number, number>()
       if (templateRes.ok) {
         const templates = await templateRes.json()
         if (Array.isArray(templates)) {
-          for (const t of templates as { id: number; isArchived?: boolean; isPublished?: boolean }[]) {
-            if (!t.isArchived && t.isPublished) liveTemplateIds.add(t.id)
+          for (const t of templates as { id: number; isArchived?: boolean; isPublished?: boolean; question_types_id?: number; [key: string]: unknown }[]) {
+            if (t.isArchived || !t.isPublished) continue
+            liveTemplateIds.add(t.id)
+            const sec = Number(t[sectionIdField])
+            if (!sec) continue
+            templateToSection.set(t.id, sec)
+            if (t.question_types_id != null && noInput.has(t.question_types_id)) continue
+            sectionTotal.set(sec, (sectionTotal.get(sec) ?? 0) + 1)
           }
         }
       }
@@ -156,14 +183,37 @@ export function StudentRoster({
         const responses = await reviewsRes.json()
         if (Array.isArray(responses)) {
           const counts = new Map<string, number>()
+          const completeBySection = new Map<string, Map<number, number>>()
           for (const r of responses) {
             if (r.isArchived) continue
+            const sid = String(r.students_id)
+            if (r.isComplete) {
+              const sec = templateToSection.get(Number(r[templateIdField]))
+              if (sec) {
+                let m = completeBySection.get(sid)
+                if (!m) {
+                  m = new Map()
+                  completeBySection.set(sid, m)
+                }
+                m.set(sec, (m.get(sec) ?? 0) + 1)
+              }
+            }
             if (!r.readyReview || r.isComplete || r.revisionNeeded) continue
             if (!liveTemplateIds.has(Number(r[templateIdField]))) continue
-            const sid = String(r.students_id)
             counts.set(sid, (counts.get(sid) ?? 0) + 1)
           }
           setReviewCounts(counts)
+
+          // A student is fully done when every section that has input
+          // questions has all of them approved (isComplete).
+          const done = new Set<string>()
+          const requiredSections = [...sectionTotal.entries()].filter(([, total]) => total > 0)
+          if (requiredSections.length > 0) {
+            for (const [sid, bySection] of completeBySection) {
+              if (requiredSections.every(([sec, total]) => (bySection.get(sec) ?? 0) >= total)) done.add(sid)
+            }
+          }
+          setAllComplete(done)
         }
       }
     } catch {
@@ -171,7 +221,7 @@ export function StudentRoster({
     } finally {
       setLoading(false)
     }
-  }, [responsesEndpoint, templateEndpoint, templateIdField])
+  }, [responsesEndpoint, templateEndpoint, templateIdField, sectionIdField])
 
   useEffect(() => {
     fetchData()
@@ -269,6 +319,15 @@ export function StudentRoster({
                             <span className="font-medium">
                               {student.firstName} {student.lastName}
                             </span>
+                            {allComplete.has(student.id) && (
+                              <span title="All sections complete" className="inline-flex shrink-0">
+                                <HugeiconsIcon
+                                  icon={CheckmarkCircle02Icon}
+                                  strokeWidth={2.5}
+                                  className="size-4 text-green-600"
+                                />
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>

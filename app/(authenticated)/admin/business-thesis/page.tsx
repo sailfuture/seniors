@@ -18,6 +18,7 @@ export default function AdminBusinessThesisPage() {
       responsesEndpoint={BT_RESPONSES_ENDPOINT}
       templateEndpoint={BT_TEMPLATE_ENDPOINT}
       templateIdField="businessthesis_template_id"
+      sectionIdField="businessthesis_sections_id"
     />
   )
 }
