@@ -403,6 +403,87 @@ export function getCompetitorMapData(
   }
 }
 
+// Inset that keeps a dot at coordinate 0/100 fully inside the plot box.
+const MAP_INSET_X = 26
+const MAP_INSET_Y = 24
+
+interface LabelRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** Greedy label placement: for each dot try below / above / right / left of
+    it, keeping the pill inside the box and clear of every other pill and dot;
+    if all four collide, walk the below-position down until it fits. Returns
+    each pill's top-left plus a thin connector segment from the dot to the
+    pill's nearest edge. */
+function layoutMapLabels(
+  dots: { x: number; y: number }[],
+  sizes: { w: number; h: number }[],
+  W: number,
+  H: number
+): { pills: { x: number; y: number }[]; lines: (LabelRect | null)[] } {
+  const GAP = 12 // dot center → pill edge
+  const DOT_R = 10 // collision radius around a dot
+  const MARGIN = 4 // required clearance between pills
+  // Keep pills off the corner quadrant captions (top/bottom strips).
+  const bounds = { l: 4, t: 26, r: W - 4, b: H - 26 }
+
+  const overlaps = (a: LabelRect, b: LabelRect) =>
+    a.x < b.x + b.w + MARGIN && b.x < a.x + a.w + MARGIN && a.y < b.y + b.h + MARGIN && b.y < a.y + a.h + MARGIN
+
+  const dotRects: LabelRect[] = dots.map((d) => ({ x: d.x - DOT_R, y: d.y - DOT_R, w: DOT_R * 2, h: DOT_R * 2 }))
+  const placed: LabelRect[] = []
+  const pills: { x: number; y: number }[] = []
+  const lines: (LabelRect | null)[] = []
+
+  dots.forEach((d, i) => {
+    const s = sizes[i]
+    const clampX = (x: number) => Math.min(Math.max(x, bounds.l), Math.max(bounds.l, bounds.r - s.w))
+    const clampY = (y: number) => Math.min(Math.max(y, bounds.t), Math.max(bounds.t, bounds.b - s.h))
+    const candidates = [
+      { x: clampX(d.x - s.w / 2), y: clampY(d.y + GAP) }, // below
+      { x: clampX(d.x - s.w / 2), y: clampY(d.y - GAP - s.h) }, // above
+      { x: clampX(d.x + GAP), y: clampY(d.y - s.h / 2) }, // right
+      { x: clampX(d.x - GAP - s.w), y: clampY(d.y - s.h / 2) }, // left
+    ]
+    const isFree = (r: LabelRect) => !placed.some((p) => overlaps(r, p)) && !dotRects.some((dr) => overlaps(r, dr))
+    let chosen = candidates.find((c) => isFree({ ...c, w: s.w, h: s.h }))
+    if (!chosen) {
+      // Crowded: sweep the below-position downward (then clamp) until free.
+      let y = d.y + GAP
+      for (let k = 0; k < 60; k++) {
+        const c = { x: clampX(d.x - s.w / 2), y: clampY(y) }
+        if (isFree({ ...c, w: s.w, h: s.h })) {
+          chosen = c
+          break
+        }
+        y += 8
+      }
+      chosen = chosen ?? candidates[0]
+    }
+    pills.push(chosen)
+    placed.push({ ...chosen, w: s.w, h: s.h })
+
+    // Connector from the dot to the pill's nearest edge — strictly vertical
+    // or horizontal, drawn under the pill.
+    const pr = { ...chosen, w: s.w, h: s.h }
+    if (d.x >= pr.x && d.x <= pr.x + pr.w) {
+      const edge = d.y < pr.y ? pr.y : pr.y + pr.h
+      lines.push({ x: d.x - 0.5, y: Math.min(d.y, edge), w: 1, h: Math.abs(edge - d.y) })
+    } else if (d.y >= pr.y && d.y <= pr.y + pr.h) {
+      const edge = d.x < pr.x ? pr.x : pr.x + pr.w
+      lines.push({ x: Math.min(d.x, edge), y: d.y - 0.5, w: Math.abs(edge - d.x), h: 1 })
+    } else {
+      lines.push(null)
+    }
+  })
+
+  return { pills, lines }
+}
+
 /** The framed plot on its own — axis labels, 100×100 grid, entity chips.
     `aspect` widens or squares the plot (the print page uses a full-page
     square; the public page keeps the wide banner). */
@@ -410,6 +491,50 @@ export function CompetitorMapPlot({ data, aspect = "3 / 1" }: { data: Competitor
   const brand = useBrandTheme()
   const myChipBorder = brand.primary ?? "#111827"
   const { xAxisLabel, yAxisLabel, entities, hasData } = data
+
+  // Entities with a name, in stable order shared by dots, pills, and layout.
+  const named = React.useMemo(() => entities.filter((e) => e.name), [entities])
+
+  const boxRef = React.useRef<HTMLDivElement | null>(null)
+  const pillRefs = React.useRef<(HTMLDivElement | null)[]>([])
+  const [labelLayout, setLabelLayout] = React.useState<ReturnType<typeof layoutMapLabels> | null>(null)
+
+  // Re-run the label layout when the plot box changes size (window resize as
+  // a fallback for environments where ResizeObserver doesn't deliver).
+  const [resizeTick, setResizeTick] = React.useState(0)
+  React.useEffect(() => {
+    const bump = () => setResizeTick((t) => t + 1)
+    window.addEventListener("resize", bump)
+    const box = boxRef.current
+    const ro = box && typeof ResizeObserver !== "undefined" ? new ResizeObserver(bump) : null
+    if (ro && box) ro.observe(box)
+    return () => {
+      window.removeEventListener("resize", bump)
+      ro?.disconnect()
+    }
+  }, [])
+
+  // Measure the real pill widths, then place labels so nothing overlaps.
+  React.useLayoutEffect(() => {
+    const box = boxRef.current
+    if (!box) return
+    const W = box.clientWidth
+    const H = box.clientHeight
+    if (!W || !H) return
+    const dots = named.map((e) => {
+      const xP = Math.max(0, Math.min(100, e.x))
+      const yP = Math.max(0, Math.min(100, e.y))
+      return {
+        x: MAP_INSET_X + (W - MAP_INSET_X * 2) * (xP / 100),
+        y: MAP_INSET_Y + (H - MAP_INSET_Y * 2) * ((100 - yP) / 100),
+      }
+    })
+    const sizes = named.map((_, i) => {
+      const el = pillRefs.current[i]
+      return { w: el?.offsetWidth ?? 120, h: el?.offsetHeight ?? 32 }
+    })
+    setLabelLayout(layoutMapLabels(dots, sizes, W, H))
+  }, [named, aspect, resizeTick])
 
   return (
     <>
@@ -426,7 +551,7 @@ export function CompetitorMapPlot({ data, aspect = "3 / 1" }: { data: Competitor
         </div>
 
         {/* Plot grid — y grows upward: low/low bottom-left, high/high top-right */}
-        <div className="relative w-full min-w-0 overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: aspect }}>
+        <div ref={boxRef} className="relative w-full min-w-0 overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: aspect }}>
           {/* Corner quadrant labels */}
           <span className="absolute left-3 top-2 z-10 text-[11px] text-muted-foreground/60">
             High {yAxisLabel} / Low {xAxisLabel}
@@ -457,32 +582,27 @@ export function CompetitorMapPlot({ data, aspect = "3 / 1" }: { data: Competitor
             />
           ))}
 
-          {/* Entities: a dot marks the exact coordinate; the name chip floats
-              beside it. Coordinates 0–100 map into an inset field (MX/MY) so a
-              point at an extreme value stays fully inside the box instead of
-              being clipped at the edge. The chip flips below the dot when the
-              dot sits near the top so it never runs off. */}
-          {hasData && entities.map((entity, idx) => {
-            if (!entity.name) return null
+          {/* Entities: a dot marks the exact coordinate; its name pill is
+              measured, then placed (below/above/beside the dot) so pills never
+              cover a dot or each other. A thin connector line runs from the
+              dot to the pill, layered under it. Until the layout pass runs the
+              pills render hidden at the dot to get their true size. */}
+          {hasData && named.map((entity, idx) => {
             const xPercent = Math.max(0, Math.min(100, entity.x))
             const yPercent = Math.max(0, Math.min(100, entity.y))
-            const MX = 26
-            const MY = 24
-            const fromLeft = `calc(${MX}px + (100% - ${MX * 2}px) * ${xPercent / 100})`
-            const fromBottom = `calc(${MY}px + (100% - ${MY * 2}px) * ${yPercent / 100})`
-            const fromTop = `calc(${MY}px + (100% - ${MY * 2}px) * ${(100 - yPercent) / 100})`
-            const dotNearTop = yPercent >= 55
-            const chipStyle: React.CSSProperties = dotNearTop
-              ? {
-                  left: `clamp(92px, ${fromLeft}, calc(100% - 92px))`,
-                  top: `min(calc(${fromTop} + 12px), calc(100% - 40px))`,
-                }
-              : {
-                  left: `clamp(92px, ${fromLeft}, calc(100% - 92px))`,
-                  bottom: `min(calc(${fromBottom} + 12px), calc(100% - 40px))`,
-                }
+            const fromLeft = `calc(${MAP_INSET_X}px + (100% - ${MAP_INSET_X * 2}px) * ${xPercent / 100})`
+            const fromBottom = `calc(${MAP_INSET_Y}px + (100% - ${MAP_INSET_Y * 2}px) * ${yPercent / 100})`
+            const pill = labelLayout?.pills[idx]
+            const line = labelLayout?.lines[idx]
             return (
               <React.Fragment key={idx}>
+                {line && (
+                  <span
+                    aria-hidden
+                    className="absolute z-10 bg-gray-300"
+                    style={{ left: line.x, top: line.y, width: line.w, height: line.h }}
+                  />
+                )}
                 <div
                   className="absolute z-20 -translate-x-1/2 translate-y-1/2"
                   style={{ left: fromLeft, bottom: fromBottom }}
@@ -492,7 +612,17 @@ export function CompetitorMapPlot({ data, aspect = "3 / 1" }: { data: Competitor
                     style={{ background: entity.isMine ? myChipBorder : "#9CA3AF" }}
                   />
                 </div>
-                <div className="absolute z-10 -translate-x-1/2" style={chipStyle}>
+                <div
+                  ref={(el) => {
+                    pillRefs.current[idx] = el
+                  }}
+                  className="absolute z-30"
+                  style={
+                    pill
+                      ? { left: pill.x, top: pill.y }
+                      : { left: fromLeft, bottom: fromBottom, visibility: "hidden" }
+                  }
+                >
                   <div
                     title={entity.name}
                     className={`flex max-w-[170px] items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-2.5 shadow-sm ${

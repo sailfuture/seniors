@@ -65,7 +65,9 @@ function groupByYearGroup(students: Student[]): GroupedStudents[] {
     .map(([label, list]) => ({
       label,
       sortKey: extractSortYear(label),
-      students: list.sort((a, b) => a.lastName.localeCompare(b.lastName)),
+      students: list.sort(
+        (a, b) => a.firstName.localeCompare(b.firstName) || a.lastName.localeCompare(b.lastName)
+      ),
     }))
     .sort((a, b) => a.sortKey - b.sortKey)
 }

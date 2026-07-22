@@ -617,11 +617,6 @@ function heroGradient(stops: [string, string, string], angle: number): string {
   return `linear-gradient(${angle}deg, ${stops[0]} 0%, ${stops[1]} 50%, ${stops[2]} 100%)`
 }
 
-function heroOverlay(stops: [string, string, string], angle: number): string {
-  // hex8 alpha: F5 ≈ 0.96, D9 ≈ 0.85, F0 ≈ 0.94
-  return `linear-gradient(${angle}deg, ${stops[0]}F5 0%, ${stops[1]}D9 50%, ${stops[2]}F0 100%)`
-}
-
 // Light brand wash for section photos so the image stays visible; text
 // legibility comes from the bottom vignette rather than a heavy tint.
 // hex8 alpha: 4D ≈ 0.30, 26 ≈ 0.15, 59 ≈ 0.35
@@ -665,7 +660,7 @@ function DeckCover({
         className="absolute inset-0"
         style={{
           background: brand.coverImageUrl
-            ? heroOverlay(brand.heroStops, 120)
+            ? heroPhotoOverlay(brand.heroStops, 120)
             : heroGradient(brand.heroStops, 120),
         }}
       />
@@ -677,7 +672,9 @@ function DeckCover({
           }}
         />
       )}
-      <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+      {/* same vignette treatment as the section heroes: stronger over a
+          photo (the brand wash above is light), softer over a flat gradient */}
+      <div className={`absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t to-transparent ${brand.coverImageUrl ? "from-black/80 via-black/35" : "from-black/60 via-black/20"}`} />
 
       <div className="relative z-10 flex w-full flex-col justify-between gap-14 p-7 md:p-11">
         <div className="flex items-baseline justify-between gap-4">
@@ -822,6 +819,9 @@ function SectionHero({
       {/* bottom vignette anchors the text zone (stronger over photos where the
           top wash is light, so the title stays legible over a bright image) */}
       <div className={`absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t to-transparent ${photoUrl ? "from-black/80 via-black/35" : "from-black/55 via-black/15"}`} />
+      {/* left-side gradient keeps the left-aligned title and description
+          readable when the photo is bright on that side */}
+      <div className={`absolute inset-y-0 left-0 w-3/4 bg-gradient-to-r to-transparent ${photoUrl ? "from-black/50 via-black/15" : "from-black/30 via-black/10"}`} />
       {/* oversized ghost numeral */}
       <span
         aria-hidden
