@@ -298,7 +298,11 @@ export function StudentRoster({
                     {group.students.map((student) => (
                       <TableRow
                         key={student.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        // Fully-approved students read as settled: the whole row
+                        // dims until hovered so active students stand out.
+                        className={`cursor-pointer hover:bg-muted/50 ${
+                          allComplete.has(student.id) ? "opacity-50 transition-opacity hover:opacity-100" : ""
+                        }`}
                         onClick={() => router.push(`${basePath}/${student.id}`)}
                       >
                         <TableCell>

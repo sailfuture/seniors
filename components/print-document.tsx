@@ -292,9 +292,19 @@ export function PrintDocument({
           })
           .filter((g): g is { group: CustomGroup; questions: TemplateQuestion[] } => !!g)
 
-        return { section, ungrouped, groupBlocks }
+        // The section's approved background photo becomes the header art.
+        const bgQ = templates.find(
+          (q) => Number(q[F.sectionId]) === section.id && isDecorationQuestion(q)
+        )
+        const bgR = bgQ ? responseMap.get(bgQ.id) : undefined
+        const photoUrl =
+          bgQ && hasContent(bgQ, bgR)
+            ? resolveImageUrl(bgR!.image_response?.path || bgR!.image_response?.url)
+            : ""
+
+        return { section, ungrouped, groupBlocks, photoUrl }
       })
-  }, [sections, templates, groups, F.sectionId, F.customGroupId])
+  }, [sections, templates, groups, responseMap, F.sectionId, F.customGroupId])
 
   const isBusiness = product === "business-thesis"
   const docLabel = isBusiness ? "Senior Business Thesis" : "Personal Life Map"
@@ -368,7 +378,7 @@ export function PrintDocument({
               <img
                 src={brand.logoUrl}
                 alt=""
-                className="mb-8 size-20 rounded-full border border-gray-200 object-cover"
+                className="mb-8 size-24 rounded-full border-4 border-gray-200 object-cover shadow-sm"
               />
             )}
             {!isBusiness && studentImage && (
@@ -565,15 +575,17 @@ function buildGroupPrintBlocks(
         desc,
       }
     })
-    // Large 2-across cards; the whole set is family-tagged so it lands on
-    // one page (with its intro) whenever it fits.
-    for (let i = 0; i < cards.length; i += 4) {
+    // Galleries of 3+ print as ONE full-page 3-across grid of captioned
+    // cards (12 fit as 4 rows), so a 6-shot prototype walkthrough always
+    // shares a single sheet instead of spilling across pages. One- or
+    // two-slide galleries stay inline with their section.
+    for (let i = 0; i < cards.length; i += 12) {
       bodies.push({
         id: `${base}-imgs${i}`,
-        familyKey: `${base}-fam`,
+        ...(cards.length >= 3 ? { ownPage: true } : { familyKey: `${base}-fam` }),
         node: (
-          <div className="grid grid-cols-2 gap-5">
-            {cards.slice(i, i + 4).map((c) => (
+          <div className={cards.length <= 2 ? "grid grid-cols-2 gap-4" : "grid grid-cols-3 gap-4"}>
+            {cards.slice(i, i + 12).map((c) => (
               <div key={c.key} className="overflow-hidden rounded-lg border border-gray-200 break-inside-avoid">
                 {c.src ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -582,9 +594,9 @@ function buildGroupPrintBlocks(
                   <div className="aspect-[4/3] w-full bg-gray-100" />
                 )}
                 {(c.cardTitle || c.desc) && (
-                  <div className="border-t border-gray-200 px-3 py-2">
-                    {c.cardTitle && <p className="text-xs font-semibold">{c.cardTitle}</p>}
-                    {c.desc && <p className="mt-0.5 text-[11px] leading-snug text-gray-500">{c.desc}</p>}
+                  <div className="border-t border-gray-200 px-2.5 py-1.5">
+                    {c.cardTitle && <p className="text-[10px] font-semibold leading-snug">{c.cardTitle}</p>}
+                    {c.desc && <p className="mt-0.5 text-[10px] leading-snug text-gray-600">{c.desc}</p>}
                   </div>
                 )}
               </div>
@@ -613,6 +625,16 @@ function buildGroupPrintBlocks(
     const textQs = printable.filter(
       (q) => !q._question_types?.noInput && typeIdOf(q) !== QUESTION_TYPE.IMAGE_UPLOAD
     )
+    // Interleaved image+caption sets (the prototype walkthrough): each image
+    // pairs with the short answer that immediately follows it in sort order.
+    // The whole set always prints as ONE full-page 3-across captioned grid.
+    const captionByImage = new Map<number, TemplateQuestion>()
+    for (let i = 0; i < printable.length - 1; i++) {
+      if (typeIdOf(printable[i]) === QUESTION_TYPE.IMAGE_UPLOAD && isShortType(typeIdOf(printable[i + 1]))) {
+        captionByImage.set(printable[i].id, printable[i + 1])
+      }
+    }
+    const captionedSet = imgQs.length >= 3 && captionByImage.size >= Math.ceil(imgQs.length / 2)
     // Small text+image groups (a messaging location, say) print as one media
     // block — full text on the left, the uncropped image on the right.
     // Image-heavy groups skip this and use the grid below instead.
@@ -622,7 +644,47 @@ function buildGroupPrintBlocks(
       textQs.length >= 1 &&
       textQs.length <= 3 &&
       printable.length === imgQs.length + textQs.length
-    if (mediaGroup) {
+    if (captionedSet) {
+      const captionIds = new Set([...captionByImage.values()].map((c) => c.id))
+      const leads = textQs.filter((t) => !captionIds.has(t.id))
+      buildQuestionRows(leads, responseMap, brand).forEach((node, i) =>
+        bodies.push({ id: `${base}-lead${i}`, node })
+      )
+      bodies.push({
+        id: `${base}-cgrid`,
+        ownPage: true,
+        node: (
+          <div className="grid grid-cols-3 gap-4">
+            {imgQs.map((q) => {
+              const r = responseMap.get(q.id)
+              const src = hasContent(q, r)
+                ? resolveImageUrl(r!.image_response?.path || r!.image_response?.url)
+                : ""
+              const capQ = captionByImage.get(q.id)
+              const capR = capQ ? responseMap.get(capQ.id) : undefined
+              const caption = capQ && hasContent(capQ, capR) ? (capR!.student_response ?? "").trim() : ""
+              return (
+                <div key={q.id} className="overflow-hidden rounded-lg border border-gray-200 break-inside-avoid">
+                  {src ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={src} alt={q.field_label} className="aspect-[4/3] w-full object-cover" />
+                  ) : (
+                    <div className="aspect-[4/3] w-full bg-gray-100" />
+                  )}
+                  {(caption || !src) && (
+                    <div className="border-t border-gray-200 px-2.5 py-1.5">
+                      <p className="text-[10px] leading-snug text-gray-600">
+                        {caption || q.public_display_title || q.field_label}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ),
+      })
+    } else if (mediaGroup) {
       bodies.push({
         id: `${base}-media`,
         node: (
@@ -677,13 +739,14 @@ function buildGroupPrintBlocks(
       buildQuestionRows(textQs, responseMap, brand).forEach((node, i) =>
         bodies.push({ id: `${base}-lead${i}`, node })
       )
-      for (let i = 0; i < imgQs.length; i += 9) {
+      // All of the set's images share one full page (12 fit as 4 rows of 3).
+      for (let i = 0; i < imgQs.length; i += 12) {
         bodies.push({
           id: `${base}-igrid${i}`,
           ownPage: true,
           node: (
             <div className="grid grid-cols-3 gap-4">
-              {imgQs.slice(i, i + 9).map((q) => {
+              {imgQs.slice(i, i + 12).map((q) => {
                 const r = responseMap.get(q.id)
                 const src = hasContent(q, r)
                   ? resolveImageUrl(r!.image_response?.path || r!.image_response?.url)
@@ -803,6 +866,47 @@ function QuestionCell({
   )
 }
 
+/** Cut a wall of prose at sentence boundaries into ~page-friendly pieces. */
+function sentenceBuckets(plain: string, limit = 900): string[] {
+  const sentences = plain.match(/[^.!?]+[.!?]+["”')\]]*\s*|[^.!?]+$/g) ?? [plain]
+  const out: string[] = []
+  let buf = ""
+  for (const s of sentences) {
+    if (buf && buf.length + s.length > limit) {
+      out.push(buf.trim())
+      buf = ""
+    }
+    buf += s
+  }
+  if (buf.trim()) out.push(buf.trim())
+  return out
+}
+
+/** A single wall-of-text paragraph can't flow across pages, so cut plain
+    paragraphs at sentence boundaries into ~page-friendly pieces. Paragraphs
+    with marks (links, bold) pass through untouched. */
+function splitLongParagraphs(nodes: unknown[]): unknown[] {
+  const out: unknown[] = []
+  for (const n of nodes) {
+    const node = n as { type?: string; content?: { type?: string; text?: string; marks?: unknown[] }[] }
+    const plain =
+      node.type === "paragraph" &&
+      Array.isArray(node.content) &&
+      node.content.length > 0 &&
+      node.content.every((c) => c.type === "text" && !(c.marks && c.marks.length))
+        ? node.content.map((c) => c.text ?? "").join("")
+        : null
+    if (plain && plain.length > 900) {
+      for (const piece of sentenceBuckets(plain)) {
+        out.push({ type: "paragraph", content: [{ type: "text", text: piece }] })
+      }
+    } else {
+      out.push(n)
+    }
+  }
+  return out
+}
+
 /** Pack the ungrouped questions into row nodes (pairs of half-width cells,
     or one full-width cell) so the paginator can measure and place each row. */
 function buildQuestionRows(
@@ -854,8 +958,8 @@ function buildQuestionRows(
     // fixed-height pages instead of forcing an oversized sheet.
     if ((typeId === RICH_TEXT_TYPE_ID || looksLikeRichTextDoc(text)) && hasContent(q, r) && !isHalfCell(q, r)) {
       flushPending()
-      const nodes = (parseRichText(text)?.content ?? []) as unknown[]
-      if (nodes.length > 1) {
+      const nodes = splitLongParagraphs((parseRichText(text)?.content ?? []) as unknown[])
+      if (nodes.length > 0) {
         const CHUNK = 2
         for (let i = 0; i < nodes.length; i += CHUNK) {
           rows.push(
@@ -874,6 +978,34 @@ function buildQuestionRows(
         }
         continue
       }
+    }
+    // Long plain-prose answers (the Executive Summary) get the same
+    // treatment: sentence-bucket pieces flow onto the section's title page
+    // and continue across pages instead of landing as one immovable slab.
+    if (
+      (typeId === QUESTION_TYPE.LONG_RESPONSE || typeId === QUESTION_TYPE.SHORT_RESPONSE) &&
+      hasContent(q, r) &&
+      !looksLikeRichTextDoc(text) &&
+      text.trim().length > 1200
+    ) {
+      flushPending()
+      const pieces = text
+        .trim()
+        .split(/\n{2,}/)
+        .flatMap((p) => (p.length > 900 ? sentenceBuckets(p) : [p]))
+      pieces.forEach((piece, i) => {
+        rows.push(
+          <div key={`lt-${q.id}-${i}`} className="break-inside-avoid">
+            {i === 0 && (
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                {q.public_display_title || q.field_label}
+              </p>
+            )}
+            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800">{piece}</p>
+          </div>
+        )
+      })
+      continue
     }
     if (isHalfCell(q, r)) {
       if (pending) {
@@ -933,7 +1065,7 @@ function PaginatedSheets({
   title,
   docLabel,
 }: {
-  printSections: { section: SectionInfo; ungrouped: TemplateQuestion[]; groupBlocks: { group: CustomGroup; questions: TemplateQuestion[] }[] }[]
+  printSections: { section: SectionInfo; ungrouped: TemplateQuestion[]; groupBlocks: { group: CustomGroup; questions: TemplateQuestion[] }[]; photoUrl: string }[]
   responseMap: Map<number, StudentResponse>
   brand: BrandTheme
   accent: string
@@ -949,11 +1081,42 @@ function PaginatedSheets({
   const [layout, setLayout] = useState<{ source: unknown; pages: PageSpec[] } | null>(null)
 
   const sectionsBlocks = useMemo(() => {
-    return printSections.map(({ section, ungrouped, groupBlocks }, i) => {
+    return printSections.map(({ section, ungrouped, groupBlocks, photoUrl }, i) => {
       const blocks: PrintBlock[] = [
         {
           id: `s${section.id}-header`,
-          node: (
+          node: photoUrl ? (
+            // Editorial header: the section's hero photo as a full-width
+            // band with the kicker/title/description set over a bottom scrim.
+            <header className="relative overflow-hidden rounded-xl break-inside-avoid">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photoUrl} alt="" className="h-[2.9in] w-full object-cover" />
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "linear-gradient(to top, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.32) 52%, rgba(0,0,0,0.06) 100%)",
+                }}
+              />
+              <div className="absolute inset-x-0 bottom-0 p-6">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold tabular-nums text-white/90">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="h-px w-8 bg-white/60" />
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70">{docLabel}</span>
+                </div>
+                <h2 className="mt-2 text-3xl font-bold tracking-tight text-white" style={titleFont}>
+                  {section.section_title}
+                </h2>
+                {(section.description || section.section_description) && (
+                  <p className="mt-1.5 max-w-[6in] text-sm leading-relaxed text-white/85">
+                    {section.description || section.section_description}
+                  </p>
+                )}
+              </div>
+            </header>
+          ) : (
             <header className="border-b border-gray-200 pb-5">
               <div className="flex items-center gap-3">
                 <span className="text-xs font-semibold tabular-nums" style={{ color: accent }}>
