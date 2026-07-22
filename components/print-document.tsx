@@ -25,6 +25,7 @@ import { isLineItemsQuestion, parseLineItemProducts, LINE_ITEMS_TYPE_ID } from "
 import { RichTextDisplay } from "@/components/form/rich-text-display"
 import { RICH_TEXT_TYPE_ID, extractPlainText, looksLikeRichTextDoc, parseRichText } from "@/lib/rich-text"
 import type { FormApiConfig } from "@/lib/form-api-config"
+import { aspectRatioCss } from "@/lib/image-ratio"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -39,6 +40,7 @@ interface TemplateQuestion {
   question_types_id?: number | null
   public_display_title?: string
   public_display_description?: string
+  image_aspect_ratio?: string | null
   _question_types?: { id: number; type: string; noInput?: boolean }
   [key: string]: unknown
 }
@@ -121,6 +123,17 @@ function formatDate(value: string): string {
   } catch {
     return value
   }
+}
+
+/** The question's configured crop as CSS aspect-ratio, and its width/height
+    quotient (for sizing). Null when the crop is "free" — those uploads were
+    already cropped to the student's chosen shape at upload time. */
+function questionRatio(q: TemplateQuestion): { css: string; num: number } | null {
+  const css = aspectRatioCss(q.image_aspect_ratio)
+  if (!css) return null
+  const m = css.match(/^([\d.]+) \/ ([\d.]+)$/)
+  const num = m ? parseFloat(m[1]) / parseFloat(m[2]) : 4 / 3
+  return { css, num }
 }
 
 // Backgrounds feed the screen page's hero/cover imagery, never document content.
@@ -573,6 +586,8 @@ function buildGroupPrintBlocks(
         src: src ? resolveImageUrl(src) : "",
         cardTitle: cardTitle || (src ? "" : s.imageQ.public_display_title || s.imageQ.field_label),
         desc,
+        // Respect the field's configured crop inside the uniform card grid.
+        ratio: questionRatio(s.imageQ)?.css ?? "4 / 3",
       }
     })
     // Galleries of 3+ print as ONE full-page 3-across grid of captioned
@@ -589,9 +604,9 @@ function buildGroupPrintBlocks(
               <div key={c.key} className="overflow-hidden rounded-lg border border-gray-200 break-inside-avoid">
                 {c.src ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={c.src} alt={c.cardTitle || "Gallery image"} className="aspect-[4/3] w-full object-cover" />
+                  <img src={c.src} alt={c.cardTitle || "Gallery image"} className="w-full object-cover" style={{ aspectRatio: c.ratio }} />
                 ) : (
-                  <div className="aspect-[4/3] w-full bg-gray-100" />
+                  <div className="w-full bg-gray-100" style={{ aspectRatio: c.ratio }} />
                 )}
                 {(c.cardTitle || c.desc) && (
                   <div className="border-t border-gray-200 px-2.5 py-1.5">
@@ -663,13 +678,14 @@ function buildGroupPrintBlocks(
               const capQ = captionByImage.get(q.id)
               const capR = capQ ? responseMap.get(capQ.id) : undefined
               const caption = capQ && hasContent(capQ, capR) ? (capR!.student_response ?? "").trim() : ""
+              const ratio = questionRatio(q)?.css ?? "4 / 3"
               return (
                 <div key={q.id} className="overflow-hidden rounded-lg border border-gray-200 break-inside-avoid">
                   {src ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={src} alt={q.field_label} className="aspect-[4/3] w-full object-cover" />
+                    <img src={src} alt={q.field_label} className="w-full object-cover" style={{ aspectRatio: ratio }} />
                   ) : (
-                    <div className="aspect-[4/3] w-full bg-gray-100" />
+                    <div className="w-full bg-gray-100" style={{ aspectRatio: ratio }} />
                   )}
                   {(caption || !src) && (
                     <div className="border-t border-gray-200 px-2.5 py-1.5">
@@ -714,14 +730,25 @@ function buildGroupPrintBlocks(
                 const src = hasContent(q, r)
                   ? resolveImageUrl(r!.image_response?.path || r!.image_response?.url)
                   : ""
+                const ratio = questionRatio(q)
                 return (
                   <div key={q.id}>
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                       {q.public_display_title || q.field_label}
                     </p>
                     {src ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={src} alt={q.field_label} className="h-auto max-h-[3.5in] w-auto max-w-full rounded-md border border-gray-200" />
+                      ratio ? (
+                        <div
+                          className="w-full overflow-hidden rounded-md border border-gray-200"
+                          style={{ aspectRatio: ratio.css }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={src} alt={q.field_label} className="size-full object-cover" />
+                        </div>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={src} alt={q.field_label} className="h-auto max-h-[3.5in] w-auto max-w-full rounded-md border border-gray-200" />
+                      )
                     ) : (
                       <PlaceholderValue q={q} />
                     )}
@@ -751,13 +778,14 @@ function buildGroupPrintBlocks(
                 const src = hasContent(q, r)
                   ? resolveImageUrl(r!.image_response?.path || r!.image_response?.url)
                   : ""
+                const ratio = questionRatio(q)?.css ?? "4 / 3"
                 return (
                   <div key={q.id} className="overflow-hidden rounded-lg border border-gray-200 break-inside-avoid">
                     {src ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={src} alt={q.field_label} className="aspect-[4/3] w-full object-cover" />
+                      <img src={src} alt={q.field_label} className="w-full object-cover" style={{ aspectRatio: ratio }} />
                     ) : (
-                      <div className="aspect-[4/3] w-full bg-gray-100" />
+                      <div className="w-full bg-gray-100" style={{ aspectRatio: ratio }} />
                     )}
                   </div>
                 )
@@ -840,7 +868,9 @@ function isHalfCell(q: TemplateQuestion, r: StudentResponse | undefined): boolea
     gray box for images or a dashed empty slot for everything else. */
 function PlaceholderValue({ q }: { q: TemplateQuestion }) {
   if (typeIdOf(q) === QUESTION_TYPE.IMAGE_UPLOAD) {
-    return <div className="aspect-[4/3] w-full rounded-md border border-gray-200 bg-gray-100" />
+    // The gray slot previews at the field's configured crop.
+    const ratio = questionRatio(q)?.css ?? "4 / 3"
+    return <div className="w-full rounded-md border border-gray-200 bg-gray-100" style={{ aspectRatio: ratio }} />
   }
   return <div className="h-6 w-full rounded border border-dashed border-gray-200 bg-gray-50" />
 }
@@ -1329,8 +1359,23 @@ function PrintValue({ q, r, brand }: { q: TemplateQuestion; r: StudentResponse; 
 
   if (typeId === QUESTION_TYPE.IMAGE_UPLOAD) {
     const src = resolveImageUrl(r.image_response?.path || r.image_response?.url)
+    const ratio = questionRatio(q)
+    if (ratio) {
+      // Honor the field's configured crop: a fixed-ratio frame with the
+      // photo covering it, capped so the frame never exceeds ~3in tall.
+      return (
+        <div
+          className="w-full max-w-full overflow-hidden rounded-md border border-gray-200 break-inside-avoid"
+          style={{ aspectRatio: ratio.css, maxWidth: `${Math.min(3 * ratio.num, 7).toFixed(2)}in` }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt={q.field_label} className="size-full object-cover" />
+        </div>
+      )
+    }
     return (
-      // Uncropped, but height-capped so a tall upload can't blow past a page.
+      // Free crop: the upload already carries the student's chosen shape —
+      // show it uncropped, height-capped so it can't blow past a page.
       // eslint-disable-next-line @next/next/no-img-element
       <img src={src} alt={q.field_label} className="h-auto max-h-[3in] w-auto max-w-full rounded-md border border-gray-200 break-inside-avoid" />
     )
