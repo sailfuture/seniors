@@ -125,6 +125,48 @@ function formatDate(value: string): string {
   }
 }
 
+interface SheetTable {
+  headers: string[]
+  rows: string[][]
+}
+
+function sheetRefFromUrl(url: string): { id: string; gid: string } | null {
+  const id = (url.match(/\/d\/([a-zA-Z0-9-_]+)/) || [])[1]
+  if (!id) return null
+  const gid = (url.match(/[#&?]gid=(\d+)/) || [])[1] ?? "0"
+  return { id, gid }
+}
+
+/** Parse Google's gviz JSONP payload into a plain table. Formatted cell
+    values (currency, dates) win over raw ones; when the sheet has no column
+    labels the first row serves as the header; empty columns/rows drop. */
+function parseGvizTable(raw: string): SheetTable | null {
+  const start = raw.indexOf("(")
+  const end = raw.lastIndexOf(")")
+  if (start < 0 || end <= start) return null
+  try {
+    const json = JSON.parse(raw.slice(start + 1, end)) as {
+      table?: { cols?: { label?: string }[]; rows?: { c: ({ v?: unknown; f?: string } | null)[] }[] }
+    }
+    const cell = (c: { v?: unknown; f?: string } | null) => String(c?.f ?? (c?.v == null ? "" : c.v)).trim()
+    let headers = (json.table?.cols ?? []).map((c) => (c.label ?? "").trim())
+    let rows = (json.table?.rows ?? []).map((r) => headers.map((_, i) => cell((r.c ?? [])[i] ?? null)))
+    if (headers.every((h) => !h) && rows.length > 0) {
+      headers = rows[0]
+      rows = rows.slice(1)
+    }
+    const keptIdx = headers
+      .map((h, i) => (h !== "" || rows.some((r) => (r[i] ?? "") !== "") ? i : -1))
+      .filter((i) => i >= 0)
+    headers = keptIdx.map((i) => headers[i])
+    rows = rows.map((r) => keptIdx.map((i) => r[i] ?? "")).filter((r) => r.some((v) => v !== ""))
+    if (headers.length === 0 || rows.length === 0) return null
+    return { headers, rows }
+  } catch {
+    return null
+  }
+}
+
 /** The question's configured crop as CSS aspect-ratio, and its width/height
     quotient (for sizing). Null when the crop is "free" — those uploads were
     already cropped to the student's chosen shape at upload time. */
@@ -260,6 +302,39 @@ export function PrintDocument({
     for (const r of responses) map.set(Number(r[F.templateId]), r)
     return map
   }, [responses, F.templateId])
+
+  // The linked Google-Sheet budget prints as real tables: fetch each sheet's
+  // data via the public gviz endpoint (link-viewable sheets allow it
+  // cross-origin). Failures just leave the link card on its own.
+  const [budgetTables, setBudgetTables] = useState<Map<number, SheetTable>>(new Map())
+  useEffect(() => {
+    const urlQs = templates.filter((q) => q.field_name === "google_sheet_url")
+    if (urlQs.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      const entries: [number, SheetTable][] = []
+      for (const q of urlQs) {
+        const r = responseMap.get(q.id)
+        const url = (r?.isComplete ? (r.student_response ?? "") : "").trim()
+        const ref = url ? sheetRefFromUrl(url) : null
+        if (!ref) continue
+        try {
+          const res = await fetch(
+            `https://docs.google.com/spreadsheets/d/${ref.id}/gviz/tq?tqx=out:json&gid=${ref.gid}`
+          )
+          if (!res.ok) continue
+          const table = parseGvizTable(await res.text())
+          if (table) entries.push([q.id, table])
+        } catch {
+          /* private or offline sheet — the link card still prints */
+        }
+      }
+      if (!cancelled && entries.length > 0) setBudgetTables(new Map(entries))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [templates, responseMap])
 
   const brand = useMemo(() => deriveBrandTheme(templates, responseMap), [templates, responseMap])
   useGoogleFont(brand.primaryFont)
@@ -462,6 +537,7 @@ export function PrintDocument({
           displayTypesField={F.displayTypesId}
           title={title}
           docLabel={docLabel}
+          budgetTables={budgetTables}
         />
 
         {printSections.length === 0 && (
@@ -492,7 +568,8 @@ function buildGroupPrintBlocks(
   responseMap: Map<number, StudentResponse>,
   brand: BrandTheme,
   accent: string,
-  displayTypesField: string
+  displayTypesField: string,
+  budgetTables?: Map<number, SheetTable>
 ): PrintBlock[] {
   const base = `s${sectionId}-g${group.id}`
   const displayTypeId = Number(group[displayTypesField]) || null
@@ -617,6 +694,84 @@ function buildGroupPrintBlocks(
               </div>
             ))}
           </div>
+        ),
+      })
+    }
+  } else if (displayTypeId === DISPLAY_TYPE.GOOGLE_BUDGET) {
+    // The embedded spreadsheet can't print — its answers print as rows, and
+    // the sheet itself becomes a labeled link card (PDFs keep <a> targets
+    // clickable, and the visible URL survives on paper).
+    const urlQ = questions.find((q) => q.field_name === "google_sheet_url")
+    const urlR = urlQ ? responseMap.get(urlQ.id) : undefined
+    const sheetUrl = urlQ && hasContent(urlQ, urlR) ? (urlR!.student_response ?? "").trim() : ""
+    const rest = printableGridQuestions(questions).filter(
+      (q) => !(sheetUrl && q.field_name === "google_sheet_url")
+    )
+    buildQuestionRows(rest, responseMap, brand).forEach((node, i) =>
+      bodies.push({ id: `${base}-row${i}`, node })
+    )
+    // The sheet's own data, printed as full-width tables that flow across
+    // pages (header row repeats on every chunk). Numeric cells right-align.
+    const table = urlQ ? budgetTables?.get(urlQ.id) : undefined
+    if (table) {
+      const isNumeric = (v: string) => v !== "" && /^\(?-?[$€£]?[\d,.\s]+%?\)?$/.test(v)
+      const ROWS_PER_BLOCK = 24
+      for (let i = 0; i < table.rows.length; i += ROWS_PER_BLOCK) {
+        bodies.push({
+          id: `${base}-sheet${i}`,
+          node: (
+            <table className="w-full border-collapse text-[10px] leading-snug break-inside-avoid">
+              <thead>
+                <tr>
+                  {table.headers.map((h, hi) => (
+                    <th
+                      key={hi}
+                      className="border-b border-gray-300 bg-gray-50 px-2 py-1 text-left font-semibold uppercase tracking-wide text-gray-500"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.slice(i, i + ROWS_PER_BLOCK).map((row, ri) => (
+                  <tr key={ri}>
+                    {row.map((v, ci) => (
+                      <td
+                        key={ci}
+                        className={`border-b border-gray-100 px-2 py-1 align-top text-gray-800 ${
+                          isNumeric(v) ? "text-right tabular-nums" : ""
+                        }`}
+                      >
+                        {v}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ),
+        })
+      }
+    }
+    if (sheetUrl) {
+      const href = sheetUrl.startsWith("http") ? sheetUrl : `https://${sheetUrl}`
+      bodies.push({
+        id: `${base}-sheetlink`,
+        node: (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 break-inside-avoid"
+          >
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              Live budget spreadsheet
+            </span>
+            <span className="mt-0.5 block break-all text-[12px] text-gray-700 underline decoration-gray-300 underline-offset-2">
+              {href}
+            </span>
+          </a>
         ),
       })
     }
@@ -1094,6 +1249,7 @@ function PaginatedSheets({
   displayTypesField,
   title,
   docLabel,
+  budgetTables,
 }: {
   printSections: { section: SectionInfo; ungrouped: TemplateQuestion[]; groupBlocks: { group: CustomGroup; questions: TemplateQuestion[] }[]; photoUrl: string }[]
   responseMap: Map<number, StudentResponse>
@@ -1103,6 +1259,7 @@ function PaginatedSheets({
   displayTypesField: string
   title: string
   docLabel: string
+  budgetTables?: Map<number, SheetTable>
 }) {
   const measureRef = useRef<HTMLDivElement | null>(null)
   // The layout is keyed to the block list it was measured from, so new
@@ -1189,7 +1346,8 @@ function PaginatedSheets({
           responseMap,
           brand,
           accent,
-          displayTypesField
+          displayTypesField,
+          budgetTables
         )
         blocks.push(
           ...(inRun
@@ -1207,7 +1365,7 @@ function PaginatedSheets({
       }
       return { section, blocks }
     })
-  }, [printSections, responseMap, brand, accent, titleFont, displayTypesField, docLabel])
+  }, [printSections, responseMap, brand, accent, titleFont, displayTypesField, docLabel, budgetTables])
 
   const blockById = useMemo(() => {
     const m = new Map<string, React.ReactNode>()
@@ -1387,7 +1545,18 @@ function PrintValue({ q, r, brand }: { q: TemplateQuestion; r: StudentResponse; 
     return <p className="text-[13px]">{formatDate(r.date_response || text)}</p>
   }
   if (typeId === QUESTION_TYPE.URL) {
-    return <p className="break-all text-[13px] text-gray-700 underline decoration-gray-300 underline-offset-2">{text}</p>
+    // A real anchor: browsers keep the link clickable in the saved PDF.
+    const href = text.startsWith("http") ? text : `https://${text}`
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="break-all text-[13px] text-gray-700 underline decoration-gray-300 underline-offset-2"
+      >
+        {text}
+      </a>
+    )
   }
   if (typeId === QUESTION_TYPE.DROPDOWN) {
     return <p className="text-[13px]">{text}</p>
