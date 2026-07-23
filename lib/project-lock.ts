@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import type { FormApiConfig } from "@/lib/form-api-config"
 
 /**
@@ -136,4 +137,25 @@ export async function lockProject(
 export async function unlockProject(locksEndpoint: string, lockId: number): Promise<boolean> {
   const res = await fetch(`${locksEndpoint}/${lockId}`, { method: "DELETE" })
   return res.ok
+}
+
+/** The student's active lock, for client surfaces that must go view-only
+    while the project is frozen. Null while loading or when unlocked. */
+export function useProjectLock(
+  locksEndpoint: string | undefined,
+  studentId: string | null | undefined
+): ProjectLock | null {
+  const [lock, setLock] = useState<ProjectLock | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      const l = locksEndpoint && studentId ? await fetchProjectLock(locksEndpoint, studentId) : null
+      if (!cancelled) setLock(l)
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [locksEndpoint, studentId])
+  return lock
 }

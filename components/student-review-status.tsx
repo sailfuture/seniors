@@ -25,6 +25,8 @@ import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { isLineItemsQuestion } from "@/lib/line-items"
+import { useProjectLock } from "@/lib/project-lock"
+import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
 
 const QUESTION_TYPE = {
   LONG_RESPONSE: 1,
@@ -183,6 +185,9 @@ export function StudentReviewStatus({
   const F = cfg.fields
   const router = useRouter()
   const { data: session } = useSession()
+  // While the teacher has the project locked, this page is view-only:
+  // no draft edits or resubmits (replies to comments stay open).
+  const projectLock = useProjectLock(cfg.locksEndpoint, studentId ?? undefined)
 
   const [loading, setLoading] = useState(true)
   const [sections, setSections] = useState<SectionInfo[]>([])
@@ -409,6 +414,7 @@ export function StudentReviewStatus({
 
   const handleSaveDraft = useCallback(
     async (responseId: number, templateId: number, value: string): Promise<boolean> => {
+      if (projectLock) return false
       try {
         // Match the main editor's save: bump wordCount + last_edited so the
         // teacher's queue dates and newest-first sort stay accurate.
@@ -426,7 +432,7 @@ export function StudentReviewStatus({
         return false
       }
     },
-    [cfg.responsePatchBase, applyResponsePatch]
+    [cfg.responsePatchBase, applyResponsePatch, projectLock]
   )
 
   const runAiCheck = useCallback(
@@ -463,6 +469,7 @@ export function StudentReviewStatus({
 
   const handleResubmit = useCallback(
     async (q: TemplateQuestion, responseId: number, value: string): Promise<boolean> => {
+      if (projectLock) return false
       const sectionId = Number(q[F.sectionId])
       // Persist the edit first so a rejected AI check still keeps their work.
       const saved = await handleSaveDraft(responseId, q.id, value)
@@ -506,7 +513,7 @@ export function StudentReviewStatus({
         return false
       }
     },
-    [cfg.responsePatchBase, cfg.eventPrefix, F, handleSaveDraft, runAiCheck, applyResponsePatch, comments, handleMarkRead]
+    [cfg.responsePatchBase, cfg.eventPrefix, F, handleSaveDraft, runAiCheck, applyResponsePatch, comments, handleMarkRead, projectLock]
   )
 
   // --- Sheet data ----------------------------------------------------------
@@ -569,6 +576,8 @@ export function StudentReviewStatus({
 
   return (
     <div className="space-y-6">
+      {projectLock && <ProjectLockedBanner />}
+
       {/* Pending review — top; grouped by section; rows open the detail sheet */}
       <StatusCard dot="bg-blue-500" title="Pending review" count={pendingCount}>
         {pendingCount === 0 ? (
@@ -728,6 +737,7 @@ export function StudentReviewStatus({
               question={openField}
               response={openResponse}
               comments={sheetComments}
+              locked={!!projectLock}
               onMarkRead={handleMarkRead}
               onSaveDraft={(value) => handleSaveDraft(openResponse.id, openField.id, value)}
               onResubmit={async (value) => {
@@ -840,6 +850,7 @@ function RevisionEditor({
   question,
   response,
   comments,
+  locked = false,
   onMarkRead,
   onSaveDraft,
   onResubmit,
@@ -848,13 +859,16 @@ function RevisionEditor({
   question: TemplateQuestion
   response: StudentResponse
   comments: Comment[]
+  /** Project lock: feedback stays readable, but nothing can be edited. */
+  locked?: boolean
   onMarkRead: (commentId: number) => void
   onSaveDraft: (value: string) => Promise<boolean>
   onResubmit: (value: string) => Promise<boolean>
   onOpenEditor: () => void
 }) {
   const typeId = question.question_types_id ?? null
-  const editable = typeId === QUESTION_TYPE.LONG_RESPONSE || typeId === QUESTION_TYPE.SHORT_RESPONSE
+  const editable =
+    !locked && (typeId === QUESTION_TYPE.LONG_RESPONSE || typeId === QUESTION_TYPE.SHORT_RESPONSE)
   const [value, setValue] = useState(response.student_response ?? "")
   const [savingDraft, setSavingDraft] = useState(false)
   const [resubmitting, setResubmitting] = useState(false)
@@ -907,6 +921,14 @@ function RevisionEditor({
               </p>
             )}
           </>
+        ) : locked ? (
+          <div className="text-muted-foreground rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            {response.student_response ? (
+              <span className="whitespace-pre-wrap">{response.student_response}</span>
+            ) : (
+              <span className="italic">—</span>
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             <div className="text-muted-foreground rounded-md border bg-muted/30 px-3 py-2 text-sm">

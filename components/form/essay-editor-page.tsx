@@ -15,6 +15,8 @@ import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import type { SaveStatus } from "@/lib/form-types"
+import { useProjectLock } from "@/lib/project-lock"
+import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
 
 interface TemplateQuestion {
   id: number
@@ -64,6 +66,12 @@ export function EssayEditorPage({
   const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
   const { register: registerSave, unregister: unregisterSave } = useSaveRegister()
   const { register: registerRefresh, unregister: unregisterRefresh } = useRefreshRegister()
+  // A locked project makes the essay view-only regardless of its own state.
+  const projectLock = useProjectLock(cfg.locksEndpoint, studentId)
+  const projectLockRef = useRef(false)
+  useEffect(() => {
+    projectLockRef.current = !!projectLock
+  }, [projectLock])
 
   const [loading, setLoading] = useState(true)
   const [question, setQuestion] = useState<TemplateQuestion | null>(null)
@@ -125,6 +133,8 @@ export function EssayEditorPage({
   }, [loadData])
 
   const save = useCallback(async () => {
+    // Locked projects never write (belt for the disabled editor).
+    if (projectLockRef.current) return
     const resp = responseRef.current
     if (!resp || !dirtyRef.current) return
     setSaveStatus("saving")
@@ -264,7 +274,7 @@ export function EssayEditorPage({
 
   const isComplete = response.isComplete === true
   const isReadyForReview = response.readyReview === true && !isComplete && !response.revisionNeeded
-  const isLocked = isComplete || isReadyForReview
+  const isLocked = isComplete || isReadyForReview || !!projectLock
   const wordCount = richTextWordCount(value)
   const minWords = question.min_words > 0 ? question.min_words : null
 
@@ -284,17 +294,21 @@ export function EssayEditorPage({
         )}
       </div>
 
-      {isLocked && (
-        <div className="bg-muted/50 text-muted-foreground mt-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
-          <HugeiconsIcon
-            icon={isComplete ? CheckmarkCircle02Icon : SentIcon}
-            strokeWidth={2}
-            className={`size-4 shrink-0 ${isComplete ? "text-green-600" : "text-blue-500"}`}
-          />
-          {isComplete
-            ? "This essay has been marked complete. Reopen it from the section page to make changes."
-            : "This essay has been sent for review. Withdraw the submission from the section page to keep editing."}
-        </div>
+      {projectLock ? (
+        <ProjectLockedBanner className="mt-4" />
+      ) : (
+        isLocked && (
+          <div className="bg-muted/50 text-muted-foreground mt-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
+            <HugeiconsIcon
+              icon={isComplete ? CheckmarkCircle02Icon : SentIcon}
+              strokeWidth={2}
+              className={`size-4 shrink-0 ${isComplete ? "text-green-600" : "text-blue-500"}`}
+            />
+            {isComplete
+              ? "This essay has been marked complete. Reopen it from the section page to make changes."
+              : "This essay has been sent for review. Withdraw the submission from the section page to keep editing."}
+          </div>
+        )
       )}
 
       {/* Document frame: the editor sits as a white "page" on a light-gray

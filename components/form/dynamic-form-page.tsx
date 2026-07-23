@@ -67,6 +67,8 @@ import { RichTextPreviewCard } from "./rich-text-preview-card"
 import { extractPlainText, isRichTextQuestion, richTextWordCount } from "@/lib/rich-text"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
+import { useProjectLock } from "@/lib/project-lock"
+import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
 import type { SaveStatus, Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
@@ -190,6 +192,14 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const saveAllRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
   const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
+
+  // A locked project is view-only: every control below is disabled and no
+  // save ever fires until a teacher unlocks it.
+  const projectLock = useProjectLock(cfg.locksEndpoint, studentId)
+  const projectLockRef = useRef(false)
+  useEffect(() => {
+    projectLockRef.current = !!projectLock
+  }, [projectLock])
 
   const loadData = useCallback(async (showLoading = false) => {
     if (!studentId) return
@@ -336,6 +346,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   }, [focusField, loading])
 
   const saveAll = useCallback(async () => {
+    // Locked projects never write, even if an edit slipped past the
+    // disabled controls (e.g. a pending autosave from before the lock).
+    if (projectLockRef.current) return
     const dirty = dirtyRef.current
     if (dirty.size === 0) return
 
@@ -844,6 +857,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             </Button>
           </div>
         )}
+        {projectLock && <ProjectLockedBanner className="mt-3" />}
       </div>
 
       <Sheet open={sectionCommentsOpen} onOpenChange={setSectionCommentsOpen}>
@@ -858,6 +872,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         </SheetContent>
       </Sheet>
 
+      {/* While locked, every control in the form goes inert (native fieldset
+          disabling) — the section stays readable but nothing is editable. */}
+      <fieldset disabled={!!projectLock} className="contents">
       {ungroupedQuestions.length > 0 && (
         <Card>
           <CardContent className="p-6">
@@ -923,6 +940,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         </GroupSection>
         )
       })}
+      </fieldset>
     </div>
   )
 }
