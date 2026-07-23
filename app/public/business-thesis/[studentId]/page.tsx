@@ -173,6 +173,20 @@ function formatCurrency(value: string): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(num)
 }
 
+/** Compact display label for a URL: hostname + path, dropping the query
+    string and hash so tracking-laden links don't sprawl. The full URL stays
+    in the anchor's href. */
+function prettyUrl(raw: string): string {
+  const href = raw.startsWith("http") ? raw : `https://${raw}`
+  try {
+    const u = new URL(href)
+    const path = u.pathname === "/" ? "" : u.pathname.replace(/\/$/, "")
+    return u.hostname.replace(/^www\./, "") + path
+  } catch {
+    return raw
+  }
+}
+
 function formatDate(value: string): string {
   try {
     return new Date(value).toLocaleDateString("en-US", {
@@ -1132,11 +1146,12 @@ function ResponseDisplay({
         href={text.startsWith("http") ? text : `https://${text}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600 underline decoration-current/30 underline-offset-4 transition-opacity hover:opacity-80"
+        title={text}
+        className="flex max-w-full items-center gap-1.5 text-sm font-bold text-blue-600 underline decoration-current/30 underline-offset-4 transition-opacity hover:opacity-80"
         style={linkStyle}
       >
-        {text}
-        <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <span className="min-w-0 truncate">{prettyUrl(text)}</span>
+        <svg className="size-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
         </svg>
       </a>

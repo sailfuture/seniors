@@ -142,6 +142,20 @@ function formatCurrency(value: string): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(num)
 }
 
+/** Compact display label for a URL: hostname + path, dropping the query
+    string and hash so tracking-laden links (?gad_source=…&gclid=…) don't
+    sprawl across the page. The full URL stays in the anchor's href. */
+function prettyUrl(raw: string): string {
+  const href = raw.startsWith("http") ? raw : `https://${raw}`
+  try {
+    const u = new URL(href)
+    const path = u.pathname === "/" ? "" : u.pathname.replace(/\/$/, "")
+    return u.hostname.replace(/^www\./, "") + path
+  } catch {
+    return raw
+  }
+}
+
 function formatDate(value: string): string {
   try {
     return new Date(value).toLocaleDateString("en-US", {
@@ -853,15 +867,17 @@ function ResponseDisplay({
 
   if (typeId === QUESTION_TYPE.URL) {
     if (!text) return <p className="text-muted-foreground text-sm italic">—</p>
+    const href = text.startsWith("http") ? text : `https://${text}`
     return (
       <a
-        href={text.startsWith("http") ? text : `https://${text}`}
+        href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600 underline decoration-blue-600/30 underline-offset-4 transition-colors hover:text-blue-800 hover:decoration-blue-800/50"
+        title={text}
+        className="flex max-w-full items-center gap-1.5 text-sm font-bold text-blue-600 underline decoration-blue-600/30 underline-offset-4 transition-colors hover:text-blue-800 hover:decoration-blue-800/50"
       >
-        {text}
-        <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <span className="min-w-0 truncate">{prettyUrl(text)}</span>
+        <svg className="size-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
         </svg>
       </a>

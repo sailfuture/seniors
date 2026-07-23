@@ -22,7 +22,9 @@ const CSS_COLOR_KEYWORD_BLOCKLIST = new Set([
 
 /** The whole response is a hex code (with or without #). */
 export function parseExactHex(raw: string): ParsedColor | null {
-  const match = raw.trim().match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/)
+  // Require the leading '#': without it a plain number like "980" is a
+  // valid 3-digit hex triplet and would wrongly render as a color swatch.
+  const match = raw.trim().match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/)
   if (!match) return null
   const hex = `#${match[1].toUpperCase()}`
   return { css: hex, hex }
