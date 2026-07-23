@@ -1706,6 +1706,9 @@ interface PrintBlock {
   /** Start a fresh page before this block (e.g. each budget-sheet tab);
       following blocks may still share the page. */
   breakBefore?: boolean
+  /** The block IS the page: no sheet padding, header, or footer (the
+      resume's PDF-page snapshots). Implies ownPage. */
+  fullBleed?: boolean
 }
 
 interface PageSpec {
@@ -1769,13 +1772,10 @@ function PaginatedSheets({
           blocks: resumeDoc.pages.map((src, bi): PrintBlock => ({
             id: `resume-p${bi}`,
             ownPage: true,
+            fullBleed: true,
             node: (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={src}
-                alt={`Resume page ${bi + 1}`}
-                className="mx-auto max-h-[820px] w-auto max-w-full rounded-sm border border-gray-200"
-              />
+              <img src={src} alt={`Resume page ${bi + 1}`} className="h-full w-full object-contain" />
             ),
           })),
         }
@@ -1886,6 +1886,13 @@ function PaginatedSheets({
     return m
   }, [sectionsBlocks])
 
+  // Pages holding one of these render edge-to-edge with no chrome.
+  const fullBleedIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const sec of sectionsBlocks) for (const b of sec.blocks) if (b.fullBleed) s.add(b.id)
+    return s
+  }, [sectionsBlocks])
+
   const pages = layout && layout.source === sectionsBlocks ? layout.pages : null
 
   useEffect(() => {
@@ -1991,6 +1998,18 @@ function PaginatedSheets({
     <>
       {pages.map((page, pi) => {
         const { section } = sectionsBlocks[page.sIdx]
+        // Full-bleed pages (the resume snapshots) are the image alone —
+        // no padding, continuation header, or footer.
+        if (page.blockIds.length === 1 && fullBleedIds.has(page.blockIds[0])) {
+          return (
+            <section
+              key={`${section.id}-${page.contIndex}`}
+              className="h-[11in] overflow-hidden break-before-page bg-white shadow-md ring-1 ring-black/5 print:h-[9.5in] print:shadow-none print:ring-0"
+            >
+              {blockById.get(page.blockIds[0])}
+            </section>
+          )
+        }
         return (
           <section
             key={`${section.id}-${page.contIndex}`}
