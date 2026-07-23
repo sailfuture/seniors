@@ -28,6 +28,7 @@ import {
   Image01Icon,
   Folder01Icon,
   CheckListIcon,
+  Home09Icon,
 } from "@hugeicons/core-free-icons"
 import Link from "next/link"
 import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
@@ -827,6 +828,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </>
       )}
       <SidebarContent>
+        {!isAdmin && !studentInfo && (
+          <SidebarGroup className="pb-0">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Home" isActive={pathname === "/dashboard"}>
+                  <Link href="/dashboard">
+                    <HugeiconsIcon icon={Home09Icon} strokeWidth={2} />
+                    <span className="font-semibold">Home</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
         {studentInfo && (
           <SidebarGroup className="pb-0">
             <SidebarMenu>

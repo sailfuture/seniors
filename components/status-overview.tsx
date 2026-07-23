@@ -319,7 +319,7 @@ export function ProductStatusCard({
             No student account is linked to this login.
           </p>
         ) : (
-          <Table>
+          <Table className="[&_td:first-child]:pl-4 [&_th:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:last-child]:pr-4">
             <TableHeader>
               <TableRow>
                 <TableHead>Question</TableHead>

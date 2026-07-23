@@ -41,6 +41,9 @@ import { btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-
 import type { Comment } from "@/lib/form-types"
 import { cn } from "@/lib/utils"
 import { useRefreshRegister } from "@/lib/refresh-context"
+import { useProjectLock } from "@/lib/project-lock"
+import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
+import { BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 
 const BT_BASE =
   process.env.NEXT_PUBLIC_XANO_BT_API_BASE ??
@@ -129,6 +132,7 @@ export default function StudentBusinessThesisOverviewPage() {
   const router = useRouter()
   const { data: session } = useSession()
   const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
+  const projectLock = useProjectLock(BUSINESSTHESIS_API_CONFIG.locksEndpoint, studentId)
 
   const [rows, setRows] = useState<SectionRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -319,6 +323,7 @@ export default function StudentBusinessThesisOverviewPage() {
             </Button>
           )}
         </div>
+        {projectLock && <ProjectLockedBanner className="mt-3" />}
       </div>
 
       <div className="rounded-md border">
