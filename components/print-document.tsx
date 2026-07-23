@@ -130,6 +130,68 @@ interface SheetTable {
   rows: string[][]
 }
 
+interface SheetTab {
+  name: string
+  table: SheetTable
+}
+
+/** Explicit column picks per budget-sheet tab (sheet letters, A = first).
+    Tabs not listed keep every column that survives the generic link/empty
+    cleanup. Keys are compared case-insensitively. */
+const SHEET_TAB_COLUMNS: Record<string, string[]> = {
+  "start up costs": ["A", "B", "C"],
+  "monthly business expenses": ["A", "B", "C"],
+  "service income": ["A", "B", "C"],
+  "weekly budget": ["A", "B", "C", "D", "E", "F"],
+  "monthly/annual budget": ["A", "B"],
+}
+
+// Tabs that never print (tolerant of the template's "Forecaast" typo).
+const SHEET_TAB_SKIP = /4[-\s]?year\s+forec/i
+
+/** Tab list (name + gid) scraped from the sheet's public htmlview page. */
+async function listSheetTabs(id: string): Promise<{ name: string; gid: string }[]> {
+  try {
+    const res = await fetch(`https://docs.google.com/spreadsheets/d/${id}/htmlview`)
+    if (!res.ok) return []
+    const html = await res.text()
+    return [...html.matchAll(/items\.push\(\{name:\s*"((?:[^"\\]|\\.)*)",\s*pageUrl:\s*"[^"]*gid=(\d+)/g)].map(
+      (m) => ({ name: m[1].replace(/\\(.)/g, "$1"), gid: m[2] })
+    )
+  } catch {
+    return []
+  }
+}
+
+/** Print-safe table: link-dominant columns (incl. literal "URL" headers)
+    drop entirely, and any URL inside a remaining cell collapses to its bare
+    hostname so no multi-line address ever reaches the page. */
+function sanitizeSheetTable(t: SheetTable): SheetTable | null {
+  const isUrl = (v: string) => /https?:\/\/\S+/i.test(v)
+  const stripUrls = (v: string) =>
+    v
+      .replace(/https?:\/\/\S+/gi, (m) => {
+        try {
+          return new URL(m).hostname.replace(/^www\./, "")
+        } catch {
+          return ""
+        }
+      })
+      .replace(/\s{2,}/g, " ")
+      .trim()
+  const keep = t.headers.map((h, i) => {
+    if (/^url$/i.test(h.trim())) return false
+    const vals = t.rows.map((r) => r[i] ?? "").filter((v) => v !== "")
+    return !(vals.length > 0 && vals.filter(isUrl).length / vals.length >= 0.5)
+  })
+  const headers = t.headers.filter((_, i) => keep[i]).map(stripUrls)
+  const rows = t.rows
+    .map((r) => r.filter((_, i) => keep[i]).map(stripUrls))
+    .filter((r) => r.some((v) => v !== ""))
+  if (headers.length === 0 || rows.length === 0) return null
+  return { headers, rows }
+}
+
 function sheetRefFromUrl(url: string): { id: string; gid: string } | null {
   const id = (url.match(/\/d\/([a-zA-Z0-9-_]+)/) || [])[1]
   if (!id) return null
@@ -140,17 +202,25 @@ function sheetRefFromUrl(url: string): { id: string; gid: string } | null {
 /** Parse Google's gviz JSONP payload into a plain table. Formatted cell
     values (currency, dates) win over raw ones; when the sheet has no column
     labels the first row serves as the header; empty columns/rows drop. */
-function parseGvizTable(raw: string): SheetTable | null {
+function parseGvizTable(raw: string, pickIds?: string[]): SheetTable | null {
   const start = raw.indexOf("(")
   const end = raw.lastIndexOf(")")
   if (start < 0 || end <= start) return null
   try {
     const json = JSON.parse(raw.slice(start + 1, end)) as {
-      table?: { cols?: { label?: string }[]; rows?: { c: ({ v?: unknown; f?: string } | null)[] }[] }
+      table?: { cols?: { id?: string; label?: string }[]; rows?: { c: ({ v?: unknown; f?: string } | null)[] }[] }
     }
     const cell = (c: { v?: unknown; f?: string } | null) => String(c?.f ?? (c?.v == null ? "" : c.v)).trim()
-    let headers = (json.table?.cols ?? []).map((c) => (c.label ?? "").trim())
-    let rows = (json.table?.rows ?? []).map((r) => headers.map((_, i) => cell((r.c ?? [])[i] ?? null)))
+    const cols = json.table?.cols ?? []
+    // gviz column ids are the sheet letters — an explicit pick selects those.
+    let idxs = cols.map((_, i) => i)
+    if (pickIds && pickIds.length > 0) {
+      const wanted = new Set(pickIds.map((s) => s.trim().toUpperCase()))
+      const picked = idxs.filter((i) => wanted.has(String(cols[i].id ?? "").toUpperCase()))
+      if (picked.length > 0) idxs = picked
+    }
+    let headers = idxs.map((i) => (cols[i].label ?? "").trim())
+    let rows = (json.table?.rows ?? []).map((r) => idxs.map((i) => cell((r.c ?? [])[i] ?? null)))
     if (headers.every((h) => !h) && rows.length > 0) {
       headers = rows[0]
       rows = rows.slice(1)
@@ -303,31 +373,40 @@ export function PrintDocument({
     return map
   }, [responses, F.templateId])
 
-  // The linked Google-Sheet budget prints as real tables: fetch each sheet's
-  // data via the public gviz endpoint (link-viewable sheets allow it
+  // The linked Google-Sheet budget prints as real tables — one page per
+  // sheet tab. Tab names come from the sheet's htmlview page, each tab's
+  // data from the public gviz endpoint (link-viewable sheets allow both
   // cross-origin). Failures just leave the link card on its own.
-  const [budgetTables, setBudgetTables] = useState<Map<number, SheetTable>>(new Map())
+  const [budgetTables, setBudgetTables] = useState<Map<number, SheetTab[]>>(new Map())
   useEffect(() => {
     const urlQs = templates.filter((q) => q.field_name === "google_sheet_url")
     if (urlQs.length === 0) return
     let cancelled = false
     ;(async () => {
-      const entries: [number, SheetTable][] = []
+      const entries: [number, SheetTab[]][] = []
       for (const q of urlQs) {
         const r = responseMap.get(q.id)
         const url = (r?.isComplete ? (r.student_response ?? "") : "").trim()
         const ref = url ? sheetRefFromUrl(url) : null
         if (!ref) continue
-        try {
-          const res = await fetch(
-            `https://docs.google.com/spreadsheets/d/${ref.id}/gviz/tq?tqx=out:json&gid=${ref.gid}`
-          )
-          if (!res.ok) continue
-          const table = parseGvizTable(await res.text())
-          if (table) entries.push([q.id, table])
-        } catch {
-          /* private or offline sheet — the link card still prints */
+        const tabRefs = (await listSheetTabs(ref.id)).filter((t) => !SHEET_TAB_SKIP.test(t.name)).slice(0, 10)
+        if (tabRefs.length === 0) tabRefs.push({ name: "", gid: ref.gid })
+        const tabs: SheetTab[] = []
+        for (const t of tabRefs) {
+          try {
+            const res = await fetch(
+              `https://docs.google.com/spreadsheets/d/${ref.id}/gviz/tq?tqx=out:json&gid=${t.gid}`
+            )
+            if (!res.ok) continue
+            const picks = SHEET_TAB_COLUMNS[t.name.trim().toLowerCase()]
+            const parsed = parseGvizTable(await res.text(), picks)
+            const table = parsed ? sanitizeSheetTable(parsed) : null
+            if (table) tabs.push({ name: t.name, table })
+          } catch {
+            /* private or offline sheet — the link card still prints */
+          }
         }
+        if (tabs.length > 0) entries.push([q.id, tabs])
       }
       if (!cancelled && entries.length > 0) setBudgetTables(new Map(entries))
     })()
@@ -569,7 +648,7 @@ function buildGroupPrintBlocks(
   brand: BrandTheme,
   accent: string,
   displayTypesField: string,
-  budgetTables?: Map<number, SheetTable>
+  budgetTables?: Map<number, SheetTab[]>
 ): PrintBlock[] {
   const base = `s${sectionId}-g${group.id}`
   const displayTypeId = Number(group[displayTypesField]) || null
@@ -710,49 +789,85 @@ function buildGroupPrintBlocks(
     buildQuestionRows(rest, responseMap, brand).forEach((node, i) =>
       bodies.push({ id: `${base}-row${i}`, node })
     )
-    // The sheet's own data, printed as full-width tables that flow across
-    // pages (header row repeats on every chunk). Numeric cells right-align.
-    const table = urlQ ? budgetTables?.get(urlQ.id) : undefined
-    if (table) {
+    // The sheet's own data: one page per tab. Narrow tables split into two
+    // side-by-side halves so they read horizontally across the page instead
+    // of running down it; wide tables stay full-width. Numeric cells
+    // right-align; the tab's name prints as its heading.
+    const tabs = urlQ ? budgetTables?.get(urlQ.id) : undefined
+    if (tabs && tabs.length > 0) {
       const isNumeric = (v: string) => v !== "" && /^\(?-?[$€£]?[\d,.\s]+%?\)?$/.test(v)
-      const ROWS_PER_BLOCK = 24
-      for (let i = 0; i < table.rows.length; i += ROWS_PER_BLOCK) {
-        bodies.push({
-          id: `${base}-sheet${i}`,
-          node: (
-            <table className="w-full border-collapse text-[10px] leading-snug break-inside-avoid">
-              <thead>
-                <tr>
-                  {table.headers.map((h, hi) => (
-                    <th
-                      key={hi}
-                      className="border-b border-gray-300 bg-gray-50 px-2 py-1 text-left font-semibold uppercase tracking-wide text-gray-500"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {table.rows.slice(i, i + ROWS_PER_BLOCK).map((row, ri) => (
-                  <tr key={ri}>
-                    {row.map((v, ci) => (
-                      <td
-                        key={ci}
-                        className={`border-b border-gray-100 px-2 py-1 align-top text-gray-800 ${
-                          isNumeric(v) ? "text-right tabular-nums" : ""
-                        }`}
-                      >
-                        {v}
-                      </td>
-                    ))}
-                  </tr>
+      const sheetTable = (t: SheetTable, rows: string[][]) => (
+        <table className="w-full border-collapse text-[10px] leading-snug">
+          <thead>
+            <tr>
+              {t.headers.map((h, hi) => (
+                <th
+                  key={hi}
+                  className="border-b border-gray-300 bg-gray-50 px-2 py-1 text-left font-semibold uppercase tracking-wide text-gray-500"
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri}>
+                {row.map((v, ci) => (
+                  <td
+                    key={ci}
+                    className={`border-b border-gray-100 px-2 py-1 align-top text-gray-800 ${
+                      isNumeric(v) ? "text-right tabular-nums" : ""
+                    }`}
+                  >
+                    {v}
+                  </td>
                 ))}
-              </tbody>
-            </table>
-          ),
-        })
-      }
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )
+      tabs.forEach((tab, ti) => {
+        const heading = tab.name ? (
+          <div className="mb-3 flex items-center gap-2.5">
+            <span className="h-3.5 w-1 rounded-full" style={{ background: accent }} />
+            <h4 className="text-sm font-semibold tracking-tight">{tab.name}</h4>
+          </div>
+        ) : null
+        // ≤3 columns and 10+ rows → two half-tables side by side.
+        const sideBySide = tab.table.headers.length <= 3 && tab.table.rows.length >= 10
+        if (sideBySide) {
+          const half = Math.ceil(tab.table.rows.length / 2)
+          bodies.push({
+            id: `${base}-tab${ti}`,
+            breakBefore: true,
+            node: (
+              <div>
+                {heading}
+                <div className="grid grid-cols-2 items-start gap-6">
+                  {sheetTable(tab.table, tab.table.rows.slice(0, half))}
+                  {sheetTable(tab.table, tab.table.rows.slice(half))}
+                </div>
+              </div>
+            ),
+          })
+        } else {
+          const ROWS_PER_BLOCK = 26
+          for (let i = 0; i < tab.table.rows.length; i += ROWS_PER_BLOCK) {
+            bodies.push({
+              id: `${base}-tab${ti}-${i}`,
+              breakBefore: i === 0,
+              node: (
+                <div>
+                  {i === 0 && heading}
+                  {sheetTable(tab.table, tab.table.rows.slice(i, i + ROWS_PER_BLOCK))}
+                </div>
+              ),
+            })
+          }
+        }
+      })
     }
     if (sheetUrl) {
       const href = sheetUrl.startsWith("http") ? sheetUrl : `https://${sheetUrl}`
@@ -1217,6 +1332,9 @@ interface PrintBlock {
   familyKey?: string
   /** Render on a page of its own (e.g. the reference-image sheet). */
   ownPage?: boolean
+  /** Start a fresh page before this block (e.g. each budget-sheet tab);
+      following blocks may still share the page. */
+  breakBefore?: boolean
 }
 
 interface PageSpec {
@@ -1259,7 +1377,7 @@ function PaginatedSheets({
   displayTypesField: string
   title: string
   docLabel: string
-  budgetTables?: Map<number, SheetTable>
+  budgetTables?: Map<number, SheetTab[]>
 }) {
   const measureRef = useRef<HTMLDivElement | null>(null)
   // The layout is keyed to the block list it was measured from, so new
@@ -1424,6 +1542,8 @@ function PaginatedSheets({
             flush(used > PAGE_BUDGET)
             continue
           }
+          // A tab boundary: close the current page, then flow normally.
+          if (b.breakBefore && used > 0) flush()
           // Entering a block family: when the whole family fits on a fresh
           // page but not in the space left, break early so it stays together.
           if (b.familyKey && used > 0 && blocks[bi - 1]?.familyKey !== b.familyKey) {
