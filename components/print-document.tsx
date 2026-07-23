@@ -148,6 +148,66 @@ const SHEET_DEEP_BG = "#1F2937" // gray-800
 // earnings report, weekly totals) — each prints as its own header-led table.
 const SHEET_TAB_SPLIT = new Set(["weekly budget"])
 
+// ── Life Map post-graduation budget ──────────────────────────────────────
+// The template lays two streams side by side (expenses in A/B, income &
+// saving in C/D), stacked in sections that each end with a subtotal. It
+// prints as independent per-section tables plus one bottom summary.
+const LM_BUDGET_TAB_RE = /monthly budget plan/i
+const LM_SECTION_RE =
+  /^(housing|transportation|health & insurance|debt & loans|food & dining|entertainment|personal care( & lifestyle)?|income|saving & investing)$/i
+const LM_SKIP_RE = /^(expenses|essential expenses|discretionary expenses|income & saving|why)$/i
+const LM_ORDER = [
+  "housing",
+  "transportation",
+  "health & insurance",
+  "debt & loans",
+  "income",
+  "saving & investing",
+  "food & dining",
+  "entertainment",
+  "personal care",
+]
+
+function splitLmBudget(rows: string[][]): { title: string; rows: string[][] }[] {
+  const blocks: { title: string; rows: string[][] }[] = []
+  const totals: string[][] = []
+  for (const [li, vi] of [
+    [0, 1],
+    [2, 3],
+  ] as const) {
+    let cur: { title: string; rows: string[][] } | null = null
+    for (const r of rows) {
+      const label = (r[li] ?? "").trim()
+      const value = (r[vi] ?? "").trim()
+      if (!label && !value) continue
+      if (/^(total monthly (expenses|income)|net surplus)/i.test(label)) {
+        if (label && value) totals.push([label, value])
+        cur = null
+        continue
+      }
+      if (LM_SKIP_RE.test(label) || label.startsWith("(") || /^positive =/i.test(label)) continue
+      if (LM_SECTION_RE.test(label)) {
+        cur = { title: label, rows: [] }
+        blocks.push(cur)
+        continue
+      }
+      if (cur && label) cur.rows.push([label, value])
+    }
+  }
+  const rank = (t: string) => {
+    const i = LM_ORDER.findIndex((k) => t.toLowerCase().startsWith(k))
+    return i < 0 ? LM_ORDER.length : i
+  }
+  const ordered = blocks.filter((b) => b.rows.length > 0).sort((a, b) => rank(a.title) - rank(b.title))
+  if (totals.length > 0) {
+    // Expenses, then income, then the net — regardless of stream order.
+    const totalRank = (l: string) => (/expenses/i.test(l) ? 0 : /income/i.test(l) ? 1 : 2)
+    totals.sort((a, b) => totalRank(a[0]) - totalRank(b[0]))
+    ordered.push({ title: "Monthly Summary", rows: totals })
+  }
+  return ordered
+}
+
 // Template header rows that begin a new sub-table inside a split tab.
 const SHEET_SUBTABLE_STARTS = [/^time$/i, /^days of week$/i, /^weekly$/i]
 
@@ -214,6 +274,8 @@ function sanitizeSheetTable(t: SheetTable): SheetTable | null {
           return ""
         }
       })
+      // Custom negative-currency formats leak quotes: ("$"1,268.00) → ($1,268.00)
+      .replace(/\(\s*"\$"\s*([\d.,]+)\s*\)/g, (_, n: string) => `($${n})`)
       .replace(/\s{2,}/g, " ")
       .trim()
   const width = Math.max(0, ...t.rows.map((r) => r.length))
@@ -862,7 +924,7 @@ function buildGroupPrintBlocks(
                 const kind =
                   ri === 0
                     ? "header"
-                    : firstTotal > 0 && ri >= firstTotal
+                    : (firstTotal > 0 && ri >= firstTotal) || /(subtotal)$/i.test(label) || /^net\b/i.test(label)
                       ? "summary"
                       : label !== "" && !hasValues
                         ? "band"
@@ -914,6 +976,38 @@ function buildGroupPrintBlocks(
             <h4 className="text-sm font-semibold tracking-tight">{tab.name}</h4>
           </div>
         ) : null
+        // The Life Map monthly budget explodes into independent per-section
+        // tables (its two column-streams unwoven), paired two-up across the
+        // page, with the totals table full-width at the end.
+        if (LM_BUDGET_TAB_RE.test(tab.name)) {
+          const lmBlocks = splitLmBudget(tab.table.rows)
+          if (lmBlocks.length > 0) {
+            const summary = lmBlocks[lmBlocks.length - 1]?.title === "Monthly Summary" ? lmBlocks.pop() : null
+            for (let i = 0; i < lmBlocks.length; i += 2) {
+              const pair = lmBlocks.slice(i, i + 2)
+              bodies.push({
+                id: `${famKey}-lm${i}`,
+                familyKey: famKey,
+                node: (
+                  <div>
+                    {i === 0 && heading}
+                    <div className="grid grid-cols-2 items-start gap-6">
+                      {pair.map((b) => styledTable([[b.title, ""], ...b.rows], b.title))}
+                    </div>
+                  </div>
+                ),
+              })
+            }
+            if (summary) {
+              bodies.push({
+                id: `${famKey}-lmsum`,
+                familyKey: famKey,
+                node: styledTable([[summary.title, ""], ...summary.rows], "sum"),
+              })
+            }
+            return
+          }
+        }
         const blocks = SHEET_TAB_SPLIT.has(tab.name.trim().toLowerCase())
           ? splitTabRows(tab.table.rows)
           : [tab.table.rows.filter((r) => !isBlankRow(r))]
