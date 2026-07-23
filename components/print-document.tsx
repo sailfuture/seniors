@@ -125,14 +125,49 @@ function formatDate(value: string): string {
   }
 }
 
+/** Raw grid rows, including the sheet's own header row and single blank
+    separator rows (used to split multi-table tabs). */
 interface SheetTable {
-  headers: string[]
   rows: string[][]
 }
 
 interface SheetTab {
   name: string
   table: SheetTable
+}
+
+const isBlankRow = (r: string[]) => r.every((v) => v === "")
+
+// The school's budget template paints section bands and the header/totals
+// blocks in Sheets greens — mirrored here so the print matches the sheet.
+const SHEET_BAND_GREEN = "#38761D"
+const SHEET_DEEP_GREEN = "#274E13"
+
+// Tabs that hold several independent tables (service list, weekly calendar,
+// earnings report, weekly totals) — each prints as its own header-led table.
+const SHEET_TAB_SPLIT = new Set(["weekly budget"])
+
+// Template header rows that begin a new sub-table inside a split tab.
+const SHEET_SUBTABLE_STARTS = [/^time$/i, /^days of week$/i, /^weekly$/i]
+
+function splitTabRows(rows: string[][]): string[][][] {
+  const blocks: string[][][] = []
+  let cur: string[][] = []
+  for (const r of rows) {
+    if (isBlankRow(r)) {
+      if (cur.length > 0) blocks.push(cur)
+      cur = []
+      continue
+    }
+    const a = (r[0] ?? "").trim()
+    if (cur.length > 0 && SHEET_SUBTABLE_STARTS.some((re) => re.test(a))) {
+      blocks.push(cur)
+      cur = []
+    }
+    cur.push(r)
+  }
+  if (cur.length > 0) blocks.push(cur)
+  return blocks
 }
 
 /** Explicit column picks per budget-sheet tab (sheet letters, A = first).
@@ -165,7 +200,8 @@ async function listSheetTabs(id: string): Promise<{ name: string; gid: string }[
 
 /** Print-safe table: link-dominant columns (incl. literal "URL" headers)
     drop entirely, and any URL inside a remaining cell collapses to its bare
-    hostname so no multi-line address ever reaches the page. */
+    hostname so no multi-line address ever reaches the page. Blank separator
+    rows survive (they mark sub-table boundaries). */
 function sanitizeSheetTable(t: SheetTable): SheetTable | null {
   const isUrl = (v: string) => /https?:\/\/\S+/i.test(v)
   const stripUrls = (v: string) =>
@@ -179,17 +215,19 @@ function sanitizeSheetTable(t: SheetTable): SheetTable | null {
       })
       .replace(/\s{2,}/g, " ")
       .trim()
-  const keep = t.headers.map((h, i) => {
-    if (/^url$/i.test(h.trim())) return false
+  const width = Math.max(0, ...t.rows.map((r) => r.length))
+  const keep: boolean[] = []
+  for (let i = 0; i < width; i++) {
+    const header = (t.rows[0]?.[i] ?? "").trim()
     const vals = t.rows.map((r) => r[i] ?? "").filter((v) => v !== "")
-    return !(vals.length > 0 && vals.filter(isUrl).length / vals.length >= 0.5)
-  })
-  const headers = t.headers.filter((_, i) => keep[i]).map(stripUrls)
-  const rows = t.rows
-    .map((r) => r.filter((_, i) => keep[i]).map(stripUrls))
-    .filter((r) => r.some((v) => v !== ""))
-  if (headers.length === 0 || rows.length === 0) return null
-  return { headers, rows }
+    keep.push(!/^url$/i.test(header) && !(vals.length > 0 && vals.filter(isUrl).length / vals.length >= 0.5))
+  }
+  let rows = t.rows.map((r) => r.filter((_, i) => keep[i]).map(stripUrls))
+  while (rows.length > 0 && isBlankRow(rows[0])) rows.shift()
+  while (rows.length > 0 && isBlankRow(rows[rows.length - 1])) rows.pop()
+  rows = rows.filter((r, i, arr) => !(isBlankRow(r) && i > 0 && isBlankRow(arr[i - 1])))
+  if (rows.length === 0 || rows.every(isBlankRow) || rows[0].length === 0) return null
+  return { rows }
 }
 
 function sheetRefFromUrl(url: string): { id: string; gid: string } | null {
@@ -219,22 +257,33 @@ function parseGvizTable(raw: string, pickIds?: string[]): SheetTable | null {
       const picked = idxs.filter((i) => wanted.has(String(cols[i].id ?? "").toUpperCase()))
       if (picked.length > 0) idxs = picked
     }
-    let headers = idxs.map((i) => (cols[i].label ?? "").trim())
+    const labels = idxs.map((i) => (cols[i].label ?? "").trim())
     let rows = (json.table?.rows ?? []).map((r) => idxs.map((i) => cell((r.c ?? [])[i] ?? null)))
-    if (headers.every((h) => !h) && rows.length > 0) {
-      headers = rows[0]
-      rows = rows.slice(1)
-    }
-    const keptIdx = headers
-      .map((h, i) => (h !== "" || rows.some((r) => (r[i] ?? "") !== "") ? i : -1))
-      .filter((i) => i >= 0)
-    headers = keptIdx.map((i) => headers[i])
-    rows = rows.map((r) => keptIdx.map((i) => r[i] ?? "")).filter((r) => r.some((v) => v !== ""))
-    if (headers.length === 0 || rows.length === 0) return null
-    return { headers, rows }
+    // gviz promotes the sheet's header row to column labels — restore it as
+    // the first row so it prints (styled) like any other row.
+    if (labels.some((l) => l !== "")) rows = [labels, ...rows]
+    // Drop columns that are empty everywhere; keep blank rows (separators).
+    const keptIdx = idxs.map((_, k) => k).filter((k) => rows.some((r) => (r[k] ?? "") !== ""))
+    rows = rows.map((r) => keptIdx.map((k) => r[k] ?? ""))
+    if (rows.length === 0 || keptIdx.length === 0) return null
+    return { rows }
   } catch {
     return null
   }
+}
+
+/** Fewest columns whose grid still fits one page — fewer columns = bigger
+    images, so a full-page image set fills its sheet instead of huddling in
+    the top third. (7in content = 672px; ~760px usable under the heading.) */
+function bestGridCols(count: number, ratioNum: number, caption: boolean): number {
+  const GAP = 16
+  for (let cols = 1; cols <= 4; cols++) {
+    const rows = Math.ceil(count / cols)
+    const cellW = (672 - GAP * (cols - 1)) / cols
+    const cellH = cellW / ratioNum + (caption ? 38 : 0)
+    if (rows * cellH + GAP * (rows - 1) <= 760) return cols
+  }
+  return 4
 }
 
 /** The question's configured crop as CSS aspect-ratio, and its width/height
@@ -459,19 +508,9 @@ export function PrintDocument({
           })
           .filter((g): g is { group: CustomGroup; questions: TemplateQuestion[] } => !!g)
 
-        // The section's approved background photo becomes the header art.
-        const bgQ = templates.find(
-          (q) => Number(q[F.sectionId]) === section.id && isDecorationQuestion(q)
-        )
-        const bgR = bgQ ? responseMap.get(bgQ.id) : undefined
-        const photoUrl =
-          bgQ && hasContent(bgQ, bgR)
-            ? resolveImageUrl(bgR!.image_response?.path || bgR!.image_response?.url)
-            : ""
-
-        return { section, ungrouped, groupBlocks, photoUrl }
+        return { section, ungrouped, groupBlocks }
       })
-  }, [sections, templates, groups, responseMap, F.sectionId, F.customGroupId])
+  }, [sections, templates, groups, F.sectionId, F.customGroupId])
 
   const isBusiness = product === "business-thesis"
   const docLabel = isBusiness ? "Senior Business Thesis" : "Personal Life Map"
@@ -746,16 +785,17 @@ function buildGroupPrintBlocks(
         ratio: questionRatio(s.imageQ)?.css ?? "4 / 3",
       }
     })
-    // Galleries of 3+ print as ONE full-page 3-across grid of captioned
-    // cards (12 fit as 4 rows), so a 6-shot prototype walkthrough always
-    // shares a single sheet instead of spilling across pages. One- or
-    // two-slide galleries stay inline with their section.
+    // Galleries of 3+ print as ONE full-page grid of captioned cards, with
+    // the column count chosen so the set fills the sheet. One- or two-slide
+    // galleries stay inline with their section.
+    const galRatio = questionRatio(slides[0]?.imageQ ?? ({} as TemplateQuestion))?.num ?? 4 / 3
+    const galCols = cards.length <= 2 ? 2 : bestGridCols(Math.min(cards.length, 12), galRatio, true)
     for (let i = 0; i < cards.length; i += 12) {
       bodies.push({
         id: `${base}-imgs${i}`,
         ...(cards.length >= 3 ? { ownPage: true } : { familyKey: `${base}-fam` }),
         node: (
-          <div className={cards.length <= 2 ? "grid grid-cols-2 gap-4" : "grid grid-cols-3 gap-4"}>
+          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${galCols}, minmax(0, 1fr))` }}>
             {cards.slice(i, i + 12).map((c) => (
               <div key={c.key} className="overflow-hidden rounded-lg border border-gray-200 break-inside-avoid">
                 {c.src ? (
@@ -789,84 +829,122 @@ function buildGroupPrintBlocks(
     buildQuestionRows(rest, responseMap, brand).forEach((node, i) =>
       bodies.push({ id: `${base}-row${i}`, node })
     )
-    // The sheet's own data: one page per tab. Narrow tables split into two
-    // side-by-side halves so they read horizontally across the page instead
-    // of running down it; wide tables stay full-width. Numeric cells
-    // right-align; the tab's name prints as its heading.
+    // The sheet's data, styled like the sheet itself: the header row and the
+    // totals block (from the first "Total …" row down) print on the deep
+    // template green, section-band rows (label only, no values) on the
+    // lighter green, data rows plain. Each tab is a block family, so tabs
+    // pack together on a page whenever they fit; a tab in SHEET_TAB_SPLIT
+    // breaks at its blank rows into separate header-led tables.
     const tabs = urlQ ? budgetTables?.get(urlQ.id) : undefined
     if (tabs && tabs.length > 0) {
       const isNumeric = (v: string) => v !== "" && /^\(?-?[$€£]?[\d,.\s]+%?\)?$/.test(v)
-      const sheetTable = (t: SheetTable, rows: string[][]) => (
-        <table className="w-full border-collapse text-[10px] leading-snug">
-          <thead>
-            <tr>
-              {t.headers.map((h, hi) => (
-                <th
-                  key={hi}
-                  className="border-b border-gray-300 bg-gray-50 px-2 py-1 text-left font-semibold uppercase tracking-wide text-gray-500"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, ri) => (
-              <tr key={ri}>
-                {row.map((v, ci) => (
-                  <td
-                    key={ci}
-                    className={`border-b border-gray-100 px-2 py-1 align-top text-gray-800 ${
-                      isNumeric(v) ? "text-right tabular-nums" : ""
-                    }`}
-                  >
-                    {v}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )
+      const styledTable = (blockRows: string[][], key: string) => {
+        // Width stops at the block's last non-empty column, so a 2-column
+        // totals table doesn't drag four empty columns along.
+        const width = Math.max(
+          1,
+          ...blockRows.map((r) => {
+            let w = 0
+            r.forEach((v, i) => {
+              if (v.trim() !== "") w = i + 1
+            })
+            return w
+          })
+        )
+        const firstTotal = blockRows.findIndex((r) => /^total\b/i.test((r[0] ?? "").trim()))
+        return (
+          <table key={key} className="w-full border-collapse text-[10px] leading-snug">
+            <tbody>
+              {blockRows.map((r, ri) => {
+                const label = (r[0] ?? "").trim()
+                const hasValues = r.slice(1).some((v) => v.trim() !== "")
+                const kind =
+                  ri === 0
+                    ? "header"
+                    : firstTotal > 0 && ri >= firstTotal
+                      ? "summary"
+                      : label !== "" && !hasValues
+                        ? "band"
+                        : "data"
+                if (kind === "band") {
+                  return (
+                    <tr key={ri}>
+                      <td
+                        colSpan={width}
+                        className="px-2 py-1 font-semibold text-white"
+                        style={{ background: SHEET_BAND_GREEN }}
+                      >
+                        {label}
+                      </td>
+                    </tr>
+                  )
+                }
+                const dark = kind === "header" || kind === "summary"
+                return (
+                  <tr key={ri}>
+                    {Array.from({ length: width }, (_, ci) => {
+                      const v = (r[ci] ?? "").trim()
+                      return (
+                        <td
+                          key={ci}
+                          className={`px-2 py-1 align-top ${
+                            dark
+                              ? "font-semibold text-white"
+                              : "border-b border-gray-100 text-gray-800"
+                          } ${isNumeric(v) ? "text-right tabular-nums" : ""}`}
+                          style={dark ? { background: SHEET_DEEP_GREEN } : undefined}
+                        >
+                          {v}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )
+      }
       tabs.forEach((tab, ti) => {
+        const famKey = `${base}-tab${ti}`
         const heading = tab.name ? (
           <div className="mb-3 flex items-center gap-2.5">
             <span className="h-3.5 w-1 rounded-full" style={{ background: accent }} />
             <h4 className="text-sm font-semibold tracking-tight">{tab.name}</h4>
           </div>
         ) : null
-        // ≤3 columns and 10+ rows → two half-tables side by side.
-        const sideBySide = tab.table.headers.length <= 3 && tab.table.rows.length >= 10
-        if (sideBySide) {
-          const half = Math.ceil(tab.table.rows.length / 2)
+        const blocks = SHEET_TAB_SPLIT.has(tab.name.trim().toLowerCase())
+          ? splitTabRows(tab.table.rows)
+          : [tab.table.rows.filter((r) => !isBlankRow(r))]
+        blocks.forEach((blockRows, bi) => {
+          if (blockRows.length === 0) return
+          const width = Math.max(...blockRows.map((r) => r.length))
+          // A single long narrow table reads horizontally as two halves.
+          const sideBySide = blocks.length === 1 && width <= 3 && blockRows.length >= 14
+          let tableNode: React.ReactNode
+          if (sideBySide) {
+            const [headRow, ...body] = blockRows
+            const half = Math.ceil(body.length / 2)
+            tableNode = (
+              <div className="grid grid-cols-2 items-start gap-6">
+                {styledTable([headRow, ...body.slice(0, half)], "a")}
+                {styledTable([headRow, ...body.slice(half)], "b")}
+              </div>
+            )
+          } else {
+            tableNode = styledTable(blockRows, "t")
+          }
           bodies.push({
-            id: `${base}-tab${ti}`,
-            breakBefore: true,
+            id: `${famKey}-${bi}`,
+            familyKey: famKey,
             node: (
               <div>
-                {heading}
-                <div className="grid grid-cols-2 items-start gap-6">
-                  {sheetTable(tab.table, tab.table.rows.slice(0, half))}
-                  {sheetTable(tab.table, tab.table.rows.slice(half))}
-                </div>
+                {bi === 0 && heading}
+                {tableNode}
               </div>
             ),
           })
-        } else {
-          const ROWS_PER_BLOCK = 26
-          for (let i = 0; i < tab.table.rows.length; i += ROWS_PER_BLOCK) {
-            bodies.push({
-              id: `${base}-tab${ti}-${i}`,
-              breakBefore: i === 0,
-              node: (
-                <div>
-                  {i === 0 && heading}
-                  {sheetTable(tab.table, tab.table.rows.slice(i, i + ROWS_PER_BLOCK))}
-                </div>
-              ),
-            })
-          }
-        }
+        })
       })
     }
     if (sheetUrl) {
@@ -935,11 +1013,13 @@ function buildGroupPrintBlocks(
       buildQuestionRows(leads, responseMap, brand).forEach((node, i) =>
         bodies.push({ id: `${base}-lead${i}`, node })
       )
+      const csRatio = questionRatio(imgQs[0])?.num ?? 4 / 3
+      const csCols = bestGridCols(imgQs.length, csRatio, true)
       bodies.push({
         id: `${base}-cgrid`,
         ownPage: true,
         node: (
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${csCols}, minmax(0, 1fr))` }}>
             {imgQs.map((q) => {
               const r = responseMap.get(q.id)
               const src = hasContent(q, r)
@@ -1036,13 +1116,15 @@ function buildGroupPrintBlocks(
       buildQuestionRows(textQs, responseMap, brand).forEach((node, i) =>
         bodies.push({ id: `${base}-lead${i}`, node })
       )
-      // All of the set's images share one full page (12 fit as 4 rows of 3).
+      // All of the set's images share one full page, sized to fill it.
+      const igRatio = questionRatio(imgQs[0])?.num ?? 4 / 3
+      const igCols = bestGridCols(Math.min(imgQs.length, 12), igRatio, false)
       for (let i = 0; i < imgQs.length; i += 12) {
         bodies.push({
           id: `${base}-igrid${i}`,
           ownPage: true,
           node: (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${igCols}, minmax(0, 1fr))` }}>
               {imgQs.slice(i, i + 12).map((q) => {
                 const r = responseMap.get(q.id)
                 const src = hasContent(q, r)
@@ -1369,7 +1451,7 @@ function PaginatedSheets({
   docLabel,
   budgetTables,
 }: {
-  printSections: { section: SectionInfo; ungrouped: TemplateQuestion[]; groupBlocks: { group: CustomGroup; questions: TemplateQuestion[] }[]; photoUrl: string }[]
+  printSections: { section: SectionInfo; ungrouped: TemplateQuestion[]; groupBlocks: { group: CustomGroup; questions: TemplateQuestion[] }[] }[]
   responseMap: Map<number, StudentResponse>
   brand: BrandTheme
   accent: string
@@ -1386,42 +1468,11 @@ function PaginatedSheets({
   const [layout, setLayout] = useState<{ source: unknown; pages: PageSpec[] } | null>(null)
 
   const sectionsBlocks = useMemo(() => {
-    return printSections.map(({ section, ungrouped, groupBlocks, photoUrl }, i) => {
+    return printSections.map(({ section, ungrouped, groupBlocks }, i) => {
       const blocks: PrintBlock[] = [
         {
           id: `s${section.id}-header`,
-          node: photoUrl ? (
-            // Editorial header: the section's hero photo as a full-width
-            // band with the kicker/title/description set over a bottom scrim.
-            <header className="relative overflow-hidden rounded-xl break-inside-avoid">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={photoUrl} alt="" className="h-[2.9in] w-full object-cover" />
-              <div
-                className="absolute inset-0"
-                style={{
-                  background:
-                    "linear-gradient(to top, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.32) 52%, rgba(0,0,0,0.06) 100%)",
-                }}
-              />
-              <div className="absolute inset-x-0 bottom-0 p-6">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-semibold tabular-nums text-white/90">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span className="h-px w-8 bg-white/60" />
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70">{docLabel}</span>
-                </div>
-                <h2 className="mt-2 text-3xl font-bold tracking-tight text-white" style={titleFont}>
-                  {section.section_title}
-                </h2>
-                {(section.description || section.section_description) && (
-                  <p className="mt-1.5 max-w-[6in] text-sm leading-relaxed text-white/85">
-                    {section.description || section.section_description}
-                  </p>
-                )}
-              </div>
-            </header>
-          ) : (
+          node: (
             <header className="border-b border-gray-200 pb-5">
               <div className="flex items-center gap-3">
                 <span className="text-xs font-semibold tabular-nums" style={{ color: accent }}>
