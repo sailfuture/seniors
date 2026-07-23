@@ -149,6 +149,97 @@ const SHEET_DEEP_BG = "#1F2937" // gray-800
 // earnings report, weekly totals) — each prints as its own header-led table.
 const SHEET_TAB_SPLIT = new Set(["weekly budget"])
 
+// ── Life Map resume (Google Doc) ─────────────────────────────────────────
+// The "resume" URL question links a Google Doc; its HTML export renders as
+// the document's opening pages. Synthetic section id for the pagination run.
+const RESUME_SECTION_ID = -100
+const RESUME_FIELD = "resume"
+
+interface ResumeDoc {
+  css: string
+  blocks: string[]
+}
+
+/** Parse a Google-Doc HTML export into print blocks: styles scoped under
+    .gdoc-resume (the export uses bare element selectors that would leak),
+    markup sanitized, and content chunked at headings so the paginator can
+    flow the resume across pages. */
+function parseGoogleDocHtml(html: string): ResumeDoc | null {
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html")
+    if (!doc.body) return null
+    const rawCss = [...doc.querySelectorAll("style")].map((s) => s.textContent ?? "").join("\n")
+    const scopedCss = rawCss
+      .replace(/@import[^;]+;/g, "")
+      .split("}")
+      .map((rule) => {
+        const [sel, body] = rule.split("{")
+        if (!sel || !body || sel.trim().startsWith("@")) return ""
+        const scoped = sel
+          .split(",")
+          .map((s) => `.gdoc-resume ${s.trim()}`)
+          .join(", ")
+        return `${scoped}{${body}}`
+      })
+      .filter(Boolean)
+      .join("\n")
+    const css = `${scopedCss}\n.gdoc-resume{font-family:Arial,sans-serif;}\n.gdoc-resume img{max-width:100%;height:auto;}`
+
+    // Sanitize the whole body once: no scripts, handlers, or javascript: urls.
+    doc.body.querySelectorAll("script,style,iframe,object,embed").forEach((n) => n.remove())
+    for (const n of doc.body.querySelectorAll("*")) {
+      for (const attr of [...n.attributes]) {
+        if (/^on/i.test(attr.name)) n.removeAttribute(attr.name)
+        if ((attr.name === "href" || attr.name === "src") && /^\s*javascript:/i.test(attr.value)) {
+          n.removeAttribute(attr.name)
+        }
+      }
+    }
+    // Docs lay multi-column resumes out as a big table — one unsplittable
+    // block that can't paginate. Explode wrappers and narrow layout tables
+    // into their cells' contents (reading order) so everything flows; real
+    // data tables (3+ columns) stay whole.
+    const explode = (el: HTMLElement): HTMLElement[] => {
+      if (el.tagName === "DIV") {
+        return (Array.from(el.children) as HTMLElement[]).flatMap(explode)
+      }
+      if (el.tagName === "TABLE") {
+        const rows = Array.from(el.querySelectorAll(":scope > tbody > tr, :scope > tr"))
+        const isLayout = rows.length <= 3 && rows.every((r) => r.children.length <= 2)
+        if (isLayout) {
+          return rows.flatMap((r) =>
+            (Array.from(r.children) as HTMLElement[]).flatMap((cell) =>
+              (Array.from(cell.children) as HTMLElement[]).flatMap(explode)
+            )
+          )
+        }
+      }
+      return [el]
+    }
+    const children = (Array.from(doc.body.children) as HTMLElement[])
+      .flatMap(explode)
+      .filter((el) => (el.textContent ?? "").trim() !== "" || el.querySelector("img,hr"))
+    // Chunk at headings (resume sections) with a size cap, so the 24px
+    // block gap lands at natural boundaries instead of between lines.
+    const blocks: string[] = []
+    let cur: string[] = []
+    const flush = () => {
+      if (cur.length > 0) {
+        blocks.push(cur.join(""))
+        cur = []
+      }
+    }
+    for (const el of children) {
+      if (/^H[12]$/.test(el.tagName) || cur.length >= 12) flush()
+      cur.push(el.outerHTML)
+    }
+    flush()
+    return blocks.length > 0 ? { css, blocks } : null
+  } catch {
+    return null
+  }
+}
+
 // ── Life Map post-graduation budget ──────────────────────────────────────
 // The template lays two streams side by side (expenses in A/B, income &
 // saving in C/D), stacked in sections that each end with a subtotal. It
@@ -558,6 +649,35 @@ export function PrintDocument({
     return max > 0 ? new Date(max) : null
   }, [responses])
 
+  // The linked Google-Doc resume opens the Life Map document: fetch its
+  // HTML export (link-viewable docs allow it cross-origin) and turn it into
+  // print blocks. Private or non-Doc links just skip the page — the URL row
+  // in its own section still prints.
+  const [resumeDoc, setResumeDoc] = useState<ResumeDoc | null>(null)
+  useEffect(() => {
+    if (product !== "life-map") return
+    const q = templates.find((t) => t.field_name === RESUME_FIELD)
+    if (!q) return
+    const r = responseMap.get(q.id)
+    const url = (r?.isComplete ? (r.student_response ?? "") : "").trim()
+    const docId = (url.match(/\/document\/d\/([a-zA-Z0-9-_]+)/) || [])[1]
+    if (!docId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`https://docs.google.com/document/d/${docId}/export?format=html`)
+        if (!res.ok) return
+        const parsed = parseGoogleDocHtml(await res.text())
+        if (!cancelled && parsed) setResumeDoc(parsed)
+      } catch {
+        /* leave the resume out */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [product, templates, responseMap])
+
   // Per-section content model, dropping anything that would print blank.
   const printSections = useMemo(() => {
     return sections
@@ -591,6 +711,19 @@ export function PrintDocument({
         return { section, ungrouped, groupBlocks }
       })
   }, [sections, templates, groups, F.sectionId, F.customGroupId])
+
+  // The resume leads the document — first Contents entry, first pages.
+  const printSectionsAll = useMemo(() => {
+    if (!resumeDoc) return printSections
+    return [
+      {
+        section: { id: RESUME_SECTION_ID, section_title: "Resume" } as SectionInfo,
+        ungrouped: [] as TemplateQuestion[],
+        groupBlocks: [] as { group: CustomGroup; questions: TemplateQuestion[] }[],
+      },
+      ...printSections,
+    ]
+  }, [printSections, resumeDoc])
 
   const isBusiness = product === "business-thesis"
   const docLabel = isBusiness ? "Senior Business Thesis" : "Personal Life Map"
@@ -695,11 +828,11 @@ export function PrintDocument({
           </div>
 
           <div>
-            {printSections.length > 0 && (
+            {printSectionsAll.length > 0 && (
               <div className="border-t border-gray-200 pt-6">
                 <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">Contents</p>
                 <ol className="columns-2 gap-10 text-sm leading-7 text-gray-700">
-                  {printSections.map(({ section }, i) => (
+                  {printSectionsAll.map(({ section }, i) => (
                     <li key={section.id} className="flex items-baseline gap-3 break-inside-avoid">
                       <span className="text-xs font-semibold tabular-nums" style={{ color: accent }}>
                         {String(i + 1).padStart(2, "0")}
@@ -727,7 +860,7 @@ export function PrintDocument({
 
         {/* ── Sections, measured and packed into one-page sheets ── */}
         <PaginatedSheets
-          printSections={printSections}
+          printSections={printSectionsAll}
           responseMap={responseMap}
           brand={brand}
           accent={accent}
@@ -736,9 +869,10 @@ export function PrintDocument({
           title={title}
           docLabel={docLabel}
           budgetTables={budgetTables}
+          resumeDoc={resumeDoc}
         />
 
-        {printSections.length === 0 && (
+        {printSectionsAll.length === 0 && (
           <section className="bg-white p-[0.75in] text-center shadow-md ring-1 ring-black/5 print:p-0 print:shadow-none print:ring-0">
             <p className="text-sm italic text-gray-500">Nothing has been approved for this document yet.</p>
           </section>
@@ -1562,6 +1696,7 @@ function PaginatedSheets({
   title,
   docLabel,
   budgetTables,
+  resumeDoc,
 }: {
   printSections: { section: SectionInfo; ungrouped: TemplateQuestion[]; groupBlocks: { group: CustomGroup; questions: TemplateQuestion[] }[] }[]
   responseMap: Map<number, StudentResponse>
@@ -1572,6 +1707,7 @@ function PaginatedSheets({
   title: string
   docLabel: string
   budgetTables?: Map<number, SheetTab[]>
+  resumeDoc?: ResumeDoc | null
 }) {
   const measureRef = useRef<HTMLDivElement | null>(null)
   // The layout is keyed to the block list it was measured from, so new
@@ -1581,6 +1717,41 @@ function PaginatedSheets({
 
   const sectionsBlocks = useMemo(() => {
     return printSections.map(({ section, ungrouped, groupBlocks }, i) => {
+      // The synthetic resume section renders the Google Doc's blocks under
+      // the standard typographic header; its scoped CSS rides along once.
+      if (section.id === RESUME_SECTION_ID && resumeDoc) {
+        const blocks: PrintBlock[] = [
+          {
+            id: "resume-header",
+            node: (
+              <header className="border-b border-gray-200 pb-5">
+                <style>{resumeDoc.css}</style>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold tabular-nums" style={{ color: accent }}>
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="h-px w-8" style={{ background: accent }} />
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">{docLabel}</span>
+                </div>
+                <h2 className="mt-2 text-3xl font-bold tracking-tight" style={titleFont}>
+                  Resume
+                </h2>
+              </header>
+            ),
+          },
+          ...resumeDoc.blocks.map((html, bi) => ({
+            id: `resume-b${bi}`,
+            node: (
+              <div
+                className="gdoc-resume break-inside-avoid"
+                // Sanitized in parseGoogleDocHtml (scripts/handlers stripped).
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            ),
+          })),
+        ]
+        return { section, blocks }
+      }
       const blocks: PrintBlock[] = [
         {
           id: `s${section.id}-header`,
@@ -1646,7 +1817,7 @@ function PaginatedSheets({
       }
       return { section, blocks }
     })
-  }, [printSections, responseMap, brand, accent, titleFont, displayTypesField, docLabel, budgetTables])
+  }, [printSections, responseMap, brand, accent, titleFont, displayTypesField, docLabel, budgetTables, resumeDoc])
 
   const blockById = useMemo(() => {
     const m = new Map<string, React.ReactNode>()
