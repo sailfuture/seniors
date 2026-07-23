@@ -155,10 +155,11 @@ const SHEET_TAB_SPLIT = new Set(["weekly budget"])
 const RESUME_SECTION_ID = -100
 const RESUME_FIELD = "resume"
 
-interface ResumeDoc {
-  css: string
-  blocks: string[]
-}
+/** Preferred: page images rendered from the doc's PDF export (faithful
+    snapshot of the real layout). Fallback: sanitized HTML flow. */
+type ResumeDoc =
+  | { kind: "pages"; pages: string[] }
+  | { kind: "flow"; css: string; blocks: string[] }
 
 /** Parse a Google-Doc HTML export into print blocks: styles scoped under
     .gdoc-resume (the export uses bare element selectors that would leak),
@@ -234,10 +235,41 @@ function parseGoogleDocHtml(html: string): ResumeDoc | null {
       cur.push(el.outerHTML)
     }
     flush()
-    return blocks.length > 0 ? { css, blocks } : null
+    return blocks.length > 0 ? { kind: "flow", css, blocks } : null
   } catch {
     return null
   }
+}
+
+/** Render the doc's PDF export to one PNG per page (~192dpi) — a faithful
+    snapshot of the resume exactly as the student designed it. */
+async function snapshotGoogleDocPdf(docId: string): Promise<ResumeDoc | null> {
+  const res = await fetch(`https://docs.google.com/document/d/${docId}/export?format=pdf`)
+  if (!res.ok) return null
+  const data = await res.arrayBuffer()
+  const pdfjs = await import("pdfjs-dist")
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/build/pdf.worker.min.mjs",
+    import.meta.url
+  ).toString()
+  const pdf = await pdfjs.getDocument({ data }).promise
+  const pages: string[] = []
+  const count = Math.min(pdf.numPages, 8)
+  for (let p = 1; p <= count; p++) {
+    const page = await pdf.getPage(p)
+    const base = page.getViewport({ scale: 1 })
+    const viewport = page.getViewport({ scale: Math.min(3, 1632 / base.width) })
+    const canvas = document.createElement("canvas")
+    canvas.width = Math.ceil(viewport.width)
+    canvas.height = Math.ceil(viewport.height)
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return null
+    // intent "print": print-quality op list, and no requestAnimationFrame
+    // pacing (which never fires in occluded/background tabs).
+    await page.render({ canvasContext: ctx, viewport, canvas, intent: "print" }).promise
+    pages.push(canvas.toDataURL("image/png"))
+  }
+  return pages.length > 0 ? { kind: "pages", pages } : null
 }
 
 // ── Life Map post-graduation budget ──────────────────────────────────────
@@ -664,6 +696,17 @@ export function PrintDocument({
     if (!docId) return
     let cancelled = false
     ;(async () => {
+      // Snapshot the PDF export first (true page images); fall back to the
+      // sanitized HTML flow when the PDF can't be fetched or rendered.
+      try {
+        const snap = await snapshotGoogleDocPdf(docId)
+        if (snap) {
+          if (!cancelled) setResumeDoc(snap)
+          return
+        }
+      } catch {
+        /* fall through to the HTML flow */
+      }
       try {
         const res = await fetch(`https://docs.google.com/document/d/${docId}/export?format=html`)
         if (!res.ok) return
@@ -1717,9 +1760,27 @@ function PaginatedSheets({
 
   const sectionsBlocks = useMemo(() => {
     return printSections.map(({ section, ungrouped, groupBlocks }, i) => {
-      // The synthetic resume section renders the Google Doc's blocks under
-      // the standard typographic header; its scoped CSS rides along once.
-      if (section.id === RESUME_SECTION_ID && resumeDoc) {
+      // The synthetic resume section: PDF-snapshot pages render as one
+      // full-sheet image each (the resume exactly as designed); the HTML
+      // fallback renders the doc's blocks under the typographic header.
+      if (section.id === RESUME_SECTION_ID && resumeDoc && resumeDoc.kind === "pages") {
+        return {
+          section,
+          blocks: resumeDoc.pages.map((src, bi): PrintBlock => ({
+            id: `resume-p${bi}`,
+            ownPage: true,
+            node: (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt={`Resume page ${bi + 1}`}
+                className="mx-auto max-h-[820px] w-auto max-w-full rounded-sm border border-gray-200"
+              />
+            ),
+          })),
+        }
+      }
+      if (section.id === RESUME_SECTION_ID && resumeDoc && resumeDoc.kind === "flow") {
         const blocks: PrintBlock[] = [
           {
             id: "resume-header",
