@@ -1,6 +1,7 @@
 "use client"
 
 import { StudentRoster } from "@/components/student-roster"
+import { BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 
 const BT_RESPONSES_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:45yS7ICi/businessthesis_responses"
@@ -19,6 +20,8 @@ export default function AdminBusinessThesisPage() {
       templateEndpoint={BT_TEMPLATE_ENDPOINT}
       templateIdField="businessthesis_template_id"
       sectionIdField="businessthesis_sections_id"
+      apiConfig={BUSINESSTHESIS_API_CONFIG}
+      product="business-thesis"
     />
   )
 }

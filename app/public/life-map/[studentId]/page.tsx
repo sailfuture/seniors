@@ -33,6 +33,7 @@ import { LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
 import { RichTextDisplay } from "@/components/form/rich-text-display"
 import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { aspectRatioCss } from "@/lib/image-ratio"
+import { fetchProjectLock } from "@/lib/project-lock"
 import { icons as lucideIcons } from "lucide-react"
 
 const XANO_BASE =
@@ -43,6 +44,7 @@ const SECTIONS_ENDPOINT = `${XANO_BASE}/lifemap_sections`
 const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
+const LOCKS_ENDPOINT = `${XANO_BASE}/lifemap_locks`
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
 
@@ -217,32 +219,50 @@ export default function PublicLifeMapPage({
 
   const loadData = useCallback(async () => {
     try {
+      // A locked project renders from its frozen snapshot, so template edits
+      // never reach it. Only the student's identity row stays live.
+      const lock = await fetchProjectLock(LOCKS_ENDPOINT, studentId)
+      if (lock) {
+        const snap = lock.snapshot
+        setSections(
+          (snap.sections as LifeMapSection[])
+            .filter((s) => !s.isLocked)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        )
+        setTemplates((snap.questions as TemplateQuestion[]).filter((q) => !q.isArchived && q.isPublished))
+        setResponses(
+          (snap.responses as StudentResponse[]).filter(
+            (r) => !r.isArchived && String(r.students_id ?? "") === String(studentId)
+          )
+        )
+        setGroups(snap.groups as CustomGroup[])
+      }
       const [sectionsRes, templateRes, responsesRes, groupsRes, studentsRes] =
         await Promise.all([
-          fetch(SECTIONS_ENDPOINT),
-          fetch(TEMPLATE_ENDPOINT),
-          fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
-          fetch(CUSTOM_GROUP_ENDPOINT),
+          lock ? null : fetch(SECTIONS_ENDPOINT),
+          lock ? null : fetch(TEMPLATE_ENDPOINT),
+          lock ? null : fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
+          lock ? null : fetch(CUSTOM_GROUP_ENDPOINT),
           fetch(STUDENTS_ENDPOINT),
         ])
 
-      if (sectionsRes.ok) {
+      if (sectionsRes?.ok) {
         const data: LifeMapSection[] = await sectionsRes.json()
         setSections(data.filter((s) => !s.isLocked).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)))
       }
-      if (templateRes.ok) {
+      if (templateRes?.ok) {
         const data: TemplateQuestion[] = await templateRes.json()
         setTemplates(data.filter((q) => !q.isArchived && q.isPublished))
       }
-      if (responsesRes.ok) {
+      if (responsesRes?.ok) {
         const data: StudentResponse[] = await responsesRes.json()
         setResponses(data.filter((r) => !r.isArchived))
       }
-      if (groupsRes.ok) {
+      if (groupsRes?.ok) {
         const data: CustomGroup[] = await groupsRes.json()
         setGroups(data)
       }
-      if (studentsRes.ok) {
+      if (studentsRes?.ok) {
         const students: { id: string; firstName: string; lastName: string; profileImage?: string }[] =
           await studentsRes.json()
         const match = students.find((s) => s.id === studentId)

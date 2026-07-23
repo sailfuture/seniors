@@ -34,6 +34,8 @@ export interface FormApiConfig {
   responseEventsEndpoint?: string
   /** Append-only content snapshots for edit history. */
   responseVersionsEndpoint?: string
+  /** Per-student project locks: frozen render snapshots of finished work. */
+  locksEndpoint?: string
   /** Admin route base for this product, e.g. `/admin/business-thesis`. */
   adminBasePath: string
   fields: {
@@ -49,6 +51,7 @@ export const LIFEMAP_API_CONFIG: FormApiConfig = {
   adminBasePath: "/admin/life-map",
   responseEventsEndpoint: `${EVENTS_BASE}/lifemap_response_events`,
   responseVersionsEndpoint: `${LIFEMAP_BASE}/lifemap_response_versions`,
+  locksEndpoint: `${LIFEMAP_BASE}/lifemap_locks`,
   templateEndpoint: `${LIFEMAP_BASE}/lifeplan_template`,
   responsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses_by_student`,
   allResponsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses`,
@@ -79,6 +82,7 @@ export const BUSINESSTHESIS_API_CONFIG: FormApiConfig = {
   adminBasePath: "/admin/business-thesis",
   responseEventsEndpoint: `${EVENTS_BASE}/businessthesis_response_events`,
   responseVersionsEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_response_versions`,
+  locksEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_locks`,
   templateEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_template`,
   responsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses_by_student`,
   allResponsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses`,

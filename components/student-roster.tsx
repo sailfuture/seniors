@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
+import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,9 +17,28 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Link01Icon, ArrowRight01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
+import {
+  Link01Icon,
+  ArrowRight01Icon,
+  CheckmarkCircle02Icon,
+  SquareLock01Icon,
+  SquareUnlock01Icon,
+  PrinterIcon,
+} from "@hugeicons/core-free-icons"
 import { formatYearGroup } from "@/lib/year-group"
+import type { FormApiConfig } from "@/lib/form-api-config"
+import { fetchAllProjectLocks, lockProject, unlockProject, type ProjectLock } from "@/lib/project-lock"
 
 interface Student {
   id: string
@@ -108,6 +129,10 @@ interface StudentRosterProps {
   templateEndpoint?: string
   templateIdField?: string
   sectionIdField?: string
+  /** Enables the per-student Lock/Unlock actions (needs cfg.locksEndpoint). */
+  apiConfig?: FormApiConfig
+  /** Product tag stored in snapshot meta, e.g. "business-thesis". */
+  product?: string
 }
 
 export function StudentRoster({
@@ -119,23 +144,34 @@ export function StudentRoster({
   templateEndpoint = LM_TEMPLATE_ENDPOINT,
   templateIdField = "lifemap_template_id",
   sectionIdField = "lifemap_sections_id",
+  apiConfig,
+  product = "project",
 }: StudentRosterProps) {
   const router = useRouter()
+  const { data: session } = useSession()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [reviewCounts, setReviewCounts] = useState<Map<string, number>>(new Map())
   const [allComplete, setAllComplete] = useState<Set<string>>(new Set())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [locks, setLocks] = useState<Map<string, ProjectLock>>(new Map())
+  // The student a Lock/Unlock confirm dialog is open for, and in-flight state.
+  const [lockDialog, setLockDialog] = useState<Student | null>(null)
+  const [lockActing, setLockActing] = useState(false)
+
+  const locksEndpoint = apiConfig?.locksEndpoint
 
   const fetchData = useCallback(async () => {
     try {
-      const [studentsRes, reviewsRes, templateRes, typesRes] = await Promise.all([
+      const [studentsRes, reviewsRes, templateRes, typesRes, lockMap] = await Promise.all([
         fetch(STUDENTS_ENDPOINT),
         fetch(responsesEndpoint),
         fetch(templateEndpoint),
         fetch(QUESTION_TYPES_ENDPOINT),
+        locksEndpoint ? fetchAllProjectLocks(locksEndpoint) : Promise.resolve(new Map<string, ProjectLock>()),
       ])
+      setLocks(lockMap)
 
       if (studentsRes.ok) {
         const data = await studentsRes.json()
@@ -222,11 +258,42 @@ export function StudentRoster({
     } finally {
       setLoading(false)
     }
-  }, [responsesEndpoint, templateEndpoint, templateIdField, sectionIdField])
+  }, [responsesEndpoint, templateEndpoint, templateIdField, sectionIdField, locksEndpoint])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Lock = freeze the public page + PDF as they render right now; Unlock
+  // returns them to the live template join.
+  const handleLockToggle = useCallback(async () => {
+    if (!lockDialog || !apiConfig || !locksEndpoint) return
+    const student = lockDialog
+    const existing = locks.get(student.id)
+    setLockActing(true)
+    try {
+      if (existing) {
+        const ok = await unlockProject(locksEndpoint, existing.id)
+        if (!ok) throw new Error("unlock failed")
+        setLocks((prev) => {
+          const next = new Map(prev)
+          next.delete(student.id)
+          return next
+        })
+        toast.success(`${student.firstName}'s project unlocked — pages render live data again`)
+      } else {
+        const teacherName = session?.user?.name ?? "Teacher"
+        const created = await lockProject(apiConfig, locksEndpoint, student.id, teacherName, product)
+        setLocks((prev) => new Map(prev).set(student.id, created))
+        toast.success(`${student.firstName}'s project locked — public page and PDF are frozen`)
+      }
+      setLockDialog(null)
+    } catch {
+      toast.error(existing ? "Couldn't unlock — please try again." : "Couldn't capture the snapshot — please try again.")
+    } finally {
+      setLockActing(false)
+    }
+  }, [lockDialog, apiConfig, locksEndpoint, locks, session, product])
 
   const filtered = students.filter((s) => {
     const q = search.toLowerCase()
@@ -261,6 +328,40 @@ export function StudentRoster({
           {groups.length === 0 && (
             <p className="text-muted-foreground py-8 text-center">No students found.</p>
           )}
+
+          {/* Lock / Unlock confirmation */}
+          <AlertDialog open={lockDialog != null} onOpenChange={(o) => { if (!o && !lockActing) setLockDialog(null) }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {lockDialog && locks.has(lockDialog.id)
+                    ? `Unlock ${lockDialog.firstName}'s project?`
+                    : `Lock ${lockDialog?.firstName ?? ""}'s project?`}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {lockDialog && locks.has(lockDialog.id)
+                    ? "The public page and printed PDF go back to rendering live data, so template edits will affect them again."
+                    : "Freezes the public page and printed PDF exactly as they render right now. Later template edits (or answer changes) won't touch the locked document until you unlock it."}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={lockActing}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={lockActing}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    handleLockToggle()
+                  }}
+                >
+                  {lockActing
+                    ? "Working…"
+                    : lockDialog && locks.has(lockDialog.id)
+                      ? "Unlock"
+                      : "Lock project"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {groups.map((group) => {
             const isCollapsed = collapsedGroups.has(group.label)
@@ -333,6 +434,18 @@ export function StudentRoster({
                                 />
                               </span>
                             )}
+                            {locks.has(student.id) && (
+                              <span
+                                title={`Locked by ${locks.get(student.id)!.locked_by || "teacher"} — public page and PDF are frozen`}
+                                className="inline-flex shrink-0"
+                              >
+                                <HugeiconsIcon
+                                  icon={SquareLock01Icon}
+                                  strokeWidth={2.5}
+                                  className="size-4 text-amber-600"
+                                />
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -349,6 +462,42 @@ export function StudentRoster({
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {locksEndpoint && (
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className={`size-8 ${locks.has(student.id) ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800" : "text-muted-foreground"}`}
+                                title={locks.has(student.id) ? "Unlock project" : "Lock project (freeze public page + PDF)"}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setLockDialog(student)
+                                }}
+                              >
+                                <HugeiconsIcon
+                                  icon={locks.has(student.id) ? SquareLock01Icon : SquareUnlock01Icon}
+                                  strokeWidth={2}
+                                  className="size-4"
+                                />
+                              </Button>
+                            )}
+                            {publicBaseUrl && (
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="text-muted-foreground size-8"
+                                asChild
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <a
+                                  href={`${publicBaseUrl}/${student.id}/print`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Download PDF (print view)"
+                                >
+                                  <HugeiconsIcon icon={PrinterIcon} strokeWidth={2} className="size-4" />
+                                </a>
+                              </Button>
+                            )}
                             {publicBaseUrl && (
                               <Button
                                 variant="outline"

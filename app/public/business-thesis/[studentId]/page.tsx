@@ -43,6 +43,7 @@ import { RichTextDisplay } from "@/components/form/rich-text-display"
 import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { aspectRatioCss } from "@/lib/image-ratio"
 import { formatYearGroup } from "@/lib/year-group"
+import { fetchProjectLock } from "@/lib/project-lock"
 import { StatusBadge, statusOf, groupStatusOf } from "@/components/field-status"
 import { icons as lucideIcons } from "lucide-react"
 
@@ -54,6 +55,7 @@ const SECTIONS_ENDPOINT = `${BT_BASE}/businessthesis_sections`
 const TEMPLATE_ENDPOINT = `${BT_BASE}/businessthesis_template`
 const RESPONSES_ENDPOINT = `${BT_BASE}/businessthesis_responses_by_student`
 const CUSTOM_GROUP_ENDPOINT = `${BT_BASE}/businessthesis_custom_group`
+const LOCKS_ENDPOINT = `${BT_BASE}/businessthesis_locks`
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
 
@@ -254,32 +256,50 @@ export default function PublicBusinessThesisPage({
 
   const loadData = useCallback(async () => {
     try {
+      // A locked project renders from its frozen snapshot, so template edits
+      // never reach it. Only the student's identity row stays live.
+      const lock = await fetchProjectLock(LOCKS_ENDPOINT, studentId)
+      if (lock) {
+        const snap = lock.snapshot
+        setSections(
+          (snap.sections as BusinessThesisSection[])
+            .filter((s) => !s.isLocked)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        )
+        setTemplates((snap.questions as TemplateQuestion[]).filter((q) => !q.isArchived && q.isPublished))
+        setResponses(
+          (snap.responses as StudentResponse[]).filter(
+            (r) => !r.isArchived && String(r.students_id ?? "") === String(studentId)
+          )
+        )
+        setGroups(snap.groups as CustomGroup[])
+      }
       const [sectionsRes, templateRes, responsesRes, groupsRes, studentsRes] =
         await Promise.all([
-          fetch(SECTIONS_ENDPOINT),
-          fetch(TEMPLATE_ENDPOINT),
-          fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
-          fetch(CUSTOM_GROUP_ENDPOINT),
+          lock ? null : fetch(SECTIONS_ENDPOINT),
+          lock ? null : fetch(TEMPLATE_ENDPOINT),
+          lock ? null : fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
+          lock ? null : fetch(CUSTOM_GROUP_ENDPOINT),
           fetch(STUDENTS_ENDPOINT),
         ])
 
-      if (sectionsRes.ok) {
+      if (sectionsRes?.ok) {
         const data: BusinessThesisSection[] = await sectionsRes.json()
         setSections(data.filter((s) => !s.isLocked).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)))
       }
-      if (templateRes.ok) {
+      if (templateRes?.ok) {
         const data: TemplateQuestion[] = await templateRes.json()
         setTemplates(data.filter((q) => !q.isArchived && q.isPublished))
       }
-      if (responsesRes.ok) {
+      if (responsesRes?.ok) {
         const data: StudentResponse[] = await responsesRes.json()
         setResponses(data.filter((r) => !r.isArchived))
       }
-      if (groupsRes.ok) {
+      if (groupsRes?.ok) {
         const data: CustomGroup[] = await groupsRes.json()
         setGroups(data)
       }
-      if (studentsRes.ok) {
+      if (studentsRes?.ok) {
         const students: { id: string; firstName: string; lastName: string; profileImage?: string; yearGroup?: string }[] =
           await studentsRes.json()
         const match = students.find((s) => s.id === studentId)

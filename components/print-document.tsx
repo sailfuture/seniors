@@ -27,6 +27,7 @@ import { RICH_TEXT_TYPE_ID, extractPlainText, looksLikeRichTextDoc, parseRichTex
 import type { FormApiConfig } from "@/lib/form-api-config"
 import { aspectRatioCss } from "@/lib/image-ratio"
 import { formatYearGroup } from "@/lib/year-group"
+import { fetchProjectLock } from "@/lib/project-lock"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -437,28 +438,44 @@ export function PrintDocument({
 
   const loadData = useCallback(async () => {
     try {
+      // A locked project renders from its frozen snapshot, so template edits
+      // never reach it. Only the student's identity row stays live.
+      const lock = cfg.locksEndpoint ? await fetchProjectLock(cfg.locksEndpoint, studentId) : null
+      if (lock) {
+        const snap = lock.snapshot
+        setSections(
+          (snap.sections as SectionInfo[]).filter((s) => !s.isLocked).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        )
+        setTemplates((snap.questions as TemplateQuestion[]).filter((q) => !q.isArchived && q.isPublished))
+        setResponses(
+          (snap.responses as StudentResponse[]).filter(
+            (r) => !r.isArchived && String(r.students_id ?? "") === String(studentId)
+          )
+        )
+        setGroups(snap.groups as CustomGroup[])
+      }
       const [sectionsRes, templateRes, responsesRes, groupsRes, studentsRes] = await Promise.all([
-        fetch(cfg.sectionsEndpoint),
-        fetch(cfg.templateEndpoint),
-        fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
-        fetch(cfg.customGroupEndpoint),
+        lock ? null : fetch(cfg.sectionsEndpoint),
+        lock ? null : fetch(cfg.templateEndpoint),
+        lock ? null : fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
+        lock ? null : fetch(cfg.customGroupEndpoint),
         fetch(STUDENTS_ENDPOINT),
       ])
-      if (sectionsRes.ok) {
+      if (sectionsRes?.ok) {
         const data: SectionInfo[] = await sectionsRes.json()
         setSections(data.filter((s) => !s.isLocked).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)))
       }
-      if (templateRes.ok) {
+      if (templateRes?.ok) {
         const data: TemplateQuestion[] = await templateRes.json()
         setTemplates(data.filter((q) => !q.isArchived && q.isPublished))
       }
-      if (responsesRes.ok) {
+      if (responsesRes?.ok) {
         const data: StudentResponse[] = await responsesRes.json()
         // Belt-and-suspenders: re-filter by student even if the endpoint does.
         setResponses(data.filter((r) => !r.isArchived && String(r.students_id ?? "") === String(studentId)))
       }
-      if (groupsRes.ok) setGroups(await groupsRes.json())
-      if (studentsRes.ok) {
+      if (groupsRes?.ok) setGroups(await groupsRes.json())
+      if (studentsRes?.ok) {
         const students: { id: string; firstName: string; lastName: string; yearGroup?: string; profileImage?: string }[] =
           await studentsRes.json()
         const match = students.find((s) => String(s.id) === String(studentId))
