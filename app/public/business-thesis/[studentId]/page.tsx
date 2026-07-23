@@ -42,6 +42,7 @@ import { LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
 import { RichTextDisplay } from "@/components/form/rich-text-display"
 import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { aspectRatioCss } from "@/lib/image-ratio"
+import { formatYearGroup } from "@/lib/year-group"
 import { StatusBadge, statusOf, groupStatusOf } from "@/components/field-status"
 import { icons as lucideIcons } from "lucide-react"
 
@@ -367,7 +368,7 @@ export default function PublicBusinessThesisPage({
             {studentYearGroup && (
               <>
                 <Separator orientation="vertical" className="mx-2 data-vertical:h-4 data-vertical:self-auto" />
-                <span className="text-muted-foreground text-sm">{studentYearGroup}</span>
+                <span className="text-muted-foreground text-sm">{formatYearGroup(studentYearGroup)}</span>
               </>
             )}
             <div className="ml-auto flex items-center gap-3">

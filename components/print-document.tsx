@@ -26,6 +26,7 @@ import { RichTextDisplay } from "@/components/form/rich-text-display"
 import { RICH_TEXT_TYPE_ID, extractPlainText, looksLikeRichTextDoc, parseRichText } from "@/lib/rich-text"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import { aspectRatioCss } from "@/lib/image-ratio"
+import { formatYearGroup } from "@/lib/year-group"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -138,10 +139,10 @@ interface SheetTab {
 
 const isBlankRow = (r: string[]) => r.every((v) => v === "")
 
-// The school's budget template paints section bands and the header/totals
-// blocks in Sheets greens — mirrored here so the print matches the sheet.
-const SHEET_BAND_GREEN = "#38761D"
-const SHEET_DEEP_GREEN = "#274E13"
+// Budget-table row shades, kept in the document's own gray palette: light
+// gray section bands, near-black header/totals rows.
+const SHEET_BAND_BG = "#F3F4F6" // gray-100
+const SHEET_DEEP_BG = "#1F2937" // gray-800
 
 // Tabs that hold several independent tables (service list, weekly calendar,
 // earnings report, weekly totals) — each prints as its own header-led table.
@@ -604,7 +605,7 @@ export function PrintDocument({
             )}
             <div className="mt-8 space-y-1 text-sm text-gray-500">
               {isBusiness && studentName && <p>by {studentName}</p>}
-              {yearGroup && <p>SailFuture Academy · {yearGroup}</p>}
+              {yearGroup && <p>SailFuture Academy · {formatYearGroup(yearGroup)}</p>}
               {lastEdited && (
                 <p>
                   Updated{" "}
@@ -871,8 +872,8 @@ function buildGroupPrintBlocks(
                     <tr key={ri}>
                       <td
                         colSpan={width}
-                        className="px-2 py-1 font-semibold text-white"
-                        style={{ background: SHEET_BAND_GREEN }}
+                        className="px-2 py-1 font-semibold text-gray-700"
+                        style={{ background: SHEET_BAND_BG }}
                       >
                         {label}
                       </td>
@@ -892,7 +893,7 @@ function buildGroupPrintBlocks(
                               ? "font-semibold text-white"
                               : "border-b border-gray-100 text-gray-800"
                           } ${isNumeric(v) ? "text-right tabular-nums" : ""}`}
-                          style={dark ? { background: SHEET_DEEP_GREEN } : undefined}
+                          style={dark ? { background: SHEET_DEEP_BG } : undefined}
                         >
                           {v}
                         </td>

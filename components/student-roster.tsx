@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Link01Icon, ArrowRight01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
+import { formatYearGroup } from "@/lib/year-group"
 
 interface Student {
   id: string
@@ -278,7 +279,7 @@ export function StudentRoster({
                 onClick={toggleCollapse}
               >
                 <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className={`size-4 transition-transform ${isCollapsed ? "" : "rotate-90"}`} />
-                {group.label}
+                {formatYearGroup(group.label)}
                 <span className="text-muted-foreground/60 ml-1 text-xs font-normal normal-case">
                   ({group.students.length} {group.students.length === 1 ? "student" : "students"})
                 </span>
