@@ -184,10 +184,13 @@ export function AdvisorManager() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[260px]">Advisor</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead className="w-[220px]">Assigned</TableHead>
-                <TableHead className="w-[150px] text-right">Status</TableHead>
+                {/* Proportional widths: with a fixed pixel width only on the
+                    actions, the email column used to absorb every bit of slack
+                    on a wide screen and strand the rest at the far right. */}
+                <TableHead className="w-[28%]">Advisor</TableHead>
+                <TableHead className="w-[30%]">Email</TableHead>
+                <TableHead className="w-[27%]">Assigned</TableHead>
+                <TableHead className="w-[15%] text-right">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -206,7 +209,9 @@ export function AdvisorManager() {
                         <span className="font-medium">{advisorName(a)}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{a.email}</TableCell>
+                    <TableCell className="text-muted-foreground max-w-0 truncate" title={a.email}>
+                      {a.email}
+                    </TableCell>
                     <TableCell>
                       {mine.length === 0 ? (
                         <span className="text-muted-foreground text-sm">—</span>
