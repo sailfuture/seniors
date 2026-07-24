@@ -564,6 +564,15 @@ export function PrintDocument({
   const [booklet, setBooklet] = useState(false)
   const pendingPrintRef = useRef(false)
 
+  // ?booklet=1 opens straight into booklet layout (the roster links here).
+  // Set after mount rather than in the initial state so SSR and the first
+  // client render agree.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("booklet") === "1") {
+      setBooklet(true)
+    }
+  }, [])
+
   const handleLayoutReady = useCallback(() => {
     if (!pendingPrintRef.current) return
     pendingPrintRef.current = false

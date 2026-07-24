@@ -68,92 +68,106 @@ export function AdvisorAssignDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) onOpenChange(o) }}>
-      <DialogContent>
+      <DialogContent
+        className="sm:max-w-lg"
+        // Enter assigns the picked advisor, or closes when there's nothing staged.
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" || busy) return
+          const target = e.target as HTMLElement
+          if (target.getAttribute("role") === "combobox") return
+          e.preventDefault()
+          if (picked) add()
+          else onOpenChange(false)
+        }}
+      >
         <DialogHeader>
-          <DialogTitle>Thesis advisors — {studentName}</DialogTitle>
+          <DialogTitle className="text-base">Thesis advisors</DialogTitle>
           <DialogDescription>
-            Advisors assigned here can view and comment on this student&apos;s {productLabel}.
+            {studentName} · {productLabel} — assigned advisors can view and comment on this
+            student&apos;s work.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4">
-          <div>
-            <p className="text-muted-foreground mb-2 text-xs font-semibold uppercase tracking-wide">
+        <div className="grid gap-5">
+          <section className="grid gap-2">
+            <p className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
               Assigned ({assigned.length})
             </p>
             {assigned.length === 0 ? (
-              <p className="text-muted-foreground rounded-md border border-dashed py-6 text-center text-sm">
+              <p className="text-muted-foreground/70 rounded-lg border border-dashed px-3 py-4 text-center text-sm">
                 No advisor assigned yet.
               </p>
             ) : (
-              <div className="space-y-2">
+              <ul className="divide-y rounded-lg border">
                 {assigned.map((asg) => {
                   const a = advisorById.get(asg.advisors_id)
                   return (
-                    <div
-                      key={asg.id}
-                      className="flex items-center gap-3 rounded-md border px-3 py-2"
-                    >
-                      <Avatar className="size-7">
+                    <li key={asg.id} className="flex items-center gap-3 px-3 py-2.5">
+                      <Avatar className="size-8 shrink-0">
                         <AvatarFallback className="text-[10px]">
                           {a ? advisorInitials(a) : "?"}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">
+                        <p className="truncate text-sm font-medium leading-tight">
                           {a ? advisorName(a) : `Advisor #${asg.advisors_id}`}
                         </p>
                         {a?.email && (
-                          <p className="text-muted-foreground truncate text-xs">{a.email}</p>
+                          <p className="text-muted-foreground truncate text-xs leading-tight">
+                            {a.email}
+                          </p>
                         )}
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-muted-foreground size-7 shrink-0 hover:text-red-600"
+                        className="text-muted-foreground/60 size-8 shrink-0 hover:bg-red-50 hover:text-red-600"
                         title="Remove advisor"
                         disabled={busy}
                         onClick={() => onUnassign(asg.id)}
                       >
                         <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-4" />
                       </Button>
-                    </div>
+                    </li>
                   )
                 })}
-              </div>
+              </ul>
             )}
-          </div>
+          </section>
 
-          <div>
-            <p className="text-muted-foreground mb-2 text-xs font-semibold uppercase tracking-wide">
+          <section className="grid gap-2">
+            <p className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
               Add an advisor
             </p>
             {available.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-center text-sm">
                 {advisors.length === 0
                   ? "No advisors in the directory yet — add one from Thesis Advisors."
                   : "Every active advisor is already assigned."}
               </p>
             ) : (
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <Select value={picked} onValueChange={setPicked} disabled={busy}>
-                  <SelectTrigger className="flex-1">
+                  <SelectTrigger className="min-w-0 flex-1">
                     <SelectValue placeholder="Choose an advisor…" />
                   </SelectTrigger>
                   <SelectContent>
                     {available.map((a) => (
-                      <SelectItem key={a.id} value={String(a.id)}>
-                        {advisorName(a)} — {a.email}
+                      <SelectItem key={a.id} value={String(a.id)} textValue={advisorName(a)}>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium">{advisorName(a)}</span>
+                          <span className="text-muted-foreground truncate text-xs">{a.email}</span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Button disabled={!picked || busy} onClick={add}>
+                <Button className="shrink-0" disabled={!picked || busy} onClick={add}>
                   Assign
                 </Button>
               </div>
             )}
-          </div>
+          </section>
         </div>
 
         <DialogFooter>

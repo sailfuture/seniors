@@ -35,6 +35,7 @@ import {
   SquareLock01Icon,
   SquareUnlock01Icon,
   PrinterIcon,
+  BookOpen02Icon,
 } from "@hugeicons/core-free-icons"
 import { formatYearGroup } from "@/lib/year-group"
 import type { FormApiConfig } from "@/lib/form-api-config"
@@ -462,11 +463,11 @@ export function StudentRoster({
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[280px]">Student</TableHead>
-                      <TableHead>Crew</TableHead>
+                      <TableHead className="w-[240px]">Student</TableHead>
+                      <TableHead className="w-[110px]">Crew</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead className="w-[190px]">Advisor</TableHead>
-                      <TableHead className="w-[60px]" />
+                      <TableHead className="w-[230px]">Advisor</TableHead>
+                      <TableHead className="w-[160px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -530,7 +531,7 @@ export function StudentRoster({
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell className="text-muted-foreground max-w-0 truncate">
                           {student.studentEmail}
                         </TableCell>
                         <TableCell>
@@ -540,11 +541,12 @@ export function StudentRoster({
                               .map((m) => advisors.find((a) => a.id === m.advisors_id))
                               .filter(Boolean)
                               .map((a) => advisorName(a!))
+                            const label = names.join(", ")
                             return (
                               <button
                                 type="button"
-                                className="hover:text-foreground text-left text-sm transition-colors"
-                                title="Manage thesis advisors"
+                                className="hover:text-foreground block w-full min-w-0 text-left text-sm transition-colors"
+                                title={names.length ? label : "Assign a thesis advisor"}
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   setAdvisorDialog(student)
@@ -555,7 +557,11 @@ export function StudentRoster({
                                     Assign
                                   </span>
                                 ) : (
-                                  <span className="line-clamp-2">{names.join(", ")}</span>
+                                  // One name reads inline; more collapse to a
+                                  // count so the column can't blow out.
+                                  <span className="truncate">
+                                    {names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`}
+                                  </span>
                                 )}
                               </button>
                             )
@@ -596,6 +602,24 @@ export function StudentRoster({
                                   title="Download PDF (print view)"
                                 >
                                   <HugeiconsIcon icon={PrinterIcon} strokeWidth={2} className="size-4" />
+                                </a>
+                              </Button>
+                            )}
+                            {publicBaseUrl && (
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="text-muted-foreground size-8"
+                                asChild
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <a
+                                  href={`${publicBaseUrl}/${student.id}/print?booklet=1`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Booklet PDF (bound-edge margins)"
+                                >
+                                  <HugeiconsIcon icon={BookOpen02Icon} strokeWidth={2} className="size-4" />
                                 </a>
                               </Button>
                             )}
