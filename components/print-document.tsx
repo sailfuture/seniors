@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowLeft02Icon, PrinterIcon } from "@hugeicons/core-free-icons"
+import { ArrowLeft02Icon, PrinterIcon, BookOpen02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import {
   BrandThemeProvider,
@@ -558,6 +558,30 @@ export function PrintDocument({
   const [studentImage, setStudentImage] = useState("")
   const [yearGroup, setYearGroup] = useState("")
   const [loading, setLoading] = useState(true)
+  // Booklet mode widens the binding edge, which narrows the text column — so
+  // the pages must be re-measured before printing or content would overflow
+  // the fixed-height sheets. Printing therefore waits for the new layout.
+  const [booklet, setBooklet] = useState(false)
+  const pendingPrintRef = useRef(false)
+
+  const handleLayoutReady = useCallback(() => {
+    if (!pendingPrintRef.current) return
+    pendingPrintRef.current = false
+    // Let the re-laid-out sheets paint before the print dialog snapshots them.
+    setTimeout(() => window.print(), 150)
+  }, [])
+
+  const printAs = useCallback(
+    (wantBooklet: boolean) => {
+      if (booklet === wantBooklet) {
+        window.print()
+        return
+      }
+      pendingPrintRef.current = true
+      setBooklet(wantBooklet)
+    },
+    [booklet]
+  )
 
   const loadData = useCallback(async () => {
     try {
@@ -807,7 +831,7 @@ export function PrintDocument({
       `}</style>
       {/* Screen-only toolbar */}
       <div className="sticky top-0 z-20 border-b bg-white/95 backdrop-blur print:hidden">
-        <div className="mx-auto flex w-[8.5in] max-w-full items-center justify-between px-4 py-2.5">
+        <div className="mx-auto flex w-[8.5in] max-w-full items-center justify-between gap-3 px-4 py-2.5">
           <Button variant="outline" size="sm" asChild className="gap-2 bg-white">
             <a href={backHref}>
               <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
@@ -815,12 +839,25 @@ export function PrintDocument({
             </a>
           </Button>
           <p className="text-muted-foreground hidden text-xs sm:block">
-            US Letter · use your browser&apos;s dialog to print or save as PDF
+            {booklet
+              ? "Booklet · 1.5in binding edge, alternating for double-sided printing"
+              : "US Letter · use your browser's dialog to print or save as PDF"}
           </p>
-          <Button size="sm" className="gap-2" onClick={() => window.print()}>
-            <HugeiconsIcon icon={PrinterIcon} strokeWidth={2} className="size-4" />
-            Print / Save PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 bg-white"
+              onClick={() => printAs(false)}
+            >
+              <HugeiconsIcon icon={PrinterIcon} strokeWidth={2} className="size-4" />
+              Print / Save PDF
+            </Button>
+            <Button size="sm" className="gap-2" onClick={() => printAs(true)}>
+              <HugeiconsIcon icon={BookOpen02Icon} strokeWidth={2} className="size-4" />
+              Booklet PDF
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -828,7 +865,11 @@ export function PrintDocument({
           sheet wrapper must lay out as normal blocks when printing. */}
       <div className="mx-auto flex w-[8.5in] max-w-full flex-col gap-6 py-8 text-gray-900 print:block print:w-auto print:max-w-none print:py-0">
         {/* ── Cover ── */}
-        <section className="flex min-h-[11in] flex-col bg-white p-[0.75in] shadow-md ring-1 ring-black/5 print:min-h-[9.5in] print:p-0 print:shadow-none print:ring-0">
+        <section
+          className={`flex min-h-[11in] flex-col bg-white p-[0.75in] shadow-md ring-1 ring-black/5 print:min-h-[9.5in] print:p-0 print:shadow-none print:ring-0 ${
+            booklet ? gutterFor(1) : ""
+          }`}
+        >
           <div className="flex items-center gap-3">
             <span className="h-px w-10" style={{ background: accent }} />
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gray-500">{docLabel}</p>
@@ -913,6 +954,8 @@ export function PrintDocument({
           docLabel={docLabel}
           budgetTables={budgetTables}
           resumeDoc={resumeDoc}
+          booklet={booklet}
+          onLayoutReady={handleLayoutReady}
         />
 
         {printSectionsAll.length === 0 && (
@@ -1727,6 +1770,34 @@ const PAGE_BUDGET = 850
 const BLOCK_GAP = 24
 
 /**
+ * Booklet mode: an extra 0.75in binding allowance (doubling the 0.75in
+ * @page margin to 1.5in) on the side that meets the spine. Printed
+ * front-and-back, odd pages are right-hand sheets (recto) so their spine is
+ * on the LEFT; even pages are left-hand sheets (verso) with the spine on the
+ * RIGHT. Class strings are literal so Tailwind can see them.
+ *
+ * On screen the sheet already carries the 0.75in base padding, so the gutter
+ * reads as the 1.5in total; in print the @page margin supplies the first
+ * 0.75in and this padding adds the second. Full-bleed sheets (resume
+ * snapshots) have no base padding, so they only take the extra allowance.
+ */
+const BOOKLET_GUTTER = {
+  padded: {
+    recto: "pl-[1.5in] print:pl-[0.75in]",
+    verso: "pr-[1.5in] print:pr-[0.75in]",
+  },
+  bleed: {
+    recto: "pl-[0.75in] print:pl-[0.75in]",
+    verso: "pr-[0.75in] print:pr-[0.75in]",
+  },
+} as const
+
+/** Gutter classes for a physical page number (1-based; cover is page 1). */
+function gutterFor(pageNumber: number, kind: "padded" | "bleed" = "padded"): string {
+  return BOOKLET_GUTTER[kind][pageNumber % 2 === 1 ? "recto" : "verso"]
+}
+
+/**
  * Renders every section as true 8.5×11 sheets: each section's content is
  * measured off-screen at page width, packed into pages, and re-rendered as
  * fixed-height sheets with a running footer and real page numbers — accurate
@@ -1743,6 +1814,8 @@ function PaginatedSheets({
   docLabel,
   budgetTables,
   resumeDoc,
+  booklet = false,
+  onLayoutReady,
 }: {
   printSections: { section: SectionInfo; ungrouped: TemplateQuestion[]; groupBlocks: { group: CustomGroup; questions: TemplateQuestion[] }[] }[]
   responseMap: Map<number, StudentResponse>
@@ -1754,12 +1827,16 @@ function PaginatedSheets({
   docLabel: string
   budgetTables?: Map<number, SheetTab[]>
   resumeDoc?: ResumeDoc | null
+  /** Widen the binding edge and re-measure at the narrower column width. */
+  booklet?: boolean
+  /** Fires once pages are measured and packed (used to defer printing). */
+  onLayoutReady?: () => void
 }) {
   const measureRef = useRef<HTMLDivElement | null>(null)
   // The layout is keyed to the block list it was measured from, so new
   // content automatically derives back to "not measured yet" — no reset
   // effect needed.
-  const [layout, setLayout] = useState<{ source: unknown; pages: PageSpec[] } | null>(null)
+  const [layout, setLayout] = useState<{ source: unknown; booklet: boolean; pages: PageSpec[] } | null>(null)
 
   const sectionsBlocks = useMemo(() => {
     return printSections.map(({ section, ungrouped, groupBlocks }, i) => {
@@ -1893,7 +1970,9 @@ function PaginatedSheets({
     return s
   }, [sectionsBlocks])
 
-  const pages = layout && layout.source === sectionsBlocks ? layout.pages : null
+  // Toggling booklet changes the column width, so the cached layout is stale.
+  const pages =
+    layout && layout.source === sectionsBlocks && layout.booklet === booklet ? layout.pages : null
 
   useEffect(() => {
     if (pages !== null) return
@@ -1962,22 +2041,31 @@ function PaginatedSheets({
         }
         flush()
       })
-      if (!cancelled) setLayout({ source: sectionsBlocks, pages: out })
+      if (!cancelled) setLayout({ source: sectionsBlocks, booklet, pages: out })
     }
     run()
     return () => {
       cancelled = true
     }
-  }, [pages, sectionsBlocks])
+  }, [pages, sectionsBlocks, booklet])
+
+  // Signal the parent once pages are ready, so a queued print waits for the
+  // re-measured booklet layout instead of snapshotting the old one.
+  useEffect(() => {
+    if (pages !== null) onLayoutReady?.()
+  }, [pages, onLayoutReady])
 
   if (pages === null) {
     return (
       <>
-        {/* Off-screen measuring pass at exact page-content width. */}
+        {/* Off-screen measuring pass at the exact page-content width — 7in
+            normally, 6.25in in booklet mode where the gutter eats 0.75in. */}
         <div
           ref={measureRef}
           aria-hidden
-          className="pointer-events-none fixed left-[-10000px] top-0 w-[7in] print:hidden"
+          className={`pointer-events-none fixed left-[-10000px] top-0 print:hidden ${
+            booklet ? "w-[6.25in]" : "w-[7in]"
+          }`}
         >
           {sectionsBlocks.flatMap((s) => s.blocks).map((b) => (
             <div key={b.id} data-bid={b.id}>
@@ -2000,11 +2088,15 @@ function PaginatedSheets({
         const { section } = sectionsBlocks[page.sIdx]
         // Full-bleed pages (the resume snapshots) are the image alone —
         // no padding, continuation header, or footer.
+        // Physical page number: the cover is 1, so content starts at 2.
+        const pageNumber = pi + 2
         if (page.blockIds.length === 1 && fullBleedIds.has(page.blockIds[0])) {
           return (
             <section
               key={`${section.id}-${page.contIndex}`}
-              className="h-[11in] overflow-hidden break-before-page bg-white shadow-md ring-1 ring-black/5 print:h-[9.5in] print:shadow-none print:ring-0"
+              className={`h-[11in] overflow-hidden break-before-page bg-white shadow-md ring-1 ring-black/5 print:h-[9.5in] print:shadow-none print:ring-0 ${
+                booklet ? gutterFor(pageNumber, "bleed") : ""
+              }`}
             >
               {blockById.get(page.blockIds[0])}
             </section>
@@ -2017,7 +2109,7 @@ function PaginatedSheets({
               page.oversized
                 ? "min-h-[11in] print:min-h-0 print:overflow-visible"
                 : "h-[11in] print:h-[9.5in]"
-            }`}
+            } ${booklet ? gutterFor(pageNumber) : ""}`}
           >
             {page.contIndex > 0 && (
               <div className="mb-5 flex items-center justify-between text-[8px] uppercase tracking-[0.14em] text-gray-400">
