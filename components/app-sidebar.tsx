@@ -29,6 +29,7 @@ import {
   Folder01Icon,
   CheckListIcon,
   Home09Icon,
+  UserGroupIcon,
 } from "@hugeicons/core-free-icons"
 import Link from "next/link"
 import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
@@ -651,6 +652,13 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
         title: s.title,
         url: `/admin/business-thesis-template/${s.slug}`,
       })),
+    },
+    {
+      title: "Thesis Advisors",
+      url: "/admin/advisors",
+      icon: <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} />,
+      isActive: pathname.startsWith("/admin/advisors"),
+      items: [],
     },
   ]
 }

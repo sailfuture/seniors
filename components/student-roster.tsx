@@ -39,6 +39,18 @@ import {
 import { formatYearGroup } from "@/lib/year-group"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import { fetchAllProjectLocks, lockProject, unlockProject, type ProjectLock } from "@/lib/project-lock"
+import {
+  advisorName,
+  assignAdvisor,
+  assignmentsFor,
+  fetchAdvisorAssignments,
+  fetchAdvisors,
+  unassignAdvisor,
+  type Advisor,
+  type AdvisorAssignment,
+  type AdvisorProduct,
+} from "@/lib/advisors"
+import { AdvisorAssignDialog } from "@/components/advisor-assign-dialog"
 
 interface Student {
   id: string
@@ -159,19 +171,31 @@ export function StudentRoster({
   // The student a Lock/Unlock confirm dialog is open for, and in-flight state.
   const [lockDialog, setLockDialog] = useState<Student | null>(null)
   const [lockActing, setLockActing] = useState(false)
+  const [advisors, setAdvisors] = useState<Advisor[]>([])
+  const [assignments, setAssignments] = useState<AdvisorAssignment[]>([])
+  const [advisorDialog, setAdvisorDialog] = useState<Student | null>(null)
+  const [advisorBusy, setAdvisorBusy] = useState(false)
 
   const locksEndpoint = apiConfig?.locksEndpoint
+  // Advisor assignments are product-scoped; the roster knows which product
+  // it's showing, so assignments made here grant access to that one only.
+  const advisorProduct = (product === "life-map" ? "life-map" : "business-thesis") as AdvisorProduct
 
   const fetchData = useCallback(async () => {
     try {
-      const [studentsRes, reviewsRes, templateRes, typesRes, lockMap] = await Promise.all([
-        fetch(STUDENTS_ENDPOINT),
-        fetch(responsesEndpoint),
-        fetch(templateEndpoint),
-        fetch(QUESTION_TYPES_ENDPOINT),
-        locksEndpoint ? fetchAllProjectLocks(locksEndpoint) : Promise.resolve(new Map<string, ProjectLock>()),
-      ])
+      const [studentsRes, reviewsRes, templateRes, typesRes, lockMap, advisorList, assignmentList] =
+        await Promise.all([
+          fetch(STUDENTS_ENDPOINT),
+          fetch(responsesEndpoint),
+          fetch(templateEndpoint),
+          fetch(QUESTION_TYPES_ENDPOINT),
+          locksEndpoint ? fetchAllProjectLocks(locksEndpoint) : Promise.resolve(new Map<string, ProjectLock>()),
+          fetchAdvisors(),
+          fetchAdvisorAssignments(),
+        ])
       setLocks(lockMap)
+      setAdvisors(advisorList)
+      setAssignments(assignmentList)
 
       if (studentsRes.ok) {
         const data = await studentsRes.json()
@@ -264,6 +288,39 @@ export function StudentRoster({
     fetchData()
   }, [fetchData])
 
+  const handleAssignAdvisor = useCallback(
+    async (advisorId: number) => {
+      if (!advisorDialog) return
+      setAdvisorBusy(true)
+      try {
+        const created = await assignAdvisor(advisorDialog.id, advisorId, advisorProduct)
+        if (!created) throw new Error()
+        setAssignments((prev) => [...prev, created])
+        const a = advisors.find((x) => x.id === advisorId)
+        toast.success(`${a ? advisorName(a) : "Advisor"} assigned to ${advisorDialog.firstName}`)
+      } catch {
+        toast.error("Couldn't assign the advisor — please try again.")
+      } finally {
+        setAdvisorBusy(false)
+      }
+    },
+    [advisorDialog, advisorProduct, advisors]
+  )
+
+  const handleUnassignAdvisor = useCallback(async (assignmentId: number) => {
+    setAdvisorBusy(true)
+    try {
+      const ok = await unassignAdvisor(assignmentId)
+      if (!ok) throw new Error()
+      setAssignments((prev) => prev.filter((a) => a.id !== assignmentId))
+      toast.success("Advisor removed")
+    } catch {
+      toast.error("Couldn't remove the advisor — please try again.")
+    } finally {
+      setAdvisorBusy(false)
+    }
+  }, [])
+
   // Lock = freeze the public page + PDF as they render right now; Unlock
   // returns them to the live template join.
   const handleLockToggle = useCallback(async () => {
@@ -329,6 +386,21 @@ export function StudentRoster({
             <p className="text-muted-foreground py-8 text-center">No students found.</p>
           )}
 
+          {/* Thesis advisor assignment for one student + this product */}
+          <AdvisorAssignDialog
+            open={advisorDialog != null}
+            onOpenChange={(o) => { if (!o) setAdvisorDialog(null) }}
+            studentName={advisorDialog ? `${advisorDialog.firstName} ${advisorDialog.lastName}` : ""}
+            productLabel={advisorProduct === "life-map" ? "Life Map" : "Business Thesis"}
+            advisors={advisors}
+            assigned={
+              advisorDialog ? assignmentsFor(assignments, advisorDialog.id, advisorProduct) : []
+            }
+            busy={advisorBusy}
+            onAssign={handleAssignAdvisor}
+            onUnassign={handleUnassignAdvisor}
+          />
+
           {/* Lock / Unlock confirmation */}
           <AlertDialog open={lockDialog != null} onOpenChange={(o) => { if (!o && !lockActing) setLockDialog(null) }}>
             <AlertDialogContent>
@@ -393,6 +465,7 @@ export function StudentRoster({
                       <TableHead className="w-[280px]">Student</TableHead>
                       <TableHead>Crew</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead className="w-[190px]">Advisor</TableHead>
                       <TableHead className="w-[60px]" />
                     </TableRow>
                   </TableHeader>
@@ -459,6 +532,34 @@ export function StudentRoster({
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {student.studentEmail}
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const mine = assignmentsFor(assignments, student.id, advisorProduct)
+                            const names = mine
+                              .map((m) => advisors.find((a) => a.id === m.advisors_id))
+                              .filter(Boolean)
+                              .map((a) => advisorName(a!))
+                            return (
+                              <button
+                                type="button"
+                                className="hover:text-foreground text-left text-sm transition-colors"
+                                title="Manage thesis advisors"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setAdvisorDialog(student)
+                                }}
+                              >
+                                {names.length === 0 ? (
+                                  <span className="text-muted-foreground/60 underline decoration-dotted underline-offset-4">
+                                    Assign
+                                  </span>
+                                ) : (
+                                  <span className="line-clamp-2">{names.join(", ")}</span>
+                                )}
+                              </button>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
