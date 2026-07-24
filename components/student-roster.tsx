@@ -110,6 +110,34 @@ function groupByYearGroup(students: Student[]): GroupedStudents[] {
     .sort((a, b) => a.sortKey - b.sortKey)
 }
 
+/** A class table renders as a flat list of rows, optionally banded into
+    "in progress" and "completed & locked" sections. */
+interface RosterItem {
+  key: string
+  header?: { label: string; count: number }
+  student?: Student
+}
+
+/**
+ * Split one class into students still working and students who are settled
+ * (every section approved, or the project locked), with a band above each.
+ * When there's nothing to split — all active or all finished — the bands are
+ * dropped so the table reads exactly as it did before.
+ */
+function rosterItems(students: Student[], isSettled: (s: Student) => boolean): RosterItem[] {
+  const active = students.filter((s) => !isSettled(s))
+  const settled = students.filter(isSettled)
+  if (active.length === 0 || settled.length === 0) {
+    return students.map((s) => ({ key: s.id, student: s }))
+  }
+  return [
+    { key: "hdr-active", header: { label: "In progress", count: active.length } },
+    ...active.map((s) => ({ key: s.id, student: s })),
+    { key: "hdr-done", header: { label: "Completed & locked", count: settled.length } },
+    ...settled.map((s) => ({ key: s.id, student: s })),
+  ]
+}
+
 function TableSkeleton() {
   return (
     <div className="space-y-6">
@@ -471,13 +499,31 @@ export function StudentRoster({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {group.students.map((student) => (
+                    {rosterItems(
+                      group.students,
+                      (s) => allComplete.has(s.id) || locks.has(s.id)
+                    ).map((item) => {
+                      if (item.header) {
+                        return (
+                          <TableRow key={item.key} className="bg-muted/50 hover:bg-muted/50">
+                            <TableCell colSpan={5} className="py-1.5">
+                              <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
+                                {item.header.label}{" "}
+                                <span className="font-normal">({item.header.count})</span>
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      }
+                      const student = item.student!
+                      const settled = allComplete.has(student.id) || locks.has(student.id)
+                      return (
                       <TableRow
                         key={student.id}
-                        // Fully-approved students read as settled: the whole row
-                        // dims until hovered so active students stand out.
+                        // Settled students read as done: the whole row dims
+                        // until hovered so active students stand out.
                         className={`cursor-pointer hover:bg-muted/50 ${
-                          allComplete.has(student.id) ? "opacity-50 transition-opacity hover:opacity-100" : ""
+                          settled ? "opacity-50 transition-opacity hover:opacity-100" : ""
                         }`}
                         onClick={() => router.push(`${basePath}/${student.id}`)}
                       >
@@ -644,7 +690,8 @@ export function StudentRoster({
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
