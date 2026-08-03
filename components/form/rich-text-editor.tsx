@@ -23,6 +23,8 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
+import { FieldActivityStream } from "./field-activity-stream"
 import {
   Sheet,
   SheetContent,
@@ -30,7 +32,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Linkify } from "@/components/linkify"
 import { cn } from "@/lib/utils"
 import { parseRichText, serializeRichText, type RichTextDoc } from "@/lib/rich-text"
 import { richTextExtensions } from "@/lib/rich-text-extensions"
@@ -139,6 +140,9 @@ export function RichTextEditor({
   // thread never requires reaching up to the toolbar.
   const [selTooltip, setSelTooltip] = useState<{ x: number; y: number } | null>(null)
   const [threadsOpen, setThreadsOpen] = useState(false)
+  // Sheet state: which tab, and which thread (null = the list).
+  const [sheetTab, setSheetTab] = useState<"open" | "resolved">("open")
+  const [sheetThreadId, setSheetThreadId] = useState<string | null>(null)
 
   const editor = useEditor({
     // Required in the Next.js App Router: rendering the editor during SSR /
@@ -296,17 +300,27 @@ export function RichTextEditor({
     [activeThread, inline, editor]
   )
 
+  // Resolve a thread and strip its highlight, from either the popover or the
+  // sheet's thread view.
+  const resolveThreadById = useCallback(
+    async (threadId: string) => {
+      await inline.resolveThread(threadId)
+      if (!editor) return
+      const ranges = threadMarkRanges(editor, threadId)
+      if (ranges.length) {
+        let chain = editor.chain()
+        for (const rg of ranges) chain = chain.setTextSelection(rg).unsetCommentThread()
+        chain.run()
+      }
+    },
+    [editor, inline]
+  )
+
   const handleResolve = useCallback(async () => {
-    if (!activeThread || !editor) return
-    await inline.resolveThread(activeThread.threadId)
-    const ranges = threadMarkRanges(editor, activeThread.threadId)
-    if (ranges.length) {
-      let chain = editor.chain()
-      for (const rg of ranges) chain = chain.setTextSelection(rg).unsetCommentThread()
-      chain.run()
-    }
+    if (!activeThread) return
+    await resolveThreadById(activeThread.threadId)
     setActiveThread(null)
-  }, [activeThread, editor, inline])
+  }, [activeThread, resolveThreadById])
 
   // Open a thread from the list: scroll its highlight into view first, then
   // anchor the popover at the highlight's on-screen position.
@@ -439,113 +453,165 @@ export function RichTextEditor({
         </button>
       )}
 
-      <Sheet open={threadsOpen} onOpenChange={setThreadsOpen}>
+      <Sheet
+        open={threadsOpen}
+        onOpenChange={(o) => {
+          setThreadsOpen(o)
+          if (!o) setSheetThreadId(null)
+        }}
+      >
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="shrink-0 border-b px-6 py-4">
-            <SheetTitle className="text-base">Inline comments</SheetTitle>
+            {sheetThreadId ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSheetThreadId(null)}
+                  className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-md border"
+                  title="Back to all comments"
+                >
+                  ←
+                </button>
+                <SheetTitle className="text-base">Comment thread</SheetTitle>
+              </div>
+            ) : (
+              <>
+                <SheetTitle className="text-base">Inline comments</SheetTitle>
+                <div className="bg-muted mt-1 flex gap-1 rounded-lg p-1">
+                  <button
+                    type="button"
+                    onClick={() => setSheetTab("open")}
+                    className={cn(
+                      "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      sheetTab === "open"
+                        ? "bg-background shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Open ({threadListItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSheetTab("resolved")}
+                    className={cn(
+                      "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      sheetTab === "resolved"
+                        ? "bg-background shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Resolved ({resolvedThreads.length})
+                  </button>
+                </div>
+              </>
+            )}
             <SheetDescription className="sr-only">
               Comment threads anchored to highlights in this essay
             </SheetDescription>
           </SheetHeader>
-          <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
-            {threadListItems.length === 0 && resolvedThreads.length === 0 ? (
-              <p className="text-muted-foreground py-8 text-center text-sm">
-                No comments yet. Highlight text in the essay to start one.
-              </p>
-            ) : threadListItems.length === 0 ? (
-              <p className="text-muted-foreground py-4 text-center text-sm">
-                No open comments.
-              </p>
-            ) : (
-              threadListItems.map(({ thread, from, quote }) => {
-                const hasUnread =
-                  viewer === "student" &&
-                  thread.comments.some((c) => !c.isStudentReply && !c.isOld)
-                return (
-                  <button
-                    key={thread.threadId}
-                    type="button"
-                    onClick={() => {
-                      setThreadsOpen(false)
-                      openThreadFromList(thread.threadId, from)
-                    }}
-                    className={cn(
-                      "bg-muted/30 hover:bg-muted/60 block w-full rounded-lg border px-3 py-2 text-left transition-colors",
-                      hasUnread && "border-blue-300 dark:border-blue-400/40"
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <p className="text-muted-foreground min-w-0 flex-1 truncate text-xs italic">
-                        “{quote.trim()}”
-                      </p>
-                      {hasUnread && (
-                        <span className="size-1.5 shrink-0 rounded-full bg-blue-500" aria-hidden />
-                      )}
-                    </div>
-                    <div className="mt-1 space-y-0.5">
-                      {thread.comments.map((c) => (
-                        <p key={c.id} className="text-xs leading-snug">
-                          <span className="font-medium">
-                            {c.teacher_name || (c.isStudentReply ? "Student" : "Teacher")}
-                            {c.isStudentReply ? " (student)" : ""}:
-                          </span>{" "}
-                          <span className="text-muted-foreground">
-                            <Linkify text={c.note} />
-                          </span>
-                        </p>
-                      ))}
-                    </div>
-                    <p className="text-muted-foreground/60 mt-1.5 text-[10px]">
-                      Click to jump to the highlight
-                    </p>
-                  </button>
-                )
-              })
-            )}
 
-            {resolvedThreads.length > 0 && (
-              <>
-                <p className="text-muted-foreground pt-3 text-[10px] font-semibold uppercase tracking-wider">
-                  Resolved ({resolvedThreads.length})
+          {sheetThreadId ? (
+            <SheetThreadView
+              thread={inline.threads.get(sheetThreadId)}
+              quote={threadListItems.find((i) => i.thread.threadId === sheetThreadId)?.quote}
+              viewer={viewer}
+              canResolve={!disabled && !inline.threads.get(sheetThreadId)?.resolved}
+              onReply={(note) => inline.reply(sheetThreadId, note).then((c) => !!c)}
+              onMarkRead={inline.markRead}
+              onResolve={async () => {
+                await resolveThreadById(sheetThreadId)
+                setSheetThreadId(null)
+              }}
+              onShowInEssay={() => {
+                const item = threadListItems.find((i) => i.thread.threadId === sheetThreadId)
+                if (!item) return
+                setThreadsOpen(false)
+                setSheetThreadId(null)
+                openThreadFromList(sheetThreadId, item.from)
+              }}
+            />
+          ) : (
+            <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
+              {sheetTab === "open" ? (
+                threadListItems.length === 0 ? (
+                  <p className="text-muted-foreground py-8 text-center text-sm">
+                    No open comments. Highlight text in the essay to start one.
+                  </p>
+                ) : (
+                  threadListItems.map(({ thread, quote }) => {
+                    const hasUnread =
+                      viewer === "student" &&
+                      thread.comments.some((c) => !c.isStudentReply && !c.isOld)
+                    const last = thread.comments[thread.comments.length - 1]
+                    return (
+                      <button
+                        key={thread.threadId}
+                        type="button"
+                        onClick={() => setSheetThreadId(thread.threadId)}
+                        className={cn(
+                          "bg-muted/30 hover:bg-muted/60 block w-full rounded-lg border px-3 py-2 text-left transition-colors",
+                          hasUnread && "border-blue-300 dark:border-blue-400/40"
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <p className="text-muted-foreground min-w-0 flex-1 truncate text-xs italic">
+                            “{quote.trim()}”
+                          </p>
+                          {hasUnread && (
+                            <span className="size-1.5 shrink-0 rounded-full bg-blue-500" aria-hidden />
+                          )}
+                        </div>
+                        {last && (
+                          <p className="mt-1 truncate text-xs leading-snug">
+                            <span className="font-medium">
+                              {last.teacher_name || (last.isStudentReply ? "Student" : "Teacher")}:
+                            </span>{" "}
+                            <span className="text-muted-foreground">{last.note}</span>
+                          </p>
+                        )}
+                        <p className="text-muted-foreground/60 mt-1 text-[10px]">
+                          {thread.comments.length}{" "}
+                          {thread.comments.length === 1 ? "message" : "messages"} · click to view
+                        </p>
+                      </button>
+                    )
+                  })
+                )
+              ) : resolvedThreads.length === 0 ? (
+                <p className="text-muted-foreground py-8 text-center text-sm">
+                  No resolved comments yet.
                 </p>
-                {resolvedThreads.map((thread) => (
-                  <button
-                    key={thread.threadId}
-                    type="button"
-                    onClick={(e) => {
-                      // The highlight is gone, so anchor the thread at the click.
-                      setThreadsOpen(false)
-                      setActiveThread({
-                        threadId: thread.threadId,
-                        isNew: false,
-                        anchor: { x: e.clientX, y: e.clientY },
-                      })
-                    }}
-                    className="bg-muted/20 hover:bg-muted/50 block w-full rounded-lg border border-dashed px-3 py-2 text-left opacity-80 transition-colors"
-                  >
-                    <div className="flex items-center gap-1.5">
+              ) : (
+                resolvedThreads.map((thread) => {
+                  const last = thread.comments[thread.comments.length - 1]
+                  return (
+                    <button
+                      key={thread.threadId}
+                      type="button"
+                      onClick={() => setSheetThreadId(thread.threadId)}
+                      className="bg-muted/20 hover:bg-muted/50 block w-full rounded-lg border border-dashed px-3 py-2 text-left opacity-80 transition-colors"
+                    >
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700">
                         ✓ Resolved
                       </span>
-                    </div>
-                    <div className="mt-1 space-y-0.5">
-                      {thread.comments.map((c) => (
-                        <p key={c.id} className="text-xs leading-snug">
+                      {last && (
+                        <p className="mt-1 truncate text-xs leading-snug">
                           <span className="font-medium">
-                            {c.teacher_name || (c.isStudentReply ? "Student" : "Teacher")}
-                            {c.isStudentReply ? " (student)" : ""}:
+                            {last.teacher_name || (last.isStudentReply ? "Student" : "Teacher")}:
                           </span>{" "}
-                          <span className="text-muted-foreground">
-                            <Linkify text={c.note} />
-                          </span>
+                          <span className="text-muted-foreground">{last.note}</span>
                         </p>
-                      ))}
-                    </div>
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
+                      )}
+                      <p className="text-muted-foreground/60 mt-1 text-[10px]">
+                        {thread.comments.length}{" "}
+                        {thread.comments.length === 1 ? "message" : "messages"} · click to view
+                      </p>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          )}
         </SheetContent>
       </Sheet>
       {activeThread && (
@@ -565,6 +631,118 @@ export function RichTextEditor({
         />
       )}
     </div>
+  )
+}
+
+/**
+ * A single thread inside the comments sheet, rendered like the activity logs:
+ * chat bubbles with date separators, a composer pinned at the bottom, and
+ * Resolve beside Reply. Open threads can also jump to their highlight.
+ */
+function SheetThreadView({
+  thread,
+  quote,
+  viewer,
+  canResolve,
+  onReply,
+  onMarkRead,
+  onResolve,
+  onShowInEssay,
+}: {
+  thread: InlineThread | undefined
+  quote?: string
+  viewer: "teacher" | "student"
+  canResolve: boolean
+  onReply: (note: string) => Promise<boolean>
+  onMarkRead: (commentId: number) => void
+  onResolve: () => Promise<void>
+  onShowInEssay: () => void
+}) {
+  const [note, setNote] = useState("")
+  const [sending, setSending] = useState(false)
+  const [resolving, setResolving] = useState(false)
+
+  if (!thread) {
+    return (
+      <p className="text-muted-foreground flex-1 py-8 text-center text-sm">
+        This thread is no longer available.
+      </p>
+    )
+  }
+
+  const send = async () => {
+    if (!note.trim() || sending) return
+    setSending(true)
+    const ok = await onReply(note.trim())
+    setSending(false)
+    if (ok) setNote("")
+  }
+
+  return (
+    <>
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {quote && (
+          <div className="bg-muted/40 mb-3 rounded-md border-l-2 border-amber-300 px-3 py-2">
+            <p className="text-muted-foreground text-xs italic">“{quote.trim()}”</p>
+            <button
+              type="button"
+              onClick={onShowInEssay}
+              className="mt-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+            >
+              Show in essay
+            </button>
+          </div>
+        )}
+        {thread.resolved && (
+          <p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-green-700">
+            ✓ Resolved
+          </p>
+        )}
+        <FieldActivityStream
+          comments={thread.comments}
+          viewer={viewer}
+          onMarkRead={onMarkRead}
+          autoMarkRead={viewer === "student"}
+          scrollToLatest
+        />
+      </div>
+      <div className="shrink-0 border-t px-4 py-3">
+        <Textarea
+          placeholder="Reply…"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && note.trim() && !sending) {
+              e.preventDefault()
+              send()
+            }
+          }}
+          rows={2}
+          className="text-sm"
+        />
+        <div className="mt-2 flex items-center justify-end gap-1.5">
+          {canResolve && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 text-xs text-green-700 hover:bg-green-50 hover:text-green-800"
+              disabled={sending || resolving}
+              onClick={async () => {
+                setResolving(true)
+                await onResolve()
+                setResolving(false)
+              }}
+              title="Resolve and remove the highlight"
+            >
+              {resolving ? "Resolving…" : "Resolve"}
+            </Button>
+          )}
+          <Button size="sm" className="h-7 text-xs" onClick={send} disabled={!note.trim() || sending}>
+            {sending ? "Sending…" : "Reply"}
+          </Button>
+        </div>
+      </div>
+    </>
   )
 }
 
