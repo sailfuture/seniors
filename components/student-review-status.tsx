@@ -691,6 +691,25 @@ export function StudentReviewStatus({
             {openField && openResponse && sheet?.fieldName !== "_section_comment" && (
               <div className="border-b px-6 py-4">
                 <p className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">Your response</p>
+                {(isRichTextQuestion(openField) ||
+                  looksLikeRichTextDoc(openResponse.student_response ?? "")) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mb-3 gap-1.5"
+                    onClick={() => {
+                      const section = sectionOf(openField)
+                      if (section) {
+                        router.push(
+                          `${basePath}/${slugify(section.section_title)}/write/${openField.id}`
+                        )
+                      }
+                    }}
+                  >
+                    Open Full Essay
+                    <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5" />
+                  </Button>
+                )}
                 <ResponseView q={openField} r={openResponse} />
               </div>
             )}
@@ -735,7 +754,15 @@ export function StudentReviewStatus({
               }}
               onOpenEditor={() => {
                 const section = sectionOf(openField)
-                if (section) {
+                if (!section) return
+                // Essays open their full-page editor; other types focus the
+                // question on the section form.
+                if (
+                  isRichTextQuestion(openField) ||
+                  looksLikeRichTextDoc(openResponse?.student_response ?? "")
+                ) {
+                  router.push(`${basePath}/${slugify(section.section_title)}/write/${openField.id}`)
+                } else {
                   router.push(
                     `${basePath}/${slugify(section.section_title)}?focus=${encodeURIComponent(openField.field_name)}`
                   )

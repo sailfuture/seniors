@@ -5,12 +5,10 @@ import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { useSession } from "@/components/session-provider"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
   CheckmarkCircle02Icon,
-  SentIcon,
   AiSearchIcon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
@@ -472,43 +470,46 @@ export function EssayEditorPage({
 
   const canSubmit = wordCount > 0 && (!minWords || wordCount >= minWords)
 
+  // Upper-left of the editor card: save status + submission actions, opposite
+  // the AI check and word count. These stay clickable while the document is
+  // locked — withdrawing IS the way back to editing.
+  const toolbarActions = (
+    <div className="flex items-center gap-2">
+      <SaveIndicator status={saveStatus} />
+      {isReadyForReview && !projectLock && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          disabled={submitting}
+          onClick={withdrawSubmission}
+        >
+          {submitting ? "Withdrawing…" : "Edit Submission"}
+        </Button>
+      )}
+      {!isLocked && (
+        <Button
+          size="sm"
+          className="h-8 bg-[#0f1f52] text-xs text-white hover:bg-[#152a6b]"
+          disabled={!canSubmit || submitting}
+          onClick={() => setConfirmSubmit(true)}
+          title={
+            !canSubmit
+              ? minWords
+                ? `Minimum ${minWords} words required`
+                : "The essay is empty"
+              : undefined
+          }
+        >
+          Submit for Review
+        </Button>
+      )}
+    </div>
+  )
+
   return (
     <div className="flex w-full flex-1 flex-col p-4 md:p-6">
-      <div className="flex items-center justify-between gap-2">
-        <BackButton href={backHref} label={backLabel} />
-        <div className="flex items-center gap-2">
-          <SaveIndicator status={saveStatus} />
-          {isReadyForReview && !projectLock && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={submitting}
-              onClick={withdrawSubmission}
-            >
-              {submitting ? "Withdrawing…" : "Edit Submission"}
-            </Button>
-          )}
-          {!isLocked && (
-            <Button
-              size="sm"
-              className="bg-[#0f1f52] text-white hover:bg-[#152a6b]"
-              disabled={!canSubmit || submitting}
-              onClick={() => setConfirmSubmit(true)}
-              title={
-                !canSubmit
-                  ? minWords
-                    ? `Minimum ${minWords} words required`
-                    : "The essay is empty"
-                  : undefined
-              }
-            >
-              Submit for Review
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-6 space-y-1">
+      <div className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">{question.field_label}</h1>
         {question.detailed_instructions && (
           <p className="text-muted-foreground whitespace-pre-wrap text-sm">
@@ -517,19 +518,22 @@ export function EssayEditorPage({
         )}
       </div>
 
+      <div className="mt-3 flex items-center gap-2">
+        <BackButton href={backHref} label={backLabel} />
+      </div>
+
       {projectLock ? (
         <ProjectLockedBanner className="mt-4" />
       ) : (
-        isLocked && (
+        isComplete && (
           <div className="bg-muted/50 text-muted-foreground mt-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
             <HugeiconsIcon
-              icon={isComplete ? CheckmarkCircle02Icon : SentIcon}
+              icon={CheckmarkCircle02Icon}
               strokeWidth={2}
-              className={`size-4 shrink-0 ${isComplete ? "text-green-600" : "text-blue-500"}`}
+              className="size-4 shrink-0 text-green-600"
             />
-            {isComplete
-              ? "This essay has been marked complete. Reopen it from the section page to make changes."
-              : "This essay has been sent for review, so editing and comments are paused. Use Edit Submission above to withdraw it and keep working."}
+            This essay has been marked complete. Reopen it from the section page
+            to make changes.
           </div>
         )
       )}
@@ -537,14 +541,7 @@ export function EssayEditorPage({
       {/* Document frame: the editor sits as a white "page" on a light-gray
           surround, so the writing surface reads like a real document. The
           flex-1 chain stretches it to the bottom of the container. */}
-      <div
-        className={cn(
-          "mt-4 flex flex-1 flex-col rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20",
-          // Submitted or complete: the whole writing surface is inert — no
-          // edits, no comments, no AI check — until it's withdrawn/reopened.
-          isLocked && "pointer-events-none opacity-60 select-none"
-        )}
-      >
+      <div className="mt-4 flex flex-1 flex-col rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20">
         <RichTextEditor
           className="flex-1 rounded-lg border bg-white shadow-sm dark:bg-card"
           value={value}
@@ -553,6 +550,7 @@ export function EssayEditorPage({
           disabled={isLocked}
           placeholder={question.placeholder}
           showThreadList
+          toolbarLeft={toolbarActions}
           toolbarRight={toolbarExtras}
           comments={
             studentId && !isLocked

@@ -105,6 +105,7 @@ export function RichTextEditor({
   bodyClassName = "px-6 py-8 sm:px-10",
   showThreadList = false,
   toolbarRight,
+  toolbarLeft,
 }: {
   value: string
   onChange: (value: string) => void
@@ -124,6 +125,9 @@ export function RichTextEditor({
   /** Right-aligned slot in the toolbar (word count, status, …). Rendered in a
    *  slim bar of its own when the editing toolbar is hidden. */
   toolbarRight?: React.ReactNode
+  /** Left-aligned slot (save status, submit actions). Stays interactive even
+   *  when the document itself is disabled and dimmed. */
+  toolbarLeft?: React.ReactNode
 }) {
   const lastEmitted = useRef(value)
   const [loadError, setLoadError] = useState(false)
@@ -451,16 +455,26 @@ export function RichTextEditor({
           editor={editor}
           annotateOnly={annotateOnly}
           onComment={commentsEnabled ? startCommentOnSelection : undefined}
+          leftSlot={toolbarLeft}
           rightSlot={rightArea}
         />
       ) : (
-        rightArea && (
-          <div className="bg-background sticky top-0 z-10 flex items-center justify-end rounded-t-lg border-b px-3 py-2">
-            {rightArea}
+        (rightArea || toolbarLeft) && (
+          <div className="bg-background sticky top-0 z-10 flex items-center justify-between gap-2 rounded-t-lg border-b px-3 py-2">
+            <div className="flex items-center gap-2">{toolbarLeft}</div>
+            <div className="flex items-center gap-2">{rightArea}</div>
           </div>
         )
       )}
-      <EditorContent editor={editor} className="flex flex-1 flex-col [&>.tiptap]:flex-1" />
+      <EditorContent
+        editor={editor}
+        className={cn(
+          "flex flex-1 flex-col [&>.tiptap]:flex-1",
+          // A disabled document is visibly inert (submitted/complete/locked),
+          // while the toolbar slots above stay interactive.
+          disabled && "pointer-events-none select-none opacity-60"
+        )}
+      />
 
       {/* Floating comment chip at the selection — mousedown is prevented so
           clicking it doesn't collapse the selection before the click lands.
@@ -811,11 +825,13 @@ function EditorToolbar({
   editor,
   annotateOnly = false,
   onComment,
+  leftSlot,
   rightSlot,
 }: {
   editor: Editor | null
   annotateOnly?: boolean
   onComment?: () => void
+  leftSlot?: React.ReactNode
   rightSlot?: React.ReactNode
 }) {
   const liveState = useEditorState({
@@ -880,6 +896,7 @@ function EditorToolbar({
   if (annotateOnly) {
     return (
       <div className="bg-background sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-lg border-b px-2 py-2">
+        {leftSlot && <div className="mr-1 flex items-center gap-2">{leftSlot}</div>}
         {commentButton}
         <span className="text-muted-foreground text-xs">
           Select text and comment — the essay itself stays read-only.
@@ -891,6 +908,12 @@ function EditorToolbar({
 
   return (
     <div className="bg-background sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-t-lg border-b px-2 py-2">
+      {leftSlot && (
+        <>
+          <div className="mr-1 flex items-center gap-2">{leftSlot}</div>
+          <Separator orientation="vertical" className="mx-1 h-6" />
+        </>
+      )}
       <ToolbarButton
         label="Bold"
         active={state.bold}

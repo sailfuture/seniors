@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import { useSession } from "@/components/session-provider"
 import {
   Sheet,
@@ -12,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowTurnBackwardIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
+import { ArrowTurnBackwardIcon, CheckmarkCircle02Icon, LicenseDraftIcon } from "@hugeicons/core-free-icons"
 import type { Comment } from "@/lib/form-types"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import { FieldActivityStream } from "./field-activity-stream"
@@ -261,7 +262,21 @@ export function ResponseReviewSheet({
             ) : target && isLineItemsQuestion(target.question) ? (
               <LineItemsTable raw={value} />
             ) : target && (isRichTextQuestion(target.question) || looksLikeRichTextDoc(value)) ? (
-              <RichTextDisplay raw={value} showComments />
+              <div className="space-y-3">
+                <Button asChild variant="outline" size="sm" className="gap-1.5">
+                  <Link
+                    href={`/admin/${
+                      apiConfig.fields.sectionId.startsWith("lifemap")
+                        ? "life-map"
+                        : "business-thesis"
+                    }/${target.response.students_id}/essay/${target.question.id}`}
+                  >
+                    <HugeiconsIcon icon={LicenseDraftIcon} strokeWidth={2} className="size-4" />
+                    Open Full Essay
+                  </Link>
+                </Button>
+                <RichTextDisplay raw={value} showComments />
+              </div>
             ) : (
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{value || "—"}</p>
             )}
