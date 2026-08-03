@@ -1,8 +1,13 @@
+import { ADVISORS_ENDPOINT, type Advisor } from "@/lib/advisors"
+
 const STUDENT_LOGIN_CHECK_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/student_login_check"
 
 const TEACHER_LOGIN_CHECK_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/teacher_login_check"
+
+const ADVISOR_LOGIN_CHECK_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/advisor_login_check"
 
 export interface XanoStudent {
   id: string
@@ -27,9 +32,10 @@ export interface XanoTeacher {
  * looked up on every request.
  */
 export interface RosterMetadata {
-  role: "student" | "admin"
+  role: "student" | "admin" | "advisor"
   students_id?: string
   teachers_id?: string
+  advisors_id?: number
   firstName: string
   lastName: string
   profileImage: string
@@ -70,9 +76,51 @@ export async function lookupTeacher(email: string): Promise<XanoTeacher | null> 
 }
 
 /**
+ * Looks an email up in the advisors table. Prefers the dedicated
+ * `advisor_login_check` endpoint (same contract as the student/teacher
+ * checks); until that exists in Xano, falls back to filtering the advisors
+ * list server-side. Deactivated advisors never match.
+ */
+export async function lookupAdvisor(email: string): Promise<Advisor | null> {
+  const normalized = email.trim().toLowerCase()
+
+  try {
+    const url = new URL(ADVISOR_LOGIN_CHECK_ENDPOINT)
+    url.searchParams.set("email", normalized)
+
+    const res = await fetch(url.toString())
+    if (res.ok) {
+      const data = await res.json()
+      if (data && data !== "null") {
+        const advisor = data as Advisor
+        return advisor.isActive === false ? null : advisor
+      }
+      return null
+    }
+    // Endpoint missing (404) or erroring: fall through to the list scan.
+  } catch {
+    // Network failure: fall through to the list scan.
+  }
+
+  try {
+    const res = await fetch(ADVISORS_ENDPOINT)
+    if (!res.ok) return null
+    const rows = await res.json()
+    if (!Array.isArray(rows)) return null
+    const advisor = (rows as Advisor[]).find(
+      (a) => a.email?.trim().toLowerCase() === normalized
+    )
+    if (!advisor || advisor.isActive === false) return null
+    return advisor
+  } catch {
+    return null
+  }
+}
+
+/**
  * Resolves a signed-in email address against the roster. Returns null when the
- * address belongs to neither an enrolled student nor a staff member, which is
- * what gates access to the dashboard.
+ * address belongs to no enrolled student, staff member, or active advisor,
+ * which is what gates access to the dashboard.
  */
 export async function lookupRoster(email: string): Promise<RosterMetadata | null> {
   const student = await lookupStudent(email)
@@ -94,6 +142,17 @@ export async function lookupRoster(email: string): Promise<RosterMetadata | null
       firstName: teacher.firstName,
       lastName: teacher.lastName,
       profileImage: teacher.profileImage ?? "",
+    }
+  }
+
+  const advisor = await lookupAdvisor(email)
+  if (advisor) {
+    return {
+      role: "advisor",
+      advisors_id: advisor.id,
+      firstName: advisor.firstName,
+      lastName: advisor.lastName,
+      profileImage: advisor.profileImage ?? "",
     }
   }
 

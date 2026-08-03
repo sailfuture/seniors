@@ -8,11 +8,29 @@ const isProtectedRoute = createRouteMatcher([
   "/image-generation(.*)",
   "/api/image-generation(.*)",
   "/api/student(.*)",
+  "/api/advisors(.*)",
 ])
+
+const isAdminRoute = createRouteMatcher(["/admin(.*)"])
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
     await auth.protect()
+  }
+
+  // Keep students and advisors out of the admin surface. Only enforceable
+  // when the session token is configured to carry publicMetadata; without
+  // that claim we let the request through rather than lock admins out.
+  if (isAdminRoute(req)) {
+    const { sessionClaims } = await auth.protect()
+    const metadata = (sessionClaims as Record<string, unknown> | null)?.metadata
+    const role =
+      metadata && typeof metadata === "object"
+        ? (metadata as Record<string, unknown>).role
+        : undefined
+    if (typeof role === "string" && role !== "admin") {
+      return Response.redirect(new URL("/dashboard", req.url))
+    }
   }
 })
 

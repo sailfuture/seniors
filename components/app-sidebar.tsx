@@ -811,6 +811,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const isLifeMap = pathname.startsWith("/admin/life-map/") && adminStudentId
 
+  // Advisors work from their dashboard's student list; the sidebar is built
+  // around a student's own sections or the admin roster, neither of which
+  // applies to them. (After the hooks so the hook order stays stable.)
+  if (role === "advisor") {
+    return null
+  }
+
   return (
     <Sidebar
       className="top-(--header-height) h-[calc(100svh-var(--header-height))]!"

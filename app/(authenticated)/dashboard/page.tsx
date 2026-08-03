@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MapsIcon, BookOpen02Icon, SquareLock01Icon } from "@hugeicons/core-free-icons"
 import { TeacherDashboard } from "@/components/teacher-dashboard"
+import { AdvisorDashboard } from "@/components/advisor-dashboard"
 import { ProductStatusCard } from "@/components/status-overview"
 import { fetchSections, titleToSlug } from "@/lib/lifemap-sections"
 import { btTitleToSlug } from "@/lib/businessthesis-sections"
@@ -147,6 +148,10 @@ export default function DashboardPage() {
 
   if (role === "admin") {
     return <TeacherDashboard />
+  }
+
+  if (role === "advisor") {
+    return <AdvisorDashboard />
   }
 
   return <StudentDashboard />

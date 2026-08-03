@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { UserAdd01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons"
+import { UserAdd01Icon, PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import {
   advisorInitials,
   advisorName,
@@ -36,6 +36,8 @@ import {
   type Advisor,
   type AdvisorAssignment,
 } from "@/lib/advisors"
+import { fetchActiveStudents, studentName, type RosterStudent } from "@/lib/students"
+import { AdvisorStudentsDialog } from "@/components/advisor-students-dialog"
 
 const PRODUCT_LABEL: Record<string, string> = {
   "business-thesis": "Business Thesis",
@@ -50,16 +52,23 @@ const PRODUCT_LABEL: Record<string, string> = {
 export function AdvisorManager() {
   const [advisors, setAdvisors] = useState<Advisor[]>([])
   const [assignments, setAssignments] = useState<AdvisorAssignment[]>([])
+  const [students, setStudents] = useState<RosterStudent[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Advisor | null>(null)
+  const [managing, setManaging] = useState<Advisor | null>(null)
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "" })
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
-    const [a, asg] = await Promise.all([fetchAdvisors(), fetchAdvisorAssignments()])
+    const [a, asg, s] = await Promise.all([
+      fetchAdvisors(),
+      fetchAdvisorAssignments(),
+      fetchActiveStudents(),
+    ])
     setAdvisors(a)
     setAssignments(asg)
+    setStudents(s)
     setLoading(false)
   }, [])
 
@@ -67,7 +76,7 @@ export function AdvisorManager() {
     load()
   }, [load])
 
-  // Assignment counts per advisor, so the table shows their current load.
+  // Assignments per advisor, so the table can show who they cover.
   const countsByAdvisor = useMemo(() => {
     const m = new Map<number, AdvisorAssignment[]>()
     for (const a of assignments) {
@@ -75,6 +84,11 @@ export function AdvisorManager() {
     }
     return m
   }, [assignments])
+
+  const studentsById = useMemo(
+    () => new Map(students.map((s) => [String(s.id), s])),
+    [students]
+  )
 
   const openAdd = () => {
     setEditing(null)
@@ -127,7 +141,31 @@ export function AdvisorManager() {
         })
         if (!created) throw new Error()
         setAdvisors((prev) => [...prev, created])
-        toast.success(`${advisorName(created)} added`)
+
+        // Welcome email goes through our server route (the Resend key can't
+        // live in the browser). The advisor exists either way, so a mail
+        // failure downgrades the toast instead of rolling anything back.
+        try {
+          const res = await fetch("/api/advisors/welcome", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: created.email,
+              firstName: created.firstName,
+            }),
+          })
+          if (res.ok) {
+            toast.success(`${advisorName(created)} added — welcome email sent`)
+          } else {
+            toast.warning(
+              `${advisorName(created)} added, but the welcome email didn't send.`
+            )
+          }
+        } catch {
+          toast.warning(
+            `${advisorName(created)} added, but the welcome email didn't send.`
+          )
+        }
       }
       setDialogOpen(false)
     } catch {
@@ -197,8 +235,6 @@ export function AdvisorManager() {
               {advisors.map((a) => {
                 const active = a.isActive ?? true
                 const mine = countsByAdvisor.get(a.id) ?? []
-                const byProduct = new Map<string, number>()
-                for (const m of mine) byProduct.set(m.type, (byProduct.get(m.type) ?? 0) + 1)
                 return (
                   <TableRow key={a.id} className={active ? "" : "opacity-50"}>
                     <TableCell>
@@ -217,16 +253,38 @@ export function AdvisorManager() {
                         <span className="text-muted-foreground text-sm">—</span>
                       ) : (
                         <div className="flex flex-wrap gap-1">
-                          {[...byProduct.entries()].map(([product, n]) => (
-                            <Badge key={product} variant="secondary" className="font-normal">
-                              {PRODUCT_LABEL[product] ?? product} · {n}
-                            </Badge>
-                          ))}
+                          {mine.map((m) => {
+                            const student = studentsById.get(String(m.students_id))
+                            return (
+                              <Badge
+                                key={m.id}
+                                variant="secondary"
+                                className="max-w-44 font-normal"
+                                title={`${PRODUCT_LABEL[m.type] ?? m.type}`}
+                              >
+                                <span className="truncate">
+                                  {student ? studentName(student) : `#${m.students_id}`}
+                                </span>
+                                <span className="text-muted-foreground ml-1 shrink-0">
+                                  · {m.type === "business-thesis" ? "BT" : "LM"}
+                                </span>
+                              </Badge>
+                            )
+                          })}
                         </div>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="text-muted-foreground size-8"
+                          title="Manage assigned students"
+                          onClick={() => setManaging(a)}
+                        >
+                          <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} className="size-4" />
+                        </Button>
                         <Button
                           variant="outline"
                           size="icon"
@@ -252,6 +310,18 @@ export function AdvisorManager() {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {managing && (
+        <AdvisorStudentsDialog
+          advisor={managing}
+          assignments={assignments}
+          students={students}
+          open
+          onOpenChange={(o) => { if (!o) setManaging(null) }}
+          onAssigned={(a) => setAssignments((prev) => [...prev, a])}
+          onUnassigned={(id) => setAssignments((prev) => prev.filter((x) => x.id !== id))}
+        />
       )}
 
       <Dialog open={dialogOpen} onOpenChange={(o) => { if (!saving) setDialogOpen(o) }}>

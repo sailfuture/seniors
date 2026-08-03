@@ -95,6 +95,55 @@ This interacts with the in-flight OAuth verification: the app name, home page,
 privacy policy, and terms requirements are unchanged, but the client's
 authorized redirect URIs are not.
 
+## Outside thesis advisors
+
+Advisors are a third roster branch. They sign in with any Google account —
+domain does not matter — and are admitted only if their email is in the Xano
+`advisors` table with `isActive` not false. Roles resolve student → teacher →
+advisor; advisors get `role: "advisor"` and `advisors_id` on the session.
+
+- **Landing**: advisors see their own dashboard (assigned students, links to
+  the public read-only pages). No sidebar, no student/admin nav.
+- **Access control v1**: assignment gates *which links are shown*. The pages
+  they open are the `/public/*` read-only views, which are shareable by
+  design. Advisor write access (commenting) is not built yet.
+- **Admin surface**: `middleware.ts` redirects non-admin roles away from
+  `/admin` — enforced only when the session token carries `metadata` (see
+  session token customization above); without the claim it fails open.
+- **Managing assignments**: `/admin/advisors` shows each advisor's assigned
+  students and has a per-advisor dialog to assign/unassign, writing to the
+  existing `advisor_assignments` table.
+
+### Xano endpoint to add: `advisor_login_check`
+
+Same API group and contract as `student_login_check` / `teacher_login_check`:
+
+- **GET** `api:fJsHVIeC/advisor_login_check?email=<email>`
+- Query the `advisors` table for a record whose `email` matches (compare
+  case-insensitively; the app sends lowercase).
+- Return the advisor record, or null when there is no match.
+
+Until the endpoint exists, `lookupAdvisor` in `lib/roster.ts` falls back to
+fetching the full advisors list and filtering server-side, so advisor sign-in
+works either way. The dedicated endpoint is still worth adding: the fallback
+ships the whole advisor directory to the server on every uncached sign-in.
+
+### Welcome email (Resend)
+
+Adding an advisor at `/admin/advisors` fires a welcome email through
+`app/api/advisors/welcome/route.ts` (admin-gated). Setup:
+
+1. Create a [Resend](https://resend.com) account and verify the
+   `sailfutureacademy.org` sending domain (DNS records shown in their
+   dashboard).
+2. Set `RESEND_API_KEY` in Vercel and `.env.local`.
+3. Optional: `ADVISOR_EMAIL_FROM` to override the default
+   `SailFuture Academy <noreply@sailfutureacademy.org>`.
+
+Without `RESEND_API_KEY` the route returns 503 and the admin UI shows
+"added, but the welcome email didn't send" — advisor creation itself never
+depends on mail delivery.
+
 ## No user data to migrate
 
 NextAuth ran JWT-only with no adapter and no user table — Xano was always the

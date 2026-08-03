@@ -5,6 +5,7 @@ export interface ApiSessionUser {
   role?: string
   students_id?: string
   teachers_id?: string
+  advisors_id?: number
   email?: string
   name?: string
 }
@@ -27,6 +28,7 @@ export async function getApiSession(
     role: session.user.role,
     students_id: session.user.students_id,
     teachers_id: session.user.teachers_id,
+    advisors_id: session.user.advisors_id,
     email: session.user.email ?? undefined,
     name: session.user.name ?? undefined,
   }

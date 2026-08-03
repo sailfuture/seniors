@@ -9,9 +9,10 @@ export interface AppSessionUser {
   name?: string | null
   email?: string | null
   image?: string | null
-  role?: "student" | "admin"
+  role?: "student" | "admin" | "advisor"
   students_id?: string
   teachers_id?: string
+  advisors_id?: number
 }
 
 export interface AppSession {
@@ -21,7 +22,7 @@ export interface AppSession {
 function isRosterMetadata(value: unknown): value is RosterMetadata {
   if (!value || typeof value !== "object") return false
   const role = (value as Record<string, unknown>).role
-  return role === "student" || role === "admin"
+  return role === "student" || role === "admin" || role === "advisor"
 }
 
 /**
@@ -88,6 +89,7 @@ export async function getAppSession(): Promise<AppSession | null> {
       role: metadata.role,
       students_id: metadata.students_id,
       teachers_id: metadata.teachers_id,
+      advisors_id: metadata.advisors_id,
     },
   }
 }
