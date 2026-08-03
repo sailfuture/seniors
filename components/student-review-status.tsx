@@ -464,6 +464,14 @@ export function StudentReviewStatus({
         )
         return false
       }
+      if (gate.verdict === "unavailable") {
+        // Fail closed: no score, no resubmission — the draft above is saved.
+        toast.error(
+          "The AI check couldn't run, so this response wasn't resubmitted. Your draft is saved — please try again in a moment.",
+          { duration: 6000 }
+        )
+        return false
+      }
       try {
         const res = await fetch(`${cfg.responsePatchBase}/${responseId}`, {
           method: "PATCH",

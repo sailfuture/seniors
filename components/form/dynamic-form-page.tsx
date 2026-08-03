@@ -648,6 +648,14 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
               )
               return
             }
+            if (gate.verdict === "unavailable") {
+              // Fail closed: no score, no submission — but don't imply AI was found.
+              toast.error(
+                "The AI check couldn't run, so this response wasn't submitted. Please try again in a moment.",
+                { duration: 6000 }
+              )
+              return
+            }
           } finally {
             setCheckingPlagiarism((prev) => {
               const next = new Set(prev)

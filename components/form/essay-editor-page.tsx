@@ -136,7 +136,7 @@ export function EssayEditorPage({
       const data = await llmRes.json().catch(() => null)
       if (llmRes.ok && data) {
         setAiResult(data)
-      } else if (gate.verdict === "skipped") {
+      } else if (gate.verdict === "skipped" || gate.verdict === "unavailable") {
         // Neither signal came back — surface the failure.
         setAiError(data?.error ?? "The check could not be completed. Please try again.")
       }
@@ -492,6 +492,12 @@ export function EssayEditorPage({
                     <li key={i}>{o}</li>
                   ))}
                 </ul>
+              )}
+              {aiGate?.verdict === "unavailable" && (
+                <p className="text-amber-600 text-xs">
+                  The submission detector couldn&rsquo;t score this essay just
+                  now. Submissions are held until it can — try again in a moment.
+                </p>
               )}
               <p className="text-muted-foreground/70 text-xs">
                 Automated detection is an estimate, not proof — your teacher

@@ -20,13 +20,15 @@ export interface GptZeroRecord {
 
 export interface AiGateResult {
   /**
-   * "blocked"  — over the threshold; the caller must refuse the submission.
-   * "ok"       — scored at or under the threshold.
-   * "skipped"  — too short, no endpoint configured, or the checker errored.
-   *              The gate fails open: a third-party outage must never lock
-   *              every student out of submitting.
+   * "blocked"     — over the threshold; the caller must refuse the submission.
+   * "ok"          — scored at or under the threshold.
+   * "skipped"     — too short to score or no endpoint configured; the
+   *                 submission proceeds unchecked.
+   * "unavailable" — the checker errored or returned no score. The gate fails
+   *                 CLOSED: the caller must refuse the submission and tell
+   *                 the student to retry, without implying AI was detected.
    */
-  verdict: "ok" | "blocked" | "skipped"
+  verdict: "ok" | "blocked" | "skipped" | "unavailable"
   /** Normalized 0–100 percent, when the checker returned one. */
   aiPercent: number | null
   record: GptZeroRecord | null
@@ -73,10 +75,14 @@ export async function checkSubmissionForAi(
       [cfg.fields.sectionId]: String(opts.sectionId),
     })
     const res = await fetch(`${cfg.plagiarismCheckEndpoint}?${params}`)
-    if (!res.ok) return { verdict: "skipped", aiPercent: null, record: null }
+    if (!res.ok) return { verdict: "unavailable", aiPercent: null, record: null }
 
     const record = (await res.json()) as GptZeroRecord | null
-    const aiPercent = normalizeAiPercent(record?.class_probability_ai)
+    if (record?.class_probability_ai == null) {
+      // No score came back — treat it like an outage, not a pass.
+      return { verdict: "unavailable", aiPercent: null, record: record ?? null }
+    }
+    const aiPercent = normalizeAiPercent(record.class_probability_ai)
     const blocked = aiPercent > AI_BLOCK_THRESHOLD
 
     const shouldDelete = keepRecord === "never" || blocked
@@ -84,8 +90,8 @@ export async function checkSubmissionForAi(
       fetch(`${cfg.gptzeroDeleteBase}/${record.id}`, { method: "DELETE" }).catch(() => {})
     }
 
-    return { verdict: blocked ? "blocked" : "ok", aiPercent, record: record ?? null }
+    return { verdict: blocked ? "blocked" : "ok", aiPercent, record }
   } catch {
-    return { verdict: "skipped", aiPercent: null, record: null }
+    return { verdict: "unavailable", aiPercent: null, record: null }
   }
 }
