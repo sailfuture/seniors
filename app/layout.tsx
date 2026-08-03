@@ -18,8 +18,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SailFuture Academy",
-  description: "SailFuture Academy Senior Portal",
+  title: {
+    default: "SailFuture Academy Senior Dashboard",
+    template: "%s | SailFuture Academy Senior Dashboard",
+  },
+  description:
+    "The SailFuture Academy Senior Dashboard is the private academic platform SailFuture Academy seniors and staff use to plan, submit, and track the senior projects required for graduation.",
 };
 
 export default function RootLayout({
