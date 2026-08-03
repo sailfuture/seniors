@@ -1,7 +1,7 @@
 "use client"
 
 import { use, useCallback, useEffect, useState } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/components/session-provider"
 import Link from "next/link"
 import { ReadOnlyDynamicFormPage } from "@/components/form/readonly-dynamic-form-page"
 import { Skeleton } from "@/components/ui/skeleton"

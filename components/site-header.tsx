@@ -1,7 +1,8 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from "react"
-import { useSession, signOut } from "next-auth/react"
+import { useClerk } from "@clerk/nextjs"
+import { useSession } from "@/components/session-provider"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import {
@@ -211,6 +212,7 @@ function HeaderBreadcrumb() {
 export function SiteHeader() {
   const { toggleSidebar } = useSidebar()
   const { data: session, status } = useSession()
+  const { signOut } = useClerk()
   const saveCtx = useSaveContext()
   const refreshCtx = useRefreshContext()
   const studentsId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
@@ -330,7 +332,7 @@ export function SiteHeader() {
                   </>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/login" })}>
+                <DropdownMenuItem onClick={() => signOut({ redirectUrl: "/login" })}>
                   <HugeiconsIcon icon={LogoutIcon} strokeWidth={2} />
                   Log out
                 </DropdownMenuItem>

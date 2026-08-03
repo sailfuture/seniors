@@ -1,14 +1,15 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
-import { signIn } from "next-auth/react"
+import { useSearchParams } from "next/navigation"
+import { useSignIn } from "@clerk/nextjs"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -17,6 +18,30 @@ export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  const { signIn, fetchStatus } = useSignIn()
+  const searchParams = useSearchParams()
+  const [error, setError] = useState<string | null>(null)
+
+  const notAuthorized = searchParams.get("error") === "not_authorized"
+  const busy = fetchStatus === "fetching"
+
+  async function handleSignIn() {
+    if (!signIn) return
+    setError(null)
+    try {
+      const { error: ssoError } = await signIn.sso({
+        strategy: "oauth_google",
+        redirectUrl: "/dashboard",
+        redirectCallbackUrl: "/sso-callback",
+      })
+      if (ssoError) {
+        setError("Sign in could not be started. Please try again.")
+      }
+    } catch {
+      setError("Sign in could not be started. Please try again.")
+    }
+  }
+
   return (
     <div className={cn("flex flex-col gap-4", className)} {...props}>
       <Card className="border-2 border-gray-50 px-4 py-4">
@@ -32,10 +57,21 @@ export function LoginForm({
         <CardContent className="pt-2">
           <Button
             className="w-full bg-[#0f1f52] text-white hover:bg-[#152a6b]"
-            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+            disabled={busy}
+            onClick={handleSignIn}
           >
             Sign In with Google Account
           </Button>
+          {notAuthorized && (
+            <p className="text-destructive mt-3 text-center text-xs">
+              That account is not on the SailFuture Academy roster. Sign in with
+              your school Google account, or contact your teacher if you believe
+              this is an error.
+            </p>
+          )}
+          {error && (
+            <p className="text-destructive mt-3 text-center text-xs">{error}</p>
+          )}
         </CardContent>
       </Card>
       <p className="text-muted-foreground text-center text-xs">

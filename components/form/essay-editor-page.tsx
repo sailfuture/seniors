@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/components/session-provider"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon, CheckmarkCircle02Icon, SentIcon } from "@hugeicons/core-free-icons"

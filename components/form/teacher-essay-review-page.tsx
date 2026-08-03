@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/components/session-provider"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,

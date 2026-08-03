@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
+import { auth } from "@clerk/nextjs/server"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -40,12 +40,9 @@ const FEATURES = [
 ]
 
 export default async function Home() {
-  const cookieStore = await cookies()
-  const hasSession =
-    cookieStore.has("next-auth.session-token") ||
-    cookieStore.has("__Secure-next-auth.session-token")
+  const { userId } = await auth()
 
-  if (hasSession) {
+  if (userId) {
     redirect("/dashboard")
   }
 

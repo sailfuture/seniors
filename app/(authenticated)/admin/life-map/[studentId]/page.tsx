@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/components/session-provider"
 import Link from "next/link"
 import {
   Table,

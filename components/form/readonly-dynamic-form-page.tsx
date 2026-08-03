@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/components/session-provider"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"

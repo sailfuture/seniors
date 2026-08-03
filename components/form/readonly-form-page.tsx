@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/components/session-provider"
 import type { FormPageConfig, Comment } from "@/lib/form-types"
 import { getWordCount } from "@/lib/form-types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"

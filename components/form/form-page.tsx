@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useForm, FormProvider } from "react-hook-form"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/components/session-provider"
 import { useRouter } from "next/navigation"
 import { useAutoSave } from "@/hooks/use-auto-save"
 import type { FormPageConfig, Comment } from "@/lib/form-types"

@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server"
-import { getToken } from "next-auth/jwt"
+import { getAppSession } from "@/lib/clerk-session"
 
 export interface ApiSessionUser {
   role?: string
@@ -9,29 +9,25 @@ export interface ApiSessionUser {
   name?: string
 }
 
-export async function getApiSession(req: NextRequest): Promise<ApiSessionUser | null> {
-  const secret = process.env.NEXTAUTH_SECRET
-  const isSecure = req.nextUrl.protocol === "https:"
-  const cookieName = isSecure
-    ? "__Secure-next-auth.session-token"
-    : "next-auth.session-token"
+/**
+ * Resolves the caller's identity for route handlers. Backed by Clerk, but kept
+ * on the same signature and return shape the routes already used so the
+ * handlers themselves did not change during the migration.
+ *
+ * The `req` argument is no longer needed — Clerk reads the request from async
+ * context — but is retained so existing call sites keep compiling.
+ */
+export async function getApiSession(
+  _req?: NextRequest
+): Promise<ApiSessionUser | null> {
+  const session = await getAppSession()
+  if (!session) return null
 
-  let token = await getToken({ req, secret, cookieName, secureCookie: isSecure })
-  if (!token) {
-    // Fall back: try the opposite cookie name in case NEXTAUTH_URL doesn't match host.
-    token = await getToken({
-      req,
-      secret,
-      cookieName: isSecure ? "next-auth.session-token" : "__Secure-next-auth.session-token",
-      secureCookie: !isSecure,
-    })
-  }
-  if (!token) return null
   return {
-    role: token.role as string | undefined,
-    students_id: token.students_id as string | undefined,
-    teachers_id: token.teachers_id as string | undefined,
-    email: token.email ?? undefined,
-    name: token.name ?? undefined,
+    role: session.user.role,
+    students_id: session.user.students_id,
+    teachers_id: session.user.teachers_id,
+    email: session.user.email ?? undefined,
+    name: session.user.name ?? undefined,
   }
 }

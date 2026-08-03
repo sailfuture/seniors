@@ -1,5 +1,4 @@
-"use client"
-
+import { Suspense } from "react"
 import { LoginForm } from "@/components/login-form"
 
 export default function LoginPage() {
@@ -13,7 +12,9 @@ export default function LoginPage() {
             className="size-16 rounded-full border-[3px] border-white shadow-md"
           />
         </div>
-        <LoginForm />
+        <Suspense>
+          <LoginForm />
+        </Suspense>
       </div>
     </div>
   )

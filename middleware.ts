@@ -1,18 +1,25 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 
-export function middleware(req: NextRequest) {
-  const hasSession =
-    req.cookies.has("next-auth.session-token") ||
-    req.cookies.has("__Secure-next-auth.session-token")
+const isProtectedRoute = createRouteMatcher([
+  "/dashboard(.*)",
+  "/life-map(.*)",
+  "/business-thesis(.*)",
+  "/admin(.*)",
+  "/image-generation(.*)",
+  "/api/image-generation(.*)",
+  "/api/student(.*)",
+])
 
-  if (!hasSession) {
-    return NextResponse.redirect(new URL("/login", req.url))
+export default clerkMiddleware(async (auth, req) => {
+  if (isProtectedRoute(req)) {
+    await auth.protect()
   }
-
-  return NextResponse.next()
-}
+})
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/life-map/:path*", "/business-thesis/:path*", "/admin/:path*", "/image-generation/:path*"],
+  matcher: [
+    // Skip Next internals and static files, but always run on API routes.
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
+  ],
 }

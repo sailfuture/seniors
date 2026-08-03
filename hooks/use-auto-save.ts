@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/components/session-provider"
 import { toast } from "sonner"
 import type { UseFormReturn } from "react-hook-form"
 import type { SaveStatus } from "@/lib/form-types"

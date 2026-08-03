@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/components/session-provider"
 
 import { NavMain } from "@/components/nav-main"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
