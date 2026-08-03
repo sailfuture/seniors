@@ -94,6 +94,7 @@ export function RichTextEditor({
   minHeightClass = "min-h-[55vh]",
   bodyClassName = "px-6 py-8 sm:px-10",
   showThreadList = false,
+  toolbarRight,
 }: {
   value: string
   onChange: (value: string) => void
@@ -110,6 +111,9 @@ export function RichTextEditor({
   /** List every open inline-comment thread below the document (quoted text
    *  plus the whole exchange), so no comment can hide in a highlight. */
   showThreadList?: boolean
+  /** Right-aligned slot in the toolbar (word count, status, …). Rendered in a
+   *  slim bar of its own when the editing toolbar is hidden. */
+  toolbarRight?: React.ReactNode
 }) {
   const lastEmitted = useRef(value)
   const [loadError, setLoadError] = useState(false)
@@ -315,14 +319,21 @@ export function RichTextEditor({
 
   return (
     <div className={cn("flex flex-col", className)}>
-      {showToolbar && (
+      {showToolbar ? (
         <EditorToolbar
           editor={editor}
           annotateOnly={annotateOnly}
           onComment={commentsEnabled ? startCommentOnSelection : undefined}
+          rightSlot={toolbarRight}
         />
+      ) : (
+        toolbarRight && (
+          <div className="bg-background sticky top-0 z-10 flex items-center justify-end rounded-t-lg border-b px-3 py-2">
+            {toolbarRight}
+          </div>
+        )
       )}
-      <EditorContent editor={editor} />
+      <EditorContent editor={editor} className="flex flex-1 flex-col [&>.tiptap]:flex-1" />
       {threadListItems.length > 0 && (
         <div className="border-t px-6 py-4 sm:px-10">
           <p className="text-muted-foreground mb-2 text-[10px] font-semibold uppercase tracking-wider">
@@ -373,10 +384,12 @@ function EditorToolbar({
   editor,
   annotateOnly = false,
   onComment,
+  rightSlot,
 }: {
   editor: Editor | null
   annotateOnly?: boolean
   onComment?: () => void
+  rightSlot?: React.ReactNode
 }) {
   const liveState = useEditorState({
     editor,
@@ -444,6 +457,7 @@ function EditorToolbar({
         <span className="text-muted-foreground text-xs">
           Select text and comment — the essay itself stays read-only.
         </span>
+        {rightSlot && <div className="ml-auto pl-2">{rightSlot}</div>}
       </div>
     )
   }
@@ -567,6 +581,7 @@ function EditorToolbar({
           {commentButton}
         </>
       )}
+      {rightSlot && <div className="ml-auto pl-2">{rightSlot}</div>}
     </div>
   )
 }

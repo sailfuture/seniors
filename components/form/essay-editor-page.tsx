@@ -278,8 +278,20 @@ export function EssayEditorPage({
   const wordCount = richTextWordCount(value)
   const minWords = question.min_words > 0 ? question.min_words : null
 
+  const wordCountLabel = (
+    <span className="text-muted-foreground whitespace-nowrap text-xs tabular-nums">
+      {minWords ? (
+        <span className={wordCount >= minWords ? "text-green-600" : undefined}>
+          {wordCount} / {minWords} min words
+        </span>
+      ) : (
+        <>{wordCount} {wordCount === 1 ? "word" : "words"}</>
+      )}
+    </span>
+  )
+
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 p-4 md:p-6">
+    <div className="flex w-full flex-1 flex-col p-4 md:p-6">
       <div className="flex items-center justify-between gap-2">
         <BackButton href={backHref} label={backLabel} />
         <SaveIndicator status={saveStatus} />
@@ -312,16 +324,18 @@ export function EssayEditorPage({
       )}
 
       {/* Document frame: the editor sits as a white "page" on a light-gray
-          surround, so the writing surface reads like a real document. */}
-      <div className="mt-4 rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20">
+          surround, so the writing surface reads like a real document. The
+          flex-1 chain stretches it to the bottom of the container. */}
+      <div className="mt-4 flex flex-1 flex-col rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20">
         <RichTextEditor
-          className="rounded-lg border bg-white shadow-sm dark:bg-card"
+          className="flex-1 rounded-lg border bg-white shadow-sm dark:bg-card"
           value={value}
           onChange={handleChange}
           onBlur={handleBlur}
           disabled={isLocked}
           placeholder={question.placeholder}
           showThreadList
+          toolbarRight={wordCountLabel}
           comments={
             studentId
               ? {
@@ -336,16 +350,6 @@ export function EssayEditorPage({
               : undefined
           }
         />
-      </div>
-
-      <div className="text-muted-foreground/60 sticky bottom-0 border-t bg-background/95 py-2 text-xs backdrop-blur supports-[backdrop-filter]:bg-background/75">
-        {minWords ? (
-          <span className={wordCount >= minWords ? "" : "text-muted-foreground"}>
-            {wordCount} / {minWords} min words
-          </span>
-        ) : (
-          <span>{wordCount} {wordCount === 1 ? "word" : "words"}</span>
-        )}
       </div>
     </div>
   )

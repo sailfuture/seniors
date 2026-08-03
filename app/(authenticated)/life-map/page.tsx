@@ -36,6 +36,7 @@ import {
   Comment01Icon,
   Link01Icon,
   ArrowLeft02Icon,
+  Activity01Icon,
 } from "@hugeicons/core-free-icons"
 import { titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import type { Comment } from "@/lib/form-types"
@@ -45,6 +46,8 @@ import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
 import { LIFEMAP_API_CONFIG } from "@/lib/form-api-config"
 import { Linkify } from "@/components/linkify"
+import { GroupActivitySheet } from "@/components/form/group-activity-sheet"
+import { fetchResponseEvents, type ResponseEvent } from "@/lib/response-events"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -128,6 +131,25 @@ export default function StudentLifeMapOverviewPage() {
 
   const [sheetRow, setSheetRow] = useState<SectionRow | null>(null)
   const [sheetGroupId, setSheetGroupId] = useState<number | null>(null)
+
+  // Per-group activity timeline (submissions, comments, revisions, approvals).
+  const [activity, setActivity] = useState<{ row: SectionRow; groupId: number | null } | null>(null)
+  const [events, setEvents] = useState<ResponseEvent[]>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [eventsLoaded, setEventsLoaded] = useState(false)
+
+  const openActivity = (row: SectionRow, groupId: number | null) => {
+    setActivity({ row, groupId })
+    if (!eventsLoaded && studentId) {
+      setEventsLoading(true)
+      fetchResponseEvents(LIFEMAP_API_CONFIG, studentId)
+        .then((evs) => {
+          setEvents(evs)
+          setEventsLoaded(true)
+        })
+        .finally(() => setEventsLoading(false))
+    }
+  }
 
   const [sectionQuestions, setSectionQuestions] = useState<TemplateQuestion[]>([])
   const [sectionResponses, setSectionResponses] = useState<StudentResponse[]>([])
@@ -272,6 +294,35 @@ export default function StudentLifeMapOverviewPage() {
     return bTime - aTime
   })
 
+  const activityQs = activity
+    ? allTemplateQuestions
+        .filter((q) => !q.isArchived && q.isPublished && q.lifemap_sections_id === activity.row.section.id)
+        .filter((q) =>
+          activity.groupId !== null
+            ? q.lifemap_custom_group_id === activity.groupId
+            : !q.lifemap_custom_group_id
+        )
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    : []
+  const activityFieldNames = new Set(activityQs.map((q) => q.field_name))
+  const activityComments = activity
+    ? comments.filter((c) => {
+        if (c.field_name === "_section_comment") {
+          if (Number(c.lifemap_sections_id) !== activity.row.section.id) return false
+          return activity.groupId !== null
+            ? Number(c.lifemap_custom_group_id) === activity.groupId
+            : !c.lifemap_custom_group_id
+        }
+        return activityFieldNames.has(c.field_name)
+      })
+    : []
+  const activityName = activity
+    ? activity.groupId !== null
+      ? activity.row.groups.find((g) => g.id === activity.groupId)?.group_name ??
+        activity.row.section.section_title
+      : activity.row.section.section_title
+    : ""
+
   if (loading || !studentId) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -330,6 +381,7 @@ export default function StudentLifeMapOverviewPage() {
                   locked={locked}
                   onRowClick={(slug) => router.push(`/life-map/${slug}`)}
                   onViewSummary={(groupId) => openSheet(row, groupId)}
+                  onViewActivity={(groupId) => openActivity(row, groupId)}
                   templateQuestions={allTemplateQuestions}
                   responses={allResponses}
                   comments={comments}
@@ -339,6 +391,29 @@ export default function StudentLifeMapOverviewPage() {
           </TableBody>
         </Table>
       </div>
+
+      {activity && (
+        <GroupActivitySheet
+          open
+          onOpenChange={(o) => { if (!o) setActivity(null) }}
+          groupName={activityName}
+          viewer="student"
+          questions={activityQs.map((q) => ({
+            id: q.id,
+            field_name: q.field_name,
+            field_label: q.field_label,
+          }))}
+          responses={allResponses.map((r) => ({
+            templateId: r.lifemap_template_id,
+            isComplete: r.isComplete,
+            revisionNeeded: r.revisionNeeded,
+            readyReview: r.readyReview,
+          }))}
+          comments={activityComments}
+          events={events}
+          loading={eventsLoading}
+        />
+      )}
 
       <Sheet open={!!sheetRow} onOpenChange={(open) => { if (!open) setSheetRow(null) }}>
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-lg">
@@ -452,6 +527,7 @@ function SectionTableRows({
   locked,
   onRowClick,
   onViewSummary,
+  onViewActivity,
   templateQuestions,
   responses,
   comments,
@@ -460,6 +536,7 @@ function SectionTableRows({
   locked: boolean
   onRowClick: (slug: string) => void
   onViewSummary: (groupId: number | null) => void
+  onViewActivity: (groupId: number | null) => void
   templateQuestions: TemplateQuestion[]
   responses: StudentResponse[]
   comments: Comment[]
@@ -506,7 +583,11 @@ function SectionTableRows({
             )}
           </div>
         </TableCell>
-        <TableCell />
+        <TableCell className="text-right">
+          {!locked && (
+            <ActivityButton onClick={() => onViewActivity(null)} />
+          )}
+        </TableCell>
       </TableRow>
     )
   }
@@ -620,28 +701,49 @@ function SectionTableRows({
               </div>
             </TableCell>
             <TableCell className="text-right">
-              {isGroupComplete ? (
-                <span className="text-muted-foreground/60 text-xs">
-                  {formatRelativeTime(lastCompletedTime)}
-                </span>
-              ) : (() => {
-                const remaining = groupQs.length - groupCompleted
-                return (
-                  <div className="flex items-center justify-end gap-1.5">
-                    <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-green-600" title={`${groupCompleted} completed`}>
-                      {groupCompleted}
-                    </div>
-                    <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-muted-foreground" title={`${remaining} remaining`}>
-                      {remaining}
-                    </div>
-                  </div>
-                )
-              })()}
+              <div className="flex items-center justify-end gap-1.5">
+                {!locked && (
+                  <ActivityButton onClick={() => onViewActivity(group.id)} />
+                )}
+                {isGroupComplete ? (
+                  <span className="text-muted-foreground/60 text-xs">
+                    {formatRelativeTime(lastCompletedTime)}
+                  </span>
+                ) : (() => {
+                  const remaining = groupQs.length - groupCompleted
+                  return (
+                    <>
+                      <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-green-600" title={`${groupCompleted} completed`}>
+                        {groupCompleted}
+                      </div>
+                      <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-muted-foreground" title={`${remaining} remaining`}>
+                        {remaining}
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
             </TableCell>
           </TableRow>
         )
       })}
     </>
+  )
+}
+
+function ActivityButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="hover:bg-accent inline-flex size-7 items-center justify-center rounded-md border transition-colors"
+      title="View activity"
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+    >
+      <HugeiconsIcon icon={Activity01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />
+    </button>
   )
 }
 
