@@ -36,7 +36,18 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ClerkProvider signInUrl="/login" signInFallbackRedirectUrl="/dashboard">
+        <ClerkProvider
+          signInUrl="/login"
+          signInFallbackRedirectUrl="/dashboard"
+          appearance={{
+            // Match the SailFuture navy across any Clerk-rendered UI.
+            variables: {
+              colorPrimary: "#0f1f52",
+              colorForeground: "#1a1a2e",
+              borderRadius: "0.5rem",
+            },
+          }}
+        >
           <TooltipProvider>{children}</TooltipProvider>
           <Toaster position="bottom-right" />
         </ClerkProvider>
