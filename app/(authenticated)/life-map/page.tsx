@@ -44,6 +44,7 @@ import { useRefreshRegister } from "@/lib/refresh-context"
 import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
 import { LIFEMAP_API_CONFIG } from "@/lib/form-api-config"
+import { Linkify } from "@/components/linkify"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -671,7 +672,7 @@ function CommentCard({
           <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
         </button>
       )}
-      <p className={cn("whitespace-pre-wrap", !isRead && "pr-7")}>{c.note}</p>
+      <p className={cn("whitespace-pre-wrap", !isRead && "pr-7")}><Linkify text={c.note} /></p>
       <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
         {commentTime && <span>{commentTime}</span>}
         {commentTime && c.teacher_name && <span>&middot;</span>}

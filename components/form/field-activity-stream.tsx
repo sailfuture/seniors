@@ -22,6 +22,7 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
+import { Linkify } from "@/components/linkify"
 import type { Comment } from "@/lib/form-types"
 import type { ResponseEvent } from "@/lib/response-events"
 
@@ -91,6 +92,7 @@ export function FieldActivityStream({
   onMarkRead,
   autoMarkRead = false,
   scrollToLatest = false,
+  fieldLabelFor,
   className,
 }: {
   /** Comments already scoped to this field. */
@@ -112,6 +114,12 @@ export function FieldActivityStream({
   autoMarkRead?: boolean
   /** Scroll the newest comment into view on open and when one is added. */
   scrollToLatest?: boolean
+  /**
+   * Group-stream mode: resolve a field_name to its question label so each
+   * bubble and marker says which question it belongs to. Omit for the normal
+   * single-field thread.
+   */
+  fieldLabelFor?: (fieldName: string) => string | undefined
   className?: string
 }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
@@ -197,6 +205,9 @@ export function FieldActivityStream({
                 </MarkerIcon>
                 <MarkerContent>
                   <span className={cn("font-medium", meta.labelClass)}>{meta.label}</span>
+                  {fieldLabelFor?.(item.e.field_name) && (
+                    <span className="text-muted-foreground"> &middot; {fieldLabelFor(item.e.field_name)}</span>
+                  )}
                   {item.e.actor_name && <span className="text-muted-foreground"> &middot; {item.e.actor_name}</span>}
                   {ts > 0 && <span className="text-muted-foreground"> &middot; {getRelativeTime(ts)}</span>}
                 </MarkerContent>
@@ -241,6 +252,18 @@ export function FieldActivityStream({
             )}
 
             <Bubble variant={variant} align={align} className="group/bubble">
+              {fieldLabelFor && (
+                <div
+                  className={cn(
+                    "text-muted-foreground mb-0.5 text-[10px] font-medium",
+                    align === "end" && "text-right"
+                  )}
+                >
+                  {c.field_name === "_section_comment"
+                    ? "Group comment"
+                    : fieldLabelFor(c.field_name) ?? c.field_name}
+                </div>
+              )}
               <BubbleContent
                 className={cn(
                   // Revision reads as a light bubble with a red border only —
@@ -248,7 +271,7 @@ export function FieldActivityStream({
                   isRevision && "border-red-300 bg-gray-50 dark:border-red-400/40 dark:bg-muted/40"
                 )}
               >
-                {c.note}
+                <Linkify text={c.note} />
               </BubbleContent>
               <div
                 className={cn(

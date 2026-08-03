@@ -54,6 +54,7 @@ import type { Comment } from "@/lib/form-types"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import { ProductStatusCard } from "@/components/status-overview"
 import { LIFEMAP_API_CONFIG } from "@/lib/form-api-config"
+import { Linkify } from "@/components/linkify"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -751,7 +752,7 @@ function InlineCommentCard({
           </button>
         </div>
       )}
-      <p className="whitespace-pre-wrap pr-7">{comment.note}</p>
+      <p className="whitespace-pre-wrap pr-7"><Linkify text={comment.note} /></p>
       <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
         {createdDate && <span>{formatRelativeTime(createdDate.getTime())}</span>}
         {createdDate && comment.teacher_name && <span>&middot;</span>}

@@ -10,6 +10,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { LegalDocumentIcon } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import type { Comment } from "@/lib/form-types"
+import { Linkify } from "@/components/linkify"
 
 interface CommentPopoverProps {
   fieldName: string
@@ -68,7 +69,7 @@ export function CommentPopover({ fieldName, comments, onMarkRead }: CommentPopov
                     {comment.teacher_name}
                   </p>
                 )}
-                <p>{comment.note}</p>
+                <p><Linkify text={comment.note} /></p>
               </div>
             ))}
           </div>

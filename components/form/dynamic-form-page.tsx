@@ -74,6 +74,7 @@ import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-typ
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { postResponseEvent } from "@/lib/response-events"
 import { postResponseVersion } from "@/lib/response-versions"
+import { Linkify } from "@/components/linkify"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -1195,7 +1196,7 @@ function StudentCommentCard({ comment: c }: { comment: Comment }) {
 
   return (
     <div className={cn("relative rounded-md border p-3 text-sm", isRead && "bg-muted/50")}>
-      <p className="whitespace-pre-wrap">{c.note}</p>
+      <p className="whitespace-pre-wrap"><Linkify text={c.note} /></p>
       <div className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
         {commentTime && <span>{commentTime}</span>}
         {commentTime && c.teacher_name && <span>&middot;</span>}
