@@ -416,7 +416,14 @@ export function TeacherEssayReviewPage({
 
   return (
     <div className="w-full flex-1 bg-white p-4 md:p-6 dark:bg-background">
-      <div className="flex items-center justify-between gap-2">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold tracking-tight">{question.field_label}</h1>
+        {question.detailed_instructions && (
+          <p className="text-muted-foreground whitespace-pre-wrap text-sm">{question.detailed_instructions}</p>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2">
         <BackButton href={backHref} />
         <div className="flex items-center gap-3">
           {studentName && <span className="text-muted-foreground text-sm font-medium">{studentName}</span>}
@@ -446,13 +453,6 @@ export function TeacherEssayReviewPage({
             </Button>
           )}
         </div>
-      </div>
-
-      <div className="mt-6 space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">{question.field_label}</h1>
-        {question.detailed_instructions && (
-          <p className="text-muted-foreground whitespace-pre-wrap text-sm">{question.detailed_instructions}</p>
-        )}
       </div>
 
       {hasEssay && !canAnnotate && (
