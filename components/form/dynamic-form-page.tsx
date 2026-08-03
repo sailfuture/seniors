@@ -74,6 +74,7 @@ import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-typ
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { postResponseEvent } from "@/lib/response-events"
 import { postResponseVersion } from "@/lib/response-versions"
+import { checkSubmissionForAi, AI_BLOCK_THRESHOLD, AI_CHECK_MIN_WORDS } from "@/lib/ai-submission-check"
 import { Linkify } from "@/components/linkify"
 
 interface GptZeroResult {
@@ -622,42 +623,31 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         const text = question && isRichTextQuestion(question) ? extractPlainText(rawText) : rawText
         const textWordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-        if (!skipAiCheck && textWordCount >= 20 && cfg.plagiarismCheckEndpoint) {
+        if (!skipAiCheck && textWordCount >= AI_CHECK_MIN_WORDS && cfg.plagiarismCheckEndpoint) {
           setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
           try {
-            const respIdField = cfg.plagiarismResponseIdField ?? `${F.sectionId.replace('_id', '')}_responses_id`
-            const params = new URLSearchParams({
+            // Shared gate: anything above AI_BLOCK_THRESHOLD percent AI blocks
+            // the submission, the same rule enforced on every submit path.
+            const gate = await checkSubmissionForAi(cfg, {
+              responseId,
+              studentId,
+              sectionId,
               text,
-              [respIdField]: String(responseId),
-              students_id: studentId,
-              [F.sectionId]: String(sectionId),
             })
-            const checkRes = await fetch(`${cfg.plagiarismCheckEndpoint}?${params}`)
-            if (checkRes.ok) {
-              const record = await checkRes.json() as GptZeroResult
-              const aiPct = typeof record?.class_probability_ai === "string"
-                ? parseFloat(record.class_probability_ai)
-                : typeof record?.class_probability_ai === "number"
-                  ? record.class_probability_ai
-                  : 0
-              const normalizedAi = aiPct <= 1 ? aiPct * 100 : aiPct
-              if (record) {
-                setPlagiarismData((prev) => {
-                  const next = new Map(prev)
-                  next.set(responseId, record)
-                  return next
-                })
-              }
-              if (normalizedAi > 50) {
-                if (record?.id && cfg.gptzeroDeleteBase) {
-                  fetch(`${cfg.gptzeroDeleteBase}/${record.id}`, { method: "DELETE" }).catch(() => {})
-                }
-                toast.error("Submission rejected — AI-generated content detected. Please revise your response.", { duration: 5000 })
-                return
-              }
+            if (gate.record) {
+              setPlagiarismData((prev) => {
+                const next = new Map(prev)
+                next.set(responseId, gate.record as GptZeroResult)
+                return next
+              })
             }
-          } catch {
-            // Allow submission if plagiarism check fails
+            if (gate.verdict === "blocked") {
+              toast.error(
+                `Submission rejected — this response scored ${Math.round(gate.aiPercent ?? 0)}% likely AI-generated (limit ${AI_BLOCK_THRESHOLD}%). Please revise it in your own words.`,
+                { duration: 6000 }
+              )
+              return
+            }
           } finally {
             setCheckingPlagiarism((prev) => {
               const next = new Set(prev)

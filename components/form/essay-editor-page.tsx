@@ -23,6 +23,7 @@ import {
 import { RichTextEditor } from "./rich-text-editor"
 import { SaveIndicator } from "./save-indicator"
 import { isRichTextQuestion, richTextWordCount, extractPlainText } from "@/lib/rich-text"
+import { checkSubmissionForAi, AI_BLOCK_THRESHOLD, type AiGateResult } from "@/lib/ai-submission-check"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
@@ -97,6 +98,7 @@ export function EssayEditorPage({
   const [aiOpen, setAiOpen] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [aiGate, setAiGate] = useState<AiGateResult | null>(null)
   const [aiResult, setAiResult] = useState<{
     likelihood: "low" | "medium" | "high"
     summary: string
@@ -104,21 +106,39 @@ export function EssayEditorPage({
   } | null>(null)
 
   const runAiCheck = async () => {
+    const resp = responseRef.current
+    const q = question
+    if (!resp || !q || !studentId) return
     setAiOpen(true)
     setAiLoading(true)
     setAiError(null)
+    setAiGate(null)
     setAiResult(null)
+    const text = extractPlainText(valueRef.current)
     try {
-      const res = await fetch("/api/essay/ai-check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: extractPlainText(valueRef.current) }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setAiError(data?.error ?? "The check could not be completed.")
-      } else {
+      // The authoritative score is the SAME check submissions are gated on
+      // (dry run — its record is deleted); the LLM adds the "why" notes.
+      const [gate, llmRes] = await Promise.all([
+        checkSubmissionForAi(cfg, {
+          responseId: resp.id,
+          studentId,
+          sectionId: Number(q[F.sectionId] ?? 0),
+          text,
+          keepRecord: "never",
+        }),
+        fetch("/api/essay/ai-check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        }),
+      ])
+      setAiGate(gate)
+      const data = await llmRes.json().catch(() => null)
+      if (llmRes.ok && data) {
         setAiResult(data)
+      } else if (gate.verdict === "skipped") {
+        // Neither signal came back — surface the failure.
+        setAiError(data?.error ?? "The check could not be completed. Please try again.")
       }
     } catch {
       setAiError("The check could not be completed. Please try again.")
@@ -419,9 +439,8 @@ export function EssayEditorPage({
               AI writing check
             </DialogTitle>
             <DialogDescription>
-              An automated estimate of how much of this essay reads as
-              AI-generated. It is not proof either way — your teacher makes the
-              final call.
+              The same detector that gates submissions — essays scoring over{" "}
+              {AI_BLOCK_THRESHOLD}% likely AI are blocked from submitting.
             </DialogDescription>
           </DialogHeader>
 
@@ -434,33 +453,52 @@ export function EssayEditorPage({
             </div>
           ) : aiError ? (
             <p className="text-destructive py-2 text-sm">{aiError}</p>
-          ) : aiResult ? (
+          ) : (
             <div className="space-y-3 py-1">
-              <div
-                className={
-                  aiResult.likelihood === "high"
-                    ? "inline-flex rounded-md bg-red-50 px-2.5 py-1 text-sm font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400"
+              {aiGate?.aiPercent != null && aiGate.verdict !== "skipped" ? (
+                <div
+                  className={
+                    aiGate.verdict === "blocked"
+                      ? "rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400"
+                      : "rounded-md bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                  }
+                >
+                  {Math.round(aiGate.aiPercent)}% likely AI —{" "}
+                  {aiGate.verdict === "blocked"
+                    ? `this would be blocked at submission (limit ${AI_BLOCK_THRESHOLD}%)`
+                    : `under the ${AI_BLOCK_THRESHOLD}% submission limit`}
+                </div>
+              ) : aiResult ? (
+                <div
+                  className={
+                    aiResult.likelihood === "high"
+                      ? "inline-flex rounded-md bg-red-50 px-2.5 py-1 text-sm font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400"
+                      : aiResult.likelihood === "medium"
+                        ? "inline-flex rounded-md bg-amber-50 px-2.5 py-1 text-sm font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+                        : "inline-flex rounded-md bg-green-50 px-2.5 py-1 text-sm font-semibold text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                  }
+                >
+                  {aiResult.likelihood === "high"
+                    ? "High likelihood of AI writing"
                     : aiResult.likelihood === "medium"
-                      ? "inline-flex rounded-md bg-amber-50 px-2.5 py-1 text-sm font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
-                      : "inline-flex rounded-md bg-green-50 px-2.5 py-1 text-sm font-semibold text-green-700 dark:bg-green-950/40 dark:text-green-400"
-                }
-              >
-                {aiResult.likelihood === "high"
-                  ? "High likelihood of AI writing"
-                  : aiResult.likelihood === "medium"
-                    ? "Some signs of AI writing"
-                    : "Low likelihood of AI writing"}
-              </div>
-              {aiResult.summary && <p className="text-sm">{aiResult.summary}</p>}
-              {aiResult.observations.length > 0 && (
+                      ? "Some signs of AI writing"
+                      : "Low likelihood of AI writing"}
+                </div>
+              ) : null}
+              {aiResult?.summary && <p className="text-sm">{aiResult.summary}</p>}
+              {aiResult && aiResult.observations.length > 0 && (
                 <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
                   {aiResult.observations.map((o, i) => (
                     <li key={i}>{o}</li>
                   ))}
                 </ul>
               )}
+              <p className="text-muted-foreground/70 text-xs">
+                Automated detection is an estimate, not proof — your teacher
+                makes the final call.
+              </p>
             </div>
-          ) : null}
+          )}
         </DialogContent>
       </Dialog>
     </div>

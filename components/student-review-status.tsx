@@ -24,6 +24,7 @@ import { RichTextDisplay } from "@/components/form/rich-text-display"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
+import { checkSubmissionForAi, AI_BLOCK_THRESHOLD } from "@/lib/ai-submission-check"
 import { isLineItemsQuestion } from "@/lib/line-items"
 import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
@@ -435,38 +436,6 @@ export function StudentReviewStatus({
     [cfg.responsePatchBase, applyResponsePatch, projectLock]
   )
 
-  const runAiCheck = useCallback(
-    async (responseId: number, sectionId: number, text: string): Promise<"ok" | "rejected" | "error"> => {
-      const wordCount = text.trim().split(/\s+/).filter(Boolean).length
-      if (wordCount < 20 || !cfg.plagiarismCheckEndpoint) return "ok"
-      try {
-        const respIdField = cfg.plagiarismResponseIdField ?? `${F.sectionId.replace("_id", "")}_responses_id`
-        const params = new URLSearchParams({
-          text,
-          [respIdField]: String(responseId),
-          students_id: String(studentId),
-          [F.sectionId]: String(sectionId),
-        })
-        const checkRes = await fetch(`${cfg.plagiarismCheckEndpoint}?${params}`)
-        if (!checkRes.ok) return "ok"
-        const record = await checkRes.json()
-        const aiRaw = record?.class_probability_ai
-        const aiPct = typeof aiRaw === "string" ? parseFloat(aiRaw) : typeof aiRaw === "number" ? aiRaw : 0
-        const normalizedAi = aiPct <= 1 ? aiPct * 100 : aiPct
-        if (normalizedAi > 50) {
-          if (record?.id && cfg.gptzeroDeleteBase) {
-            fetch(`${cfg.gptzeroDeleteBase}/${record.id}`, { method: "DELETE" }).catch(() => {})
-          }
-          return "rejected"
-        }
-        return "ok"
-      } catch {
-        return "ok" // fail open, matching the main editor
-      }
-    },
-    [cfg.plagiarismCheckEndpoint, cfg.plagiarismResponseIdField, cfg.gptzeroDeleteBase, F, studentId]
-  )
-
   const handleResubmit = useCallback(
     async (q: TemplateQuestion, responseId: number, value: string): Promise<boolean> => {
       if (projectLock) return false
@@ -477,11 +446,22 @@ export function StudentReviewStatus({
         toast.error("Couldn't save your changes. Please try again.")
         return false
       }
-      const ai = await runAiCheck(responseId, sectionId, value)
-      if (ai === "rejected") {
-        toast.error("Submission rejected — AI-generated content detected. Please revise your response.", {
-          duration: 5000,
-        })
+      // Same gate as first submission: above the threshold, the resubmit is
+      // refused. Essays route through the full editor and hit the section
+      // page's gate instead; this covers the text types edited in the sheet.
+      const checkText =
+        isRichTextQuestion(q) || looksLikeRichTextDoc(value) ? extractPlainText(value) : value
+      const gate = await checkSubmissionForAi(cfg, {
+        responseId,
+        studentId: String(studentId),
+        sectionId,
+        text: checkText,
+      })
+      if (gate.verdict === "blocked") {
+        toast.error(
+          `Resubmission rejected — this response scored ${Math.round(gate.aiPercent ?? 0)}% likely AI-generated (limit ${AI_BLOCK_THRESHOLD}%). Please revise it in your own words.`,
+          { duration: 6000 }
+        )
         return false
       }
       try {
@@ -513,7 +493,7 @@ export function StudentReviewStatus({
         return false
       }
     },
-    [cfg.responsePatchBase, cfg.eventPrefix, F, handleSaveDraft, runAiCheck, applyResponsePatch, comments, handleMarkRead, projectLock]
+    [cfg, F, studentId, handleSaveDraft, applyResponsePatch, comments, handleMarkRead, projectLock]
   )
 
   // --- Sheet data ----------------------------------------------------------
