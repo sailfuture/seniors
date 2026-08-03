@@ -47,6 +47,10 @@ export interface Comment {
    *  essay. Null/absent for ordinary field- and section-level comments.
    *  Requires the thread_id column on the Xano comments tables. */
   thread_id?: string | null
+  /** The highlighted passage an inline thread anchors to, captured at thread
+   *  creation (and backfilled on resolve) so it survives the highlight's
+   *  removal. Requires the quote column on the Xano comments tables. */
+  quote?: string | null
   note: string
   teacher_name?: string
   created_at?: string

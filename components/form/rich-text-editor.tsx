@@ -243,8 +243,9 @@ export function RichTextEditor({
         return
       }
       const coords = editor.view.coordsAtPos(to)
+      // The chip is centered on this x, so clamp by half its width.
       setSelTooltip({
-        x: Math.max(8, Math.min(coords.left, window.innerWidth - 130)),
+        x: Math.max(70, Math.min(coords.left, window.innerWidth - 70)),
         y: coords.bottom,
       })
     }
@@ -288,7 +289,17 @@ export function RichTextEditor({
   const handleSend = useCallback(
     async (note: string): Promise<boolean> => {
       if (!activeThread) return false
-      const created = await inline.reply(activeThread.threadId, note)
+      // A new thread stores its highlighted passage so the exchange stays
+      // legible after resolution removes the highlight.
+      const quote =
+        activeThread.isNew && activeThread.range && editor
+          ? editor.state.doc.textBetween(
+              activeThread.range.from,
+              Math.min(activeThread.range.to, activeThread.range.from + 240),
+              " "
+            )
+          : undefined
+      const created = await inline.reply(activeThread.threadId, note, quote)
       // A brand-new thread's highlight is applied only once its first comment
       // persists, so cancelling leaves no orphan highlight.
       if (created && activeThread.isNew && activeThread.range && editor) {
@@ -304,7 +315,20 @@ export function RichTextEditor({
   // sheet's thread view.
   const resolveThreadById = useCallback(
     async (threadId: string) => {
-      await inline.resolveThread(threadId)
+      // Capture the passage while the highlight still exists — it backfills
+      // threads created before quotes were stored.
+      let quote: string | undefined
+      if (editor) {
+        const ranges = threadMarkRanges(editor, threadId)
+        if (ranges.length) {
+          quote = editor.state.doc.textBetween(
+            ranges[0].from,
+            Math.min(ranges[ranges.length - 1].to, ranges[0].from + 240),
+            " "
+          )
+        }
+      }
+      await inline.resolveThread(threadId, quote)
       if (!editor) return
       const ranges = threadMarkRanges(editor, threadId)
       if (ranges.length) {
@@ -439,12 +463,19 @@ export function RichTextEditor({
       <EditorContent editor={editor} className="flex flex-1 flex-col [&>.tiptap]:flex-1" />
 
       {/* Floating comment chip at the selection — mousedown is prevented so
-          clicking it doesn't collapse the selection before the click lands. */}
-      {selTooltip && !activeThread && (
+          clicking it doesn't collapse the selection before the click lands.
+          Offset below the selection's last line so it never sits on the text
+          being read; hidden entirely while the essay is locked. */}
+      {selTooltip && !activeThread && !disabled && (
         <button
           type="button"
-          style={{ position: "fixed", left: selTooltip.x, top: selTooltip.y + 6, zIndex: 50 }}
-          className="bg-foreground text-background flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium shadow-lg transition-opacity hover:opacity-90"
+          style={{
+            position: "fixed",
+            left: selTooltip.x,
+            top: selTooltip.y + 10,
+            zIndex: 50,
+          }}
+          className="flex -translate-x-1/2 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg transition-colors hover:bg-blue-700"
           onMouseDown={(e) => e.preventDefault()}
           onClick={startCommentOnSelection}
         >
@@ -513,7 +544,11 @@ export function RichTextEditor({
           {sheetThreadId ? (
             <SheetThreadView
               thread={inline.threads.get(sheetThreadId)}
-              quote={threadListItems.find((i) => i.thread.threadId === sheetThreadId)?.quote}
+              quote={
+                threadListItems.find((i) => i.thread.threadId === sheetThreadId)?.quote ??
+                inline.threads.get(sheetThreadId)?.comments.find((c) => c.quote)?.quote ??
+                undefined
+              }
               viewer={viewer}
               canResolve={!disabled && !inline.threads.get(sheetThreadId)?.resolved}
               onReply={(note) => inline.reply(sheetThreadId, note).then((c) => !!c)}
@@ -522,13 +557,17 @@ export function RichTextEditor({
                 await resolveThreadById(sheetThreadId)
                 setSheetThreadId(null)
               }}
-              onShowInEssay={() => {
-                const item = threadListItems.find((i) => i.thread.threadId === sheetThreadId)
-                if (!item) return
-                setThreadsOpen(false)
-                setSheetThreadId(null)
-                openThreadFromList(sheetThreadId, item.from)
-              }}
+              onShowInEssay={
+                threadListItems.some((i) => i.thread.threadId === sheetThreadId)
+                  ? () => {
+                      const item = threadListItems.find((i) => i.thread.threadId === sheetThreadId)
+                      if (!item) return
+                      setThreadsOpen(false)
+                      setSheetThreadId(null)
+                      openThreadFromList(sheetThreadId, item.from)
+                    }
+                  : undefined
+              }
             />
           ) : (
             <div className="flex-1 divide-y overflow-y-auto px-4 py-2">
@@ -563,6 +602,7 @@ export function RichTextEditor({
                   <ThreadListEntry
                     key={thread.threadId}
                     thread={thread}
+                    quote={thread.comments.find((c) => c.quote)?.quote ?? undefined}
                     viewer={viewer}
                     resolved
                     onOpen={() => setSheetThreadId(thread.threadId)}
@@ -630,13 +670,14 @@ function ThreadListEntry({
       )}
     >
       <div className="flex items-center gap-2">
-        {resolved ? (
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700">
+        {resolved && (
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-green-700">
             ✓ Resolved
           </span>
-        ) : (
+        )}
+        {quote && (
           <p className="text-muted-foreground min-w-0 flex-1 truncate border-l-2 border-amber-300 pl-2 text-xs">
-            “{quote?.trim()}”
+            “{quote.trim()}”
           </p>
         )}
         {hasUnread && (
@@ -673,7 +714,8 @@ function SheetThreadView({
   onReply: (note: string) => Promise<boolean>
   onMarkRead: (commentId: number) => void
   onResolve: () => Promise<void>
-  onShowInEssay: () => void
+  /** Present only while the thread's highlight still exists in the document. */
+  onShowInEssay?: () => void
 }) {
   const [note, setNote] = useState("")
   const [sending, setSending] = useState(false)
@@ -701,13 +743,15 @@ function SheetThreadView({
         {quote && (
           <div className="bg-muted/40 mb-3 rounded-md border-l-2 border-amber-300 px-3 py-2">
             <p className="text-muted-foreground text-xs">“{quote.trim()}”</p>
-            <button
-              type="button"
-              onClick={onShowInEssay}
-              className="mt-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
-            >
-              Show in essay
-            </button>
+            {onShowInEssay && (
+              <button
+                type="button"
+                onClick={onShowInEssay}
+                className="mt-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+              >
+                Show in essay
+              </button>
+            )}
           </div>
         )}
         {thread.resolved && (

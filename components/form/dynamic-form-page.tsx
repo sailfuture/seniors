@@ -2,7 +2,7 @@
 
 import { Loader2 } from "lucide-react"
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useSession } from "@/components/session-provider"
 import { toast } from "sonner"
@@ -49,6 +49,7 @@ import {
   ImageUploadIcon,
   HelpCircleIcon,
   Link01Icon,
+  LicenseDraftIcon,
   CheckmarkCircle02Icon,
   CircleIcon,
   Comment01Icon,
@@ -1336,6 +1337,7 @@ function DynamicField({
   useEffect(() => {
     if (groupExpandKey > 0) setQuestionCollapsed(false)
   }, [groupExpandKey])
+  const pathname = usePathname()
   const isImageType = typeId === QUESTION_TYPE.IMAGE_UPLOAD
   const isSourceType = typeId === QUESTION_TYPE.SOURCE
   const isRichTextType = isRichTextQuestion(question)
@@ -1454,6 +1456,20 @@ function DynamicField({
             </Sheet>
           </>
         )}
+          {isRichTextType && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 gap-1 px-2 text-[10px]"
+              asChild
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Link href={`${pathname}/write/${question.id}`}>
+                <HugeiconsIcon icon={LicenseDraftIcon} strokeWidth={2} className="size-3" />
+                {isDimmed ? "View Essay" : wordCount === 0 ? "Open Essay" : "Continue Writing"}
+              </Link>
+            </Button>
+          )}
           {responseStatus?.isComplete && (
             <div title="Complete" className={isDimmed ? "opacity-50" : ""}><HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" /></div>
           )}
@@ -1541,10 +1557,8 @@ function DynamicField({
 
       {isRichTextType && (
         <RichTextPreviewCard
-          questionId={question.id}
           value={value}
           minWords={question.min_words > 0 ? question.min_words : undefined}
-          disabled={isDimmed}
           plagiarism={plagiarism}
         />
       )}

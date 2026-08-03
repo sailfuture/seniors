@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import { Loader2 } from "lucide-react"
 import { useSession } from "@/components/session-provider"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
@@ -24,6 +26,7 @@ import { RichTextEditor } from "./rich-text-editor"
 import { SaveIndicator } from "./save-indicator"
 import { isRichTextQuestion, richTextWordCount, extractPlainText } from "@/lib/rich-text"
 import { checkSubmissionForAi, AI_BLOCK_THRESHOLD, type AiGateResult } from "@/lib/ai-submission-check"
+import { postResponseEvent } from "@/lib/response-events"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister } from "@/lib/refresh-context"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
@@ -93,6 +96,100 @@ export function EssayEditorPage({
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [hasDirty, setHasDirty] = useState(false)
+
+  // Submit / withdraw without leaving the editor.
+  const [confirmSubmit, setConfirmSubmit] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  const patchReviewState = async (
+    patch: { readyReview: boolean },
+    eventType: "submitted" | "reopened",
+    delta: 1 | -1
+  ): Promise<boolean> => {
+    const resp = responseRef.current
+    const q = question
+    if (!resp || !q || !studentId) return false
+    const sectionIdNum = Number(q[F.sectionId] ?? 0)
+    const full = { ...patch, isComplete: false, revisionNeeded: false }
+    try {
+      const res = await fetch(`${cfg.responsePatchBase}/${resp.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(full),
+      })
+      if (!res.ok) return false
+      postResponseEvent(cfg, {
+        studentId,
+        templateId: q.id,
+        fieldName: q.field_name,
+        sectionId: sectionIdNum,
+        eventType,
+        actorName: session?.user?.name ?? "Student",
+      })
+      window.dispatchEvent(
+        new CustomEvent(`${cfg.eventPrefix ?? ""}review-update`, {
+          detail: { sectionId: sectionIdNum, delta },
+        })
+      )
+      setResponse((prev) => (prev ? { ...prev, ...full } : prev))
+      if (responseRef.current) responseRef.current = { ...responseRef.current, ...full }
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const submitForReview = async () => {
+    const resp = responseRef.current
+    const q = question
+    if (!resp || !q || !studentId) return
+    setSubmitting(true)
+    try {
+      // Flush any pending edits so the checked text is the saved text.
+      if (dirtyRef.current) await saveRef.current()
+      const gate = await checkSubmissionForAi(cfg, {
+        responseId: resp.id,
+        studentId,
+        sectionId: Number(q[F.sectionId] ?? 0),
+        text: extractPlainText(valueRef.current),
+      })
+      if (gate.verdict === "blocked") {
+        toast.error(
+          `Submission rejected — this essay scored ${Math.round(gate.aiPercent ?? 0)}% likely AI-generated (limit ${AI_BLOCK_THRESHOLD}%). Please revise it in your own words.`,
+          { duration: 6000 }
+        )
+        return
+      }
+      if (gate.verdict === "unavailable") {
+        toast.error(
+          "The AI check couldn't run, so this essay wasn't submitted. Please try again in a moment.",
+          { duration: 6000 }
+        )
+        return
+      }
+      if (await patchReviewState({ readyReview: true }, "submitted", 1)) {
+        toast.success("Submitted for review")
+      } else {
+        toast.error("Couldn't submit. Please try again.")
+      }
+    } finally {
+      setSubmitting(false)
+      setConfirmSubmit(false)
+    }
+  }
+
+  const withdrawSubmission = async () => {
+    setSubmitting(true)
+    try {
+      if (await patchReviewState({ readyReview: false }, "reopened", -1)) {
+        toast.success("Submission withdrawn — you can keep editing")
+      } else {
+        toast.error("Couldn't withdraw. Please try again.")
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   // "Check for AI" self-check before submitting.
   const [aiOpen, setAiOpen] = useState(false)
@@ -350,9 +447,13 @@ export function EssayEditorPage({
       <button
         type="button"
         onClick={runAiCheck}
-        disabled={aiLoading}
+        disabled={aiLoading || isLocked}
         className="hover:bg-accent inline-flex h-8 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors disabled:opacity-50"
-        title="Check this essay for AI-generated writing"
+        title={
+          isLocked
+            ? "Unavailable while the essay is submitted for review"
+            : "Check this essay for AI-generated writing"
+        }
       >
         <HugeiconsIcon icon={AiSearchIcon} strokeWidth={2} className="size-4" />
         Check for AI
@@ -369,11 +470,42 @@ export function EssayEditorPage({
     </div>
   )
 
+  const canSubmit = wordCount > 0 && (!minWords || wordCount >= minWords)
+
   return (
     <div className="flex w-full flex-1 flex-col p-4 md:p-6">
       <div className="flex items-center justify-between gap-2">
         <BackButton href={backHref} label={backLabel} />
-        <SaveIndicator status={saveStatus} />
+        <div className="flex items-center gap-2">
+          <SaveIndicator status={saveStatus} />
+          {isReadyForReview && !projectLock && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={submitting}
+              onClick={withdrawSubmission}
+            >
+              {submitting ? "Withdrawing…" : "Edit Submission"}
+            </Button>
+          )}
+          {!isLocked && (
+            <Button
+              size="sm"
+              className="bg-[#0f1f52] text-white hover:bg-[#152a6b]"
+              disabled={!canSubmit || submitting}
+              onClick={() => setConfirmSubmit(true)}
+              title={
+                !canSubmit
+                  ? minWords
+                    ? `Minimum ${minWords} words required`
+                    : "The essay is empty"
+                  : undefined
+              }
+            >
+              Submit for Review
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="mt-6 space-y-1">
@@ -397,7 +529,7 @@ export function EssayEditorPage({
             />
             {isComplete
               ? "This essay has been marked complete. Reopen it from the section page to make changes."
-              : "This essay has been sent for review. Withdraw the submission from the section page to keep editing."}
+              : "This essay has been sent for review, so editing and comments are paused. Use Edit Submission above to withdraw it and keep working."}
           </div>
         )
       )}
@@ -405,7 +537,14 @@ export function EssayEditorPage({
       {/* Document frame: the editor sits as a white "page" on a light-gray
           surround, so the writing surface reads like a real document. The
           flex-1 chain stretches it to the bottom of the container. */}
-      <div className="mt-4 flex flex-1 flex-col rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20">
+      <div
+        className={cn(
+          "mt-4 flex flex-1 flex-col rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20",
+          // Submitted or complete: the whole writing surface is inert — no
+          // edits, no comments, no AI check — until it's withdrawn/reopened.
+          isLocked && "pointer-events-none opacity-60 select-none"
+        )}
+      >
         <RichTextEditor
           className="flex-1 rounded-lg border bg-white shadow-sm dark:bg-card"
           value={value}
@@ -416,7 +555,7 @@ export function EssayEditorPage({
           showThreadList
           toolbarRight={toolbarExtras}
           comments={
-            studentId
+            studentId && !isLocked
               ? {
                   commentsEndpoint: cfg.commentsEndpoint,
                   sectionIdField: F.sectionId,
@@ -432,7 +571,13 @@ export function EssayEditorPage({
       </div>
 
       <Dialog open={aiOpen} onOpenChange={(o) => { if (!aiLoading) setAiOpen(o) }}>
-        <DialogContent>
+        <DialogContent
+          // The check can't be abandoned mid-flight: outside clicks and
+          // Escape are ignored until it finishes.
+          onPointerDownOutside={(e) => { if (aiLoading) e.preventDefault() }}
+          onInteractOutside={(e) => { if (aiLoading) e.preventDefault() }}
+          onEscapeKeyDown={(e) => { if (aiLoading) e.preventDefault() }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <HugeiconsIcon icon={AiSearchIcon} strokeWidth={2} className="size-5" />
@@ -445,11 +590,12 @@ export function EssayEditorPage({
           </DialogHeader>
 
           {aiLoading ? (
-            <div className="space-y-3 py-2">
-              <Skeleton className="h-6 w-32" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
-              <Skeleton className="h-4 w-4/6" />
+            <div className="flex flex-col items-center gap-3 py-8">
+              <Loader2 className="text-muted-foreground size-8 animate-spin" />
+              <p className="text-sm font-medium">Checking your essay…</p>
+              <p className="text-muted-foreground text-xs">
+                This can take up to a minute — please keep this window open.
+              </p>
             </div>
           ) : aiError ? (
             <p className="text-destructive py-2 text-sm">{aiError}</p>
@@ -486,13 +632,6 @@ export function EssayEditorPage({
                 </div>
               ) : null}
               {aiResult?.summary && <p className="text-sm">{aiResult.summary}</p>}
-              {aiResult && aiResult.observations.length > 0 && (
-                <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
-                  {aiResult.observations.map((o, i) => (
-                    <li key={i}>{o}</li>
-                  ))}
-                </ul>
-              )}
               {aiGate?.verdict === "unavailable" && (
                 <p className="text-amber-600 text-xs">
                   The submission detector couldn&rsquo;t score this essay just
@@ -505,6 +644,43 @@ export function EssayEditorPage({
               </p>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmSubmit} onOpenChange={(o) => { if (!submitting) setConfirmSubmit(o) }}>
+        <DialogContent
+          onPointerDownOutside={(e) => { if (submitting) e.preventDefault() }}
+          onInteractOutside={(e) => { if (submitting) e.preventDefault() }}
+          onEscapeKeyDown={(e) => { if (submitting) e.preventDefault() }}
+        >
+          <DialogHeader>
+            <DialogTitle>Send for review?</DialogTitle>
+            <DialogDescription>
+              This will notify your teacher that this essay is ready for review,
+              and pause editing until it&rsquo;s reviewed or withdrawn. An AI
+              check runs as part of submitting.
+            </DialogDescription>
+          </DialogHeader>
+          {submitting && (
+            <div className="flex items-center gap-2 py-1">
+              <Loader2 className="text-muted-foreground size-4 animate-spin" />
+              <p className="text-muted-foreground text-sm">
+                Running the AI check and submitting…
+              </p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={submitting} onClick={() => setConfirmSubmit(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#0f1f52] text-white hover:bg-[#152a6b]"
+              disabled={submitting}
+              onClick={submitForReview}
+            >
+              {submitting ? "Submitting…" : "Send for Review"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

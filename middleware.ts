@@ -16,14 +16,19 @@ const isAdminRoute = createRouteMatcher(["/admin(.*)"])
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
-    await auth.protect()
+    // Send signed-out visitors to our branded login, not Clerk's hosted page.
+    await auth.protect({
+      unauthenticatedUrl: new URL("/login", req.url).toString(),
+    })
   }
 
   // Keep students and advisors out of the admin surface. Only enforceable
   // when the session token is configured to carry publicMetadata; without
   // that claim we let the request through rather than lock admins out.
   if (isAdminRoute(req)) {
-    const { sessionClaims } = await auth.protect()
+    const { sessionClaims } = await auth.protect({
+      unauthenticatedUrl: new URL("/login", req.url).toString(),
+    })
     const metadata = (sessionClaims as Record<string, unknown> | null)?.metadata
     const role =
       metadata && typeof metadata === "object"

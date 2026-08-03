@@ -1,10 +1,5 @@
 "use client"
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { LicenseDraftIcon } from "@hugeicons/core-free-icons"
-import { Button } from "@/components/ui/button"
 import { extractPlainText, richTextWordCount } from "@/lib/rich-text"
 
 const SNIPPET_WORDS = 50
@@ -63,20 +58,14 @@ function AiScoreReport({ data }: { data: PlagiarismData }) {
  * content and links there, so no TipTap code runs on the section page.
  */
 export function RichTextPreviewCard({
-  questionId,
   value,
   minWords,
-  disabled = false,
   plagiarism,
 }: {
-  questionId: number
   value: string
   minWords?: number
-  disabled?: boolean
   plagiarism?: PlagiarismData
 }) {
-  const pathname = usePathname()
-  const href = `${pathname}/write/${questionId}`
   const text = extractPlainText(value)
   const wordCount = richTextWordCount(value)
   const words = text.split(/\s+/).filter(Boolean)
@@ -96,24 +85,17 @@ export function RichTextPreviewCard({
         </p>
       )}
       <div className="mt-3 flex items-end justify-between gap-3">
-        {/* Left: the action, with the word count directly beneath it. */}
-        <div className="flex flex-col items-start gap-1.5">
-          <Button variant="outline" size="sm" asChild className="gap-2">
-            <Link href={href}>
-              <HugeiconsIcon icon={LicenseDraftIcon} strokeWidth={2} className="size-4" />
-              {disabled ? "View Essay" : isEmpty ? "Open Essay Editor" : "Continue Writing"}
-            </Link>
-          </Button>
-          {minWords ? (
-            <span className="text-muted-foreground/60 text-xs">
-              {wordCount} / {minWords} min words
-            </span>
-          ) : !isEmpty ? (
-            <span className="text-muted-foreground/60 text-xs">
-              {wordCount} {wordCount === 1 ? "word" : "words"}
-            </span>
-          ) : null}
-        </div>
+        {/* The button that opened the editor now lives in the question's
+            header row, inline with the submission actions. */}
+        {minWords ? (
+          <span className="text-muted-foreground/60 text-xs">
+            {wordCount} / {minWords} min words
+          </span>
+        ) : (
+          <span className="text-muted-foreground/60 text-xs">
+            {isEmpty ? "" : `${wordCount} ${wordCount === 1 ? "word" : "words"}`}
+          </span>
+        )}
         {/* Lower-right: the AI score report once a submission has been checked. */}
         {plagiarism && <AiScoreReport data={plagiarism} />}
       </div>

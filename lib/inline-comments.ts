@@ -118,7 +118,7 @@ export function useInlineComments({
   }, [comments])
 
   const post = useCallback(
-    async (threadId: string, note: string): Promise<Comment | null> => {
+    async (threadId: string, note: string, quote?: string): Promise<Comment | null> => {
       if (!studentId) return null
       const isTeacher = viewer === "teacher"
       const payload: Record<string, unknown> = {
@@ -127,6 +127,9 @@ export function useInlineComments({
         field_name: fieldName,
         [sectionIdField]: sectionId,
         thread_id: threadId,
+        // The anchored passage, so the thread stays legible after resolution
+        // removes the highlight. Harmless if the column doesn't exist yet.
+        ...(quote ? { quote } : {}),
         note,
         // Unread for the *other* party. A student reply is born read by the
         // student; a teacher comment is born unread for the student.
@@ -149,7 +152,9 @@ export function useInlineComments({
           if (created.id) fetch(`${commentsEndpoint}/${created.id}`, { method: "DELETE" }).catch(() => {})
           return null
         }
-        setComments((prev) => [...prev, created])
+        // Keep the quote locally even if Xano lacks the column, so the
+        // current session still shows it.
+        setComments((prev) => [...prev, quote && !created.quote ? { ...created, quote } : created])
         return created
       } catch {
         return null
@@ -166,7 +171,10 @@ export function useInlineComments({
     [post]
   )
 
-  const reply = useCallback((threadId: string, note: string) => post(threadId, note), [post])
+  const reply = useCallback(
+    (threadId: string, note: string, quote?: string) => post(threadId, note, quote),
+    [post]
+  )
 
   const markRead = useCallback(
     async (commentId: number) => {
@@ -186,17 +194,32 @@ export function useInlineComments({
   )
 
   /** Mark every message in a thread complete (resolved). The caller removes
-   *  the highlight mark from the document. */
+   *  the highlight mark from the document; passing `quote` (captured while the
+   *  highlight still exists) backfills it onto the thread's first comment so
+   *  older threads keep their passage too. */
   const resolveThread = useCallback(
-    async (threadId: string) => {
-      const ids = comments.filter((c) => c.thread_id === threadId && c.id != null).map((c) => c.id!)
-      setComments((prev) => prev.map((c) => (c.thread_id === threadId ? { ...c, isComplete: true } : c)))
-      for (const id of ids) {
+    async (threadId: string, quote?: string) => {
+      const mine = comments
+        .filter((c) => c.thread_id === threadId && c.id != null)
+        .sort((a, b) => ts(a.created_at) - ts(b.created_at))
+      const firstId = mine[0]?.id
+      const needsQuote = !!quote && !mine.some((c) => c.quote)
+      setComments((prev) =>
+        prev.map((c) =>
+          c.thread_id === threadId
+            ? { ...c, isComplete: true, ...(needsQuote && c.id === firstId ? { quote } : {}) }
+            : c
+        )
+      )
+      for (const c of mine) {
         try {
-          await fetch(`${commentsEndpoint}/${id}`, {
+          await fetch(`${commentsEndpoint}/${c.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isComplete: true }),
+            body: JSON.stringify({
+              isComplete: true,
+              ...(needsQuote && c.id === firstId ? { quote } : {}),
+            }),
           })
         } catch {
           /* ignore */
