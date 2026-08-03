@@ -9,6 +9,7 @@ import {
   ArrowLeft02Icon,
   ArrowTurnBackwardIcon,
   CheckmarkCircle02Icon,
+  Clock01Icon,
   Comment01Icon,
   SentIcon,
 } from "@hugeicons/core-free-icons"
@@ -119,6 +120,11 @@ export function TeacherEssayReviewPage({
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [revisionOpen, setRevisionOpen] = useState(false)
   const [revisionNote, setRevisionNote] = useState("")
+  // Version history sheet; opening a version widens the sheet to a full essay.
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [openVersion, setOpenVersion] = useState<ResponseVersion | null>(null)
+  const [confirmRestore, setConfirmRestore] = useState(false)
+  const [restoring, setRestoring] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -428,6 +434,17 @@ export function TeacherEssayReviewPage({
               </span>
             )}
           </Button>
+          {fieldVersions.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <HugeiconsIcon icon={Clock01Icon} strokeWidth={2} className="size-4" />
+              History
+            </Button>
+          )}
         </div>
       </div>
 
@@ -482,15 +499,6 @@ export function TeacherEssayReviewPage({
         {minWords ? `${wordCount} / ${minWords} words` : `${wordCount} ${wordCount === 1 ? "word" : "words"}`}
       </div>
 
-      {fieldVersions.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-sm font-semibold">Version history</h2>
-          <div className="mt-3">
-            <VersionHistory versions={fieldVersions} onRestore={restoreVersion} />
-          </div>
-        </div>
-      )}
-
       {/* Review actions stay reachable while the teacher scrolls the essay. */}
       <div className="bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky bottom-0 mt-6 flex items-center gap-2 border-t py-3 backdrop-blur">
         {status.isComplete || status.revisionNeeded ? (
@@ -501,7 +509,7 @@ export function TeacherEssayReviewPage({
           <>
             <Button
               variant="outline"
-              className="flex-1 gap-1.5 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+              className="flex-1 gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800 dark:bg-transparent"
               disabled={acting}
               onClick={() => {
                 setRevisionNote("")
@@ -545,6 +553,139 @@ export function TeacherEssayReviewPage({
           <div className="shrink-0 border-t px-4 py-3">
             <CommentComposer onSubmit={(text) => postComment(text, false)} />
           </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Version history: a list of snapshots; opening one widens the sheet
+          into a full read-only view of that version of the essay. */}
+      <Sheet
+        open={historyOpen}
+        onOpenChange={(o) => {
+          setHistoryOpen(o)
+          if (!o) {
+            setOpenVersion(null)
+            setConfirmRestore(false)
+          }
+        }}
+      >
+        <SheetContent
+          className={cn(
+            "flex flex-col gap-0 p-0 transition-all",
+            openVersion ? "sm:max-w-3xl" : "sm:max-w-md"
+          )}
+        >
+          <SheetHeader className="shrink-0 border-b px-6 py-4">
+            {openVersion ? (
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenVersion(null)
+                      setConfirmRestore(false)
+                    }}
+                    className="text-muted-foreground hover:text-foreground inline-flex size-7 shrink-0 items-center justify-center rounded-md border"
+                    title="Back to version list"
+                  >
+                    ←
+                  </button>
+                  <SheetTitle className="truncate text-base">
+                    {(REASON_LABEL[openVersion.reason]?.label ?? openVersion.reason) +
+                      " · " +
+                      formatVersionDate(openVersion.created_at)}
+                  </SheetTitle>
+                </div>
+                {confirmRestore ? (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      disabled={restoring}
+                      onClick={() => setConfirmRestore(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 bg-white text-xs dark:bg-transparent"
+                      disabled={restoring}
+                      onClick={async () => {
+                        setRestoring(true)
+                        await restoreVersion(openVersion)
+                        setRestoring(false)
+                        setHistoryOpen(false)
+                        setOpenVersion(null)
+                        setConfirmRestore(false)
+                      }}
+                    >
+                      {restoring ? "Restoring…" : "Confirm restore"}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0 bg-white text-xs dark:bg-transparent"
+                    onClick={() => setConfirmRestore(true)}
+                  >
+                    Restore this version
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <SheetTitle className="text-base">Version history</SheetTitle>
+            )}
+            <SheetDescription className="sr-only">
+              Saved snapshots of this essay
+            </SheetDescription>
+          </SheetHeader>
+
+          {openVersion ? (
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-6 py-2">
+                <p className="text-muted-foreground text-xs">
+                  {openVersion.actor_name && <>By {openVersion.actor_name} · </>}
+                  {openVersion.wordCount != null && <>{openVersion.wordCount} words</>}
+                </p>
+              </div>
+              <div className="mx-6 mb-6 rounded-lg border bg-white px-6 py-8 sm:px-10 dark:bg-card">
+                <RichTextDisplay raw={openVersion.student_response} />
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 divide-y overflow-y-auto">
+              {[...fieldVersions]
+                .sort((a, b) => vts(b.created_at) - vts(a.created_at))
+                .map((v, i) => {
+                  const meta = REASON_LABEL[v.reason] ?? {
+                    label: String(v.reason),
+                    cls: "text-muted-foreground",
+                  }
+                  return (
+                    <button
+                      key={String(v.id ?? `${v.reason}-${vts(v.created_at)}-${i}`)}
+                      type="button"
+                      onClick={() => setOpenVersion(v)}
+                      className="hover:bg-muted/40 block w-full px-6 py-3 text-left transition-colors"
+                    >
+                      <p className="text-sm">
+                        <span className={cn("font-medium", meta.cls)}>{meta.label}</span>
+                        {v.actor_name && (
+                          <span className="text-muted-foreground"> &middot; {v.actor_name}</span>
+                        )}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {formatVersionDate(v.created_at)}
+                        {v.wordCount != null ? ` · ${v.wordCount} words` : ""}
+                        {" · click to view the full essay"}
+                      </p>
+                    </button>
+                  )
+                })}
+            </div>
+          )}
         </SheetContent>
       </Sheet>
 
@@ -611,96 +752,6 @@ function formatVersionDate(ts: number | string | undefined): string {
     hour: "numeric",
     minute: "2-digit",
   })
-}
-
-/** Snapshot list with a per-version read-only preview and a two-step Restore. */
-function VersionHistory({
-  versions,
-  onRestore,
-}: {
-  versions: ResponseVersion[]
-  onRestore: (v: ResponseVersion) => Promise<void>
-}) {
-  const sorted = [...versions].sort((a, b) => vts(b.created_at) - vts(a.created_at))
-  const [openKey, setOpenKey] = useState<string | null>(null)
-  const [confirmKey, setConfirmKey] = useState<string | null>(null)
-  const [restoring, setRestoring] = useState(false)
-
-  return (
-    <div className="divide-y rounded-lg border">
-      {sorted.map((v, i) => {
-        const key = String(v.id ?? `${v.reason}-${vts(v.created_at)}-${i}`)
-        const meta = REASON_LABEL[v.reason] ?? { label: String(v.reason), cls: "text-muted-foreground" }
-        const open = openKey === key
-        return (
-          <div key={key} className="px-3 py-2.5">
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm">
-                  <span className={cn("font-medium", meta.cls)}>{meta.label}</span>
-                  {v.actor_name && <span className="text-muted-foreground"> &middot; {v.actor_name}</span>}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  {formatVersionDate(v.created_at)}
-                  {v.wordCount != null ? ` · ${v.wordCount} words` : ""}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 shrink-0 text-xs"
-                onClick={() => setOpenKey(open ? null : key)}
-              >
-                {open ? "Hide" : "Preview"}
-              </Button>
-              {confirmKey === key ? (
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs"
-                    disabled={restoring}
-                    onClick={() => setConfirmKey(null)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 bg-white text-xs dark:bg-transparent"
-                    disabled={restoring}
-                    onClick={async () => {
-                      setRestoring(true)
-                      await onRestore(v)
-                      setRestoring(false)
-                      setConfirmKey(null)
-                      setOpenKey(null)
-                    }}
-                  >
-                    {restoring ? "Restoring…" : "Confirm restore"}
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 shrink-0 bg-white text-xs dark:bg-transparent"
-                  onClick={() => setConfirmKey(key)}
-                >
-                  Restore
-                </Button>
-              )}
-            </div>
-            {open && (
-              <div className="bg-muted/30 mt-2 rounded-md border px-3 py-2">
-                <RichTextDisplay raw={v.student_response} className="text-[13px] leading-relaxed" />
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
 }
 
 function BackButton({ href }: { href: string }) {

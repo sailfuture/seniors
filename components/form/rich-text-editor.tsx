@@ -531,7 +531,7 @@ export function RichTextEditor({
               }}
             />
           ) : (
-            <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
+            <div className="flex-1 divide-y overflow-y-auto px-4 py-2">
               {sheetTab === "open" ? (
                 threadListItems.length === 0 ? (
                   <p className="text-muted-foreground py-8 text-center text-sm">
@@ -542,38 +542,15 @@ export function RichTextEditor({
                     const hasUnread =
                       viewer === "student" &&
                       thread.comments.some((c) => !c.isStudentReply && !c.isOld)
-                    const last = thread.comments[thread.comments.length - 1]
                     return (
-                      <button
+                      <ThreadListEntry
                         key={thread.threadId}
-                        type="button"
-                        onClick={() => setSheetThreadId(thread.threadId)}
-                        className={cn(
-                          "bg-muted/30 hover:bg-muted/60 block w-full rounded-lg border px-3 py-2 text-left transition-colors",
-                          hasUnread && "border-blue-300 dark:border-blue-400/40"
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <p className="text-muted-foreground min-w-0 flex-1 truncate text-xs italic">
-                            “{quote.trim()}”
-                          </p>
-                          {hasUnread && (
-                            <span className="size-1.5 shrink-0 rounded-full bg-blue-500" aria-hidden />
-                          )}
-                        </div>
-                        {last && (
-                          <p className="mt-1 truncate text-xs leading-snug">
-                            <span className="font-medium">
-                              {last.teacher_name || (last.isStudentReply ? "Student" : "Teacher")}:
-                            </span>{" "}
-                            <span className="text-muted-foreground">{last.note}</span>
-                          </p>
-                        )}
-                        <p className="text-muted-foreground/60 mt-1 text-[10px]">
-                          {thread.comments.length}{" "}
-                          {thread.comments.length === 1 ? "message" : "messages"} · click to view
-                        </p>
-                      </button>
+                        thread={thread}
+                        quote={quote}
+                        viewer={viewer}
+                        hasUnread={hasUnread}
+                        onOpen={() => setSheetThreadId(thread.threadId)}
+                      />
                     )
                   })
                 )
@@ -582,33 +559,15 @@ export function RichTextEditor({
                   No resolved comments yet.
                 </p>
               ) : (
-                resolvedThreads.map((thread) => {
-                  const last = thread.comments[thread.comments.length - 1]
-                  return (
-                    <button
-                      key={thread.threadId}
-                      type="button"
-                      onClick={() => setSheetThreadId(thread.threadId)}
-                      className="bg-muted/20 hover:bg-muted/50 block w-full rounded-lg border border-dashed px-3 py-2 text-left opacity-80 transition-colors"
-                    >
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700">
-                        ✓ Resolved
-                      </span>
-                      {last && (
-                        <p className="mt-1 truncate text-xs leading-snug">
-                          <span className="font-medium">
-                            {last.teacher_name || (last.isStudentReply ? "Student" : "Teacher")}:
-                          </span>{" "}
-                          <span className="text-muted-foreground">{last.note}</span>
-                        </p>
-                      )}
-                      <p className="text-muted-foreground/60 mt-1 text-[10px]">
-                        {thread.comments.length}{" "}
-                        {thread.comments.length === 1 ? "message" : "messages"} · click to view
-                      </p>
-                    </button>
-                  )
-                })
+                resolvedThreads.map((thread) => (
+                  <ThreadListEntry
+                    key={thread.threadId}
+                    thread={thread}
+                    viewer={viewer}
+                    resolved
+                    onOpen={() => setSheetThreadId(thread.threadId)}
+                  />
+                ))
               )}
             </div>
           )}
@@ -630,6 +589,64 @@ export function RichTextEditor({
           onClose={() => setActiveThread(null)}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * One thread in the sheet's list, rendered as an activity-log excerpt: the
+ * quoted passage as a header line, then the exchange as chat bubbles. The
+ * whole block is clickable and opens the thread view.
+ */
+function ThreadListEntry({
+  thread,
+  quote,
+  viewer,
+  hasUnread = false,
+  resolved = false,
+  onOpen,
+}: {
+  thread: InlineThread
+  quote?: string
+  viewer: "teacher" | "student"
+  hasUnread?: boolean
+  resolved?: boolean
+  onOpen: () => void
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
+      className={cn(
+        "hover:bg-muted/40 -mx-2 cursor-pointer rounded-lg px-2 py-3 transition-colors",
+        resolved && "opacity-75"
+      )}
+    >
+      <div className="flex items-center gap-2">
+        {resolved ? (
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700">
+            ✓ Resolved
+          </span>
+        ) : (
+          <p className="text-muted-foreground min-w-0 flex-1 truncate border-l-2 border-amber-300 pl-2 text-xs">
+            “{quote?.trim()}”
+          </p>
+        )}
+        {hasUnread && (
+          <span className="size-1.5 shrink-0 rounded-full bg-blue-500" aria-hidden />
+        )}
+      </div>
+      {/* The stream is display-only here — clicks land on the wrapper. */}
+      <div className="pointer-events-none mt-2">
+        <FieldActivityStream comments={thread.comments} viewer={viewer} />
+      </div>
     </div>
   )
 }
@@ -683,7 +700,7 @@ function SheetThreadView({
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {quote && (
           <div className="bg-muted/40 mb-3 rounded-md border-l-2 border-amber-300 px-3 py-2">
-            <p className="text-muted-foreground text-xs italic">“{quote.trim()}”</p>
+            <p className="text-muted-foreground text-xs">“{quote.trim()}”</p>
             <button
               type="button"
               onClick={onShowInEssay}
@@ -720,12 +737,12 @@ function SheetThreadView({
           rows={2}
           className="text-sm"
         />
-        <div className="mt-2 flex items-center justify-end gap-1.5">
+        <div className="mt-2 flex items-center gap-1.5">
           {canResolve && (
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1 text-xs text-green-700 hover:bg-green-50 hover:text-green-800"
+              className="h-8 flex-1 gap-1 text-xs text-green-700 hover:bg-green-50 hover:text-green-800"
               disabled={sending || resolving}
               onClick={async () => {
                 setResolving(true)
@@ -737,7 +754,7 @@ function SheetThreadView({
               {resolving ? "Resolving…" : "Resolve"}
             </Button>
           )}
-          <Button size="sm" className="h-7 text-xs" onClick={send} disabled={!note.trim() || sending}>
+          <Button size="sm" className="h-8 flex-1 text-xs" onClick={send} disabled={!note.trim() || sending}>
             {sending ? "Sending…" : "Reply"}
           </Button>
         </div>
