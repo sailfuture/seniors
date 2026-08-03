@@ -5,9 +5,21 @@ import Link from "next/link"
 import { useSession } from "@/components/session-provider"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowLeft02Icon, CheckmarkCircle02Icon, SentIcon } from "@hugeicons/core-free-icons"
+import {
+  ArrowLeft02Icon,
+  CheckmarkCircle02Icon,
+  SentIcon,
+  AiSearchIcon,
+} from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { RichTextEditor } from "./rich-text-editor"
 import { SaveIndicator } from "./save-indicator"
 import { isRichTextQuestion, richTextWordCount, extractPlainText } from "@/lib/rich-text"
@@ -80,6 +92,40 @@ export function EssayEditorPage({
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [hasDirty, setHasDirty] = useState(false)
+
+  // "Check for AI" self-check before submitting.
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiResult, setAiResult] = useState<{
+    likelihood: "low" | "medium" | "high"
+    summary: string
+    observations: string[]
+  } | null>(null)
+
+  const runAiCheck = async () => {
+    setAiOpen(true)
+    setAiLoading(true)
+    setAiError(null)
+    setAiResult(null)
+    try {
+      const res = await fetch("/api/essay/ai-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: extractPlainText(valueRef.current) }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setAiError(data?.error ?? "The check could not be completed.")
+      } else {
+        setAiResult(data)
+      }
+    } catch {
+      setAiError("The check could not be completed. Please try again.")
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   const valueRef = useRef("")
   const dirtyRef = useRef(false)
@@ -239,11 +285,12 @@ export function EssayEditorPage({
   }
 
   if (loading) {
+    // Mirror the loaded layout: full width, editor frame filling the page.
     return (
-      <div className="mx-auto w-full max-w-3xl flex-1 space-y-6 p-4 md:p-6">
+      <div className="flex w-full flex-1 flex-col gap-6 p-4 md:p-6">
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-10 w-3/4" />
-        <Skeleton className="h-96 w-full" />
+        <Skeleton className="min-h-96 w-full flex-1" />
       </div>
     )
   }
@@ -278,16 +325,28 @@ export function EssayEditorPage({
   const wordCount = richTextWordCount(value)
   const minWords = question.min_words > 0 ? question.min_words : null
 
-  const wordCountLabel = (
-    <span className="text-muted-foreground whitespace-nowrap text-xs tabular-nums">
-      {minWords ? (
-        <span className={wordCount >= minWords ? "text-green-600" : undefined}>
-          {wordCount} / {minWords} min words
-        </span>
-      ) : (
-        <>{wordCount} {wordCount === 1 ? "word" : "words"}</>
-      )}
-    </span>
+  const toolbarExtras = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={runAiCheck}
+        disabled={aiLoading}
+        className="hover:bg-accent inline-flex h-8 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors disabled:opacity-50"
+        title="Check this essay for AI-generated writing"
+      >
+        <HugeiconsIcon icon={AiSearchIcon} strokeWidth={2} className="size-4" />
+        Check for AI
+      </button>
+      <span className="text-muted-foreground whitespace-nowrap text-xs tabular-nums">
+        {minWords ? (
+          <span className={wordCount >= minWords ? "text-green-600" : undefined}>
+            {wordCount} / {minWords} min words
+          </span>
+        ) : (
+          <>{wordCount} {wordCount === 1 ? "word" : "words"}</>
+        )}
+      </span>
+    </div>
   )
 
   return (
@@ -335,7 +394,7 @@ export function EssayEditorPage({
           disabled={isLocked}
           placeholder={question.placeholder}
           showThreadList
-          toolbarRight={wordCountLabel}
+          toolbarRight={toolbarExtras}
           comments={
             studentId
               ? {
@@ -351,6 +410,59 @@ export function EssayEditorPage({
           }
         />
       </div>
+
+      <Dialog open={aiOpen} onOpenChange={(o) => { if (!aiLoading) setAiOpen(o) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HugeiconsIcon icon={AiSearchIcon} strokeWidth={2} className="size-5" />
+              AI writing check
+            </DialogTitle>
+            <DialogDescription>
+              An automated estimate of how much of this essay reads as
+              AI-generated. It is not proof either way — your teacher makes the
+              final call.
+            </DialogDescription>
+          </DialogHeader>
+
+          {aiLoading ? (
+            <div className="space-y-3 py-2">
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-4/6" />
+            </div>
+          ) : aiError ? (
+            <p className="text-destructive py-2 text-sm">{aiError}</p>
+          ) : aiResult ? (
+            <div className="space-y-3 py-1">
+              <div
+                className={
+                  aiResult.likelihood === "high"
+                    ? "inline-flex rounded-md bg-red-50 px-2.5 py-1 text-sm font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400"
+                    : aiResult.likelihood === "medium"
+                      ? "inline-flex rounded-md bg-amber-50 px-2.5 py-1 text-sm font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+                      : "inline-flex rounded-md bg-green-50 px-2.5 py-1 text-sm font-semibold text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                }
+              >
+                {aiResult.likelihood === "high"
+                  ? "High likelihood of AI writing"
+                  : aiResult.likelihood === "medium"
+                    ? "Some signs of AI writing"
+                    : "Low likelihood of AI writing"}
+              </div>
+              {aiResult.summary && <p className="text-sm">{aiResult.summary}</p>}
+              {aiResult.observations.length > 0 && (
+                <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
+                  {aiResult.observations.map((o, i) => (
+                    <li key={i}>{o}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

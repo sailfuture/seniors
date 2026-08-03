@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useSession } from "@/components/session-provider"
@@ -9,10 +9,27 @@ import {
   ArrowLeft02Icon,
   ArrowTurnBackwardIcon,
   CheckmarkCircle02Icon,
+  Comment01Icon,
   SentIcon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { CommentComposer } from "./comment-composer"
 import { TeacherEssayAnnotator } from "./teacher-essay-annotator"
@@ -96,11 +113,12 @@ export function TeacherEssayReviewPage({
   const [events, setEvents] = useState<ResponseEvent[]>([])
   const [versions, setVersions] = useState<ResponseVersion[]>([])
   const [restoreNonce, setRestoreNonce] = useState(0)
-  // The composer keeps its text in its own state (typing must not re-render
-  // this whole page); the draft is mirrored here for the Revision action.
-  const draftRef = useRef("")
   const [acting, setActing] = useState(false)
   const [status, setStatus] = useState({ isComplete: false, readyReview: false, revisionNeeded: false })
+  // Overall feedback lives in a sheet; a revision needs a confirmed, required note.
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [revisionOpen, setRevisionOpen] = useState(false)
+  const [revisionNote, setRevisionNote] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -218,7 +236,7 @@ export function TeacherEssayReviewPage({
   )
 
   const applyAction = useCallback(
-    async (action: "complete" | "revision" | "ready") => {
+    async (action: "complete" | "revision" | "ready", revisionNote?: string) => {
       if (!response) return
       setActing(true)
       const patch =
@@ -228,8 +246,8 @@ export function TeacherEssayReviewPage({
             ? { revisionNeeded: true, isComplete: false, readyReview: false }
             : { readyReview: true, isComplete: false, revisionNeeded: false }
       try {
-        // A revision request carries the composer text as feedback.
-        if (action === "revision" && draftRef.current.trim()) await postComment(draftRef.current, true)
+        // A revision request always carries the (required) note as feedback.
+        if (action === "revision" && revisionNote?.trim()) await postComment(revisionNote, true)
         const res = await fetch(`${cfg.responsePatchBase}/${response.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -292,11 +310,12 @@ export function TeacherEssayReviewPage({
   )
 
   if (loading) {
+    // Mirror the loaded layout: full-width document page.
     return (
-      <div className="mx-auto w-full max-w-3xl flex-1 space-y-6 p-4 md:p-6">
+      <div className="flex w-full flex-1 flex-col gap-6 bg-white p-4 md:p-6 dark:bg-background">
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-10 w-3/4" />
-        <Skeleton className="h-96 w-full" />
+        <Skeleton className="min-h-96 w-full flex-1" />
       </div>
     )
   }
@@ -385,12 +404,31 @@ export function TeacherEssayReviewPage({
   }
 
   const fieldVersions = versions.filter((v) => v.field_name === question.field_name)
+  // "Unread" keeps the meaning it has everywhere else in the admin UI: the
+  // student hasn't read that teacher comment yet.
+  const unreadFeedback = comments.filter((c) => !c.isOld && !c.isStudentReply).length
 
   return (
     <div className="w-full flex-1 bg-white p-4 md:p-6 dark:bg-background">
       <div className="flex items-center justify-between gap-2">
         <BackButton href={backHref} />
-        {studentName && <span className="text-muted-foreground text-sm font-medium">{studentName}</span>}
+        <div className="flex items-center gap-3">
+          {studentName && <span className="text-muted-foreground text-sm font-medium">{studentName}</span>}
+          <Button
+            variant="outline"
+            size="sm"
+            className="relative gap-1.5"
+            onClick={() => setFeedbackOpen(true)}
+          >
+            <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-4" />
+            Feedback
+            {unreadFeedback > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">
+                {unreadFeedback}
+              </span>
+            )}
+          </Button>
+        </div>
       </div>
 
       <div className="mt-6 space-y-1">
@@ -444,22 +482,6 @@ export function TeacherEssayReviewPage({
         {minWords ? `${wordCount} / ${minWords} words` : `${wordCount} ${wordCount === 1 ? "word" : "words"}`}
       </div>
 
-      {/* Overall feedback thread, separate from the anchored inline comments. */}
-      <div className="mt-8">
-        <h2 className="text-sm font-semibold">Overall feedback</h2>
-        <div className="mt-3">
-          <FieldActivityStream
-            comments={comments}
-            events={events.filter((e) => e.field_name === question.field_name)}
-            viewer="teacher"
-            onDelete={handleDelete}
-          />
-        </div>
-        <div className="mt-3">
-          <CommentComposer draftRef={draftRef} onSubmit={(text) => postComment(text, false)} />
-        </div>
-      </div>
-
       {fieldVersions.length > 0 && (
         <div className="mt-8">
           <h2 className="text-sm font-semibold">Version history</h2>
@@ -481,7 +503,10 @@ export function TeacherEssayReviewPage({
               variant="outline"
               className="flex-1 gap-1.5 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
               disabled={acting}
-              onClick={() => applyAction("revision")}
+              onClick={() => {
+                setRevisionNote("")
+                setRevisionOpen(true)
+              }}
             >
               <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-4" />
               Revision
@@ -498,6 +523,69 @@ export function TeacherEssayReviewPage({
           </>
         )}
       </div>
+
+      {/* Overall feedback thread, separate from the anchored inline comments. */}
+      <Sheet open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+        <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
+          <SheetHeader className="shrink-0 border-b px-6 py-4">
+            <SheetTitle className="text-base">Overall feedback</SheetTitle>
+            <SheetDescription className="sr-only">
+              Feedback thread for this essay
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            <FieldActivityStream
+              comments={comments}
+              events={events.filter((e) => e.field_name === question.field_name)}
+              viewer="teacher"
+              onDelete={handleDelete}
+              scrollToLatest
+            />
+          </div>
+          <div className="shrink-0 border-t px-4 py-3">
+            <CommentComposer onSubmit={(text) => postComment(text, false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Returning for revision requires a note — the student needs to know
+          what to fix, so the confirmation can't be skipped past. */}
+      <Dialog open={revisionOpen} onOpenChange={(o) => { if (!acting) setRevisionOpen(o) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Return for revision?</DialogTitle>
+            <DialogDescription>
+              {studentName ? `${studentName} will` : "The student will"} see this
+              essay reopened with your note attached as revision feedback. A note
+              is required.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={revisionNote}
+            onChange={(e) => setRevisionNote(e.target.value)}
+            placeholder="What needs to change before resubmitting…"
+            rows={4}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" disabled={acting} onClick={() => setRevisionOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-1.5 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+              disabled={acting || !revisionNote.trim()}
+              onClick={async () => {
+                await applyAction("revision", revisionNote)
+                setRevisionOpen(false)
+              }}
+            >
+              <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-4" />
+              {acting ? "Returning…" : "Return for revision"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

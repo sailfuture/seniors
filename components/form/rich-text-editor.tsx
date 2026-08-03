@@ -17,11 +17,20 @@ import {
   Minus,
   Table as TableIcon,
   MessageSquarePlus,
+  MessageSquareText,
   Undo2,
   Redo2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Linkify } from "@/components/linkify"
 import { cn } from "@/lib/utils"
 import { parseRichText, serializeRichText, type RichTextDoc } from "@/lib/rich-text"
 import { richTextExtensions } from "@/lib/rich-text-extensions"
@@ -126,6 +135,10 @@ export function RichTextEditor({
   const commentsEnabled = !!comments
   const inline = useInlineComments(comments ?? DISABLED_COMMENTS)
   const [activeThread, setActiveThread] = useState<ActiveThread | null>(null)
+  // Floating "Comment" chip that follows a non-empty selection, so starting a
+  // thread never requires reaching up to the toolbar.
+  const [selTooltip, setSelTooltip] = useState<{ x: number; y: number } | null>(null)
+  const [threadsOpen, setThreadsOpen] = useState(false)
 
   const editor = useEditor({
     // Required in the Next.js App Router: rendering the editor during SSR /
@@ -215,6 +228,31 @@ export function RichTextEditor({
     editor?.setEditable(!disabled && !loadError)
   }, [editor, disabled, loadError])
 
+  // Follow the selection with a floating comment chip. selectionUpdate fires
+  // on every change (including collapse), so the chip hides itself.
+  useEffect(() => {
+    if (!editor || !commentsEnabled) return
+    const update = () => {
+      const { from, to, empty } = editor.state.selection
+      if (empty || from === to) {
+        setSelTooltip(null)
+        return
+      }
+      const coords = editor.view.coordsAtPos(to)
+      setSelTooltip({
+        x: Math.max(8, Math.min(coords.left, window.innerWidth - 130)),
+        y: coords.bottom,
+      })
+    }
+    const hide = () => setSelTooltip(null)
+    editor.on("selectionUpdate", update)
+    editor.on("blur", hide)
+    return () => {
+      editor.off("selectionUpdate", update)
+      editor.off("blur", hide)
+    }
+  }, [editor, commentsEnabled])
+
   // Clicking a highlight opens its thread (works even in read-only mode).
   useEffect(() => {
     if (!editor || !commentsEnabled) return
@@ -234,6 +272,7 @@ export function RichTextEditor({
     const { from, to } = editor.state.selection
     if (from === to) return
     const coords = editor.view.coordsAtPos(to)
+    setSelTooltip(null)
     setActiveThread({
       threadId: generateThreadId(),
       isNew: true,
@@ -316,6 +355,56 @@ export function RichTextEditor({
   }
 
   const showToolbar = !disabled || (commentsEnabled && annotateOnly)
+  const viewer = comments?.viewer ?? "student"
+
+  // Resolved threads keep their history: the highlight is gone from the
+  // document, but the exchange stays browsable from the sheet.
+  const resolvedThreads =
+    commentsEnabled && showThreadList
+      ? [...inline.threads.values()]
+          .filter((t) => t.resolved && t.comments.length > 0)
+          .sort((a, b) => b.lastAt - a.lastAt)
+      : []
+
+  // Badge: the student sees how many teacher comments they haven't read; the
+  // teacher (no read-tracking of their own) sees how many threads are open.
+  const unreadInline = threadListItems.reduce(
+    (n, { thread }) =>
+      n + thread.comments.filter((c) => !c.isStudentReply && !c.isOld).length,
+    0
+  )
+  const inlineBadge = viewer === "student" ? unreadInline : threadListItems.length
+
+  const threadsButton =
+    commentsEnabled && showThreadList ? (
+      <button
+        type="button"
+        onClick={() => setThreadsOpen(true)}
+        className="hover:bg-accent relative inline-flex h-8 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors"
+        title="Inline comments"
+      >
+        <MessageSquareText className="size-4" />
+        Comments
+        {inlineBadge > 0 && (
+          <span
+            className={cn(
+              "absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full text-[9px] font-bold text-white",
+              viewer === "student" && unreadInline > 0 ? "bg-blue-500" : "bg-gray-400"
+            )}
+          >
+            {inlineBadge}
+          </span>
+        )}
+      </button>
+    ) : null
+
+  const rightArea =
+    threadsButton || toolbarRight ? (
+      <div className="flex items-center gap-2">
+        {threadsButton}
+        {toolbarRight}
+      </div>
+    ) : null
 
   return (
     <div className={cn("flex flex-col", className)}>
@@ -324,46 +413,141 @@ export function RichTextEditor({
           editor={editor}
           annotateOnly={annotateOnly}
           onComment={commentsEnabled ? startCommentOnSelection : undefined}
-          rightSlot={toolbarRight}
+          rightSlot={rightArea}
         />
       ) : (
-        toolbarRight && (
+        rightArea && (
           <div className="bg-background sticky top-0 z-10 flex items-center justify-end rounded-t-lg border-b px-3 py-2">
-            {toolbarRight}
+            {rightArea}
           </div>
         )
       )}
       <EditorContent editor={editor} className="flex flex-1 flex-col [&>.tiptap]:flex-1" />
-      {threadListItems.length > 0 && (
-        <div className="border-t px-6 py-4 sm:px-10">
-          <p className="text-muted-foreground mb-2 text-[10px] font-semibold uppercase tracking-wider">
-            Inline comments ({threadListItems.length})
-          </p>
-          <div className="space-y-2">
-            {threadListItems.map(({ thread, from, quote }) => (
-              <button
-                key={thread.threadId}
-                type="button"
-                onClick={() => openThreadFromList(thread.threadId, from)}
-                className="bg-muted/30 hover:bg-muted/60 block w-full rounded-lg border px-3 py-2 text-left transition-colors"
-              >
-                <p className="text-muted-foreground truncate text-xs italic">“{quote.trim()}”</p>
-                <div className="mt-1 space-y-0.5">
-                  {thread.comments.map((c) => (
-                    <p key={c.id} className="text-xs leading-snug">
-                      <span className="font-medium">
-                        {c.teacher_name || (c.isStudentReply ? "Student" : "Teacher")}
-                        {c.isStudentReply ? " (student)" : ""}:
-                      </span>{" "}
-                      <span className="text-muted-foreground">{c.note}</span>
-                    </p>
-                  ))}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+
+      {/* Floating comment chip at the selection — mousedown is prevented so
+          clicking it doesn't collapse the selection before the click lands. */}
+      {selTooltip && !activeThread && (
+        <button
+          type="button"
+          style={{ position: "fixed", left: selTooltip.x, top: selTooltip.y + 6, zIndex: 50 }}
+          className="bg-foreground text-background flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium shadow-lg transition-opacity hover:opacity-90"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={startCommentOnSelection}
+        >
+          <MessageSquarePlus className="size-3.5" />
+          Comment
+        </button>
       )}
+
+      <Sheet open={threadsOpen} onOpenChange={setThreadsOpen}>
+        <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
+          <SheetHeader className="shrink-0 border-b px-6 py-4">
+            <SheetTitle className="text-base">Inline comments</SheetTitle>
+            <SheetDescription className="sr-only">
+              Comment threads anchored to highlights in this essay
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
+            {threadListItems.length === 0 && resolvedThreads.length === 0 ? (
+              <p className="text-muted-foreground py-8 text-center text-sm">
+                No comments yet. Highlight text in the essay to start one.
+              </p>
+            ) : threadListItems.length === 0 ? (
+              <p className="text-muted-foreground py-4 text-center text-sm">
+                No open comments.
+              </p>
+            ) : (
+              threadListItems.map(({ thread, from, quote }) => {
+                const hasUnread =
+                  viewer === "student" &&
+                  thread.comments.some((c) => !c.isStudentReply && !c.isOld)
+                return (
+                  <button
+                    key={thread.threadId}
+                    type="button"
+                    onClick={() => {
+                      setThreadsOpen(false)
+                      openThreadFromList(thread.threadId, from)
+                    }}
+                    className={cn(
+                      "bg-muted/30 hover:bg-muted/60 block w-full rounded-lg border px-3 py-2 text-left transition-colors",
+                      hasUnread && "border-blue-300 dark:border-blue-400/40"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <p className="text-muted-foreground min-w-0 flex-1 truncate text-xs italic">
+                        “{quote.trim()}”
+                      </p>
+                      {hasUnread && (
+                        <span className="size-1.5 shrink-0 rounded-full bg-blue-500" aria-hidden />
+                      )}
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      {thread.comments.map((c) => (
+                        <p key={c.id} className="text-xs leading-snug">
+                          <span className="font-medium">
+                            {c.teacher_name || (c.isStudentReply ? "Student" : "Teacher")}
+                            {c.isStudentReply ? " (student)" : ""}:
+                          </span>{" "}
+                          <span className="text-muted-foreground">
+                            <Linkify text={c.note} />
+                          </span>
+                        </p>
+                      ))}
+                    </div>
+                    <p className="text-muted-foreground/60 mt-1.5 text-[10px]">
+                      Click to jump to the highlight
+                    </p>
+                  </button>
+                )
+              })
+            )}
+
+            {resolvedThreads.length > 0 && (
+              <>
+                <p className="text-muted-foreground pt-3 text-[10px] font-semibold uppercase tracking-wider">
+                  Resolved ({resolvedThreads.length})
+                </p>
+                {resolvedThreads.map((thread) => (
+                  <button
+                    key={thread.threadId}
+                    type="button"
+                    onClick={(e) => {
+                      // The highlight is gone, so anchor the thread at the click.
+                      setThreadsOpen(false)
+                      setActiveThread({
+                        threadId: thread.threadId,
+                        isNew: false,
+                        anchor: { x: e.clientX, y: e.clientY },
+                      })
+                    }}
+                    className="bg-muted/20 hover:bg-muted/50 block w-full rounded-lg border border-dashed px-3 py-2 text-left opacity-80 transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700">
+                        ✓ Resolved
+                      </span>
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      {thread.comments.map((c) => (
+                        <p key={c.id} className="text-xs leading-snug">
+                          <span className="font-medium">
+                            {c.teacher_name || (c.isStudentReply ? "Student" : "Teacher")}
+                            {c.isStudentReply ? " (student)" : ""}:
+                          </span>{" "}
+                          <span className="text-muted-foreground">
+                            <Linkify text={c.note} />
+                          </span>
+                        </p>
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
       {activeThread && (
         <CommentThreadPopover
           anchor={activeThread.anchor}
@@ -372,7 +556,11 @@ export function RichTextEditor({
           isNew={activeThread.isNew}
           onSend={handleSend}
           onMarkRead={inline.markRead}
-          onResolve={!disabled ? handleResolve : undefined}
+          onResolve={
+            !disabled && !inline.threads.get(activeThread.threadId)?.resolved
+              ? handleResolve
+              : undefined
+          }
           onClose={() => setActiveThread(null)}
         />
       )}

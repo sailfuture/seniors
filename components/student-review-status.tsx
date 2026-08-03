@@ -922,19 +922,23 @@ function RevisionEditor({
             )}
           </>
         ) : locked ? (
-          <div className="text-muted-foreground rounded-md border bg-muted/30 px-3 py-2 text-sm">
-            {response.student_response ? (
-              <span className="whitespace-pre-wrap">{response.student_response}</span>
+          <div className="rounded-md border bg-muted/30 px-3 py-2">
+            {response.student_response || response.image_response ? (
+              <ResponseView q={question} r={response} />
             ) : (
-              <span className="italic">—</span>
+              <span className="text-muted-foreground text-sm italic">—</span>
             )}
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="text-muted-foreground rounded-md border bg-muted/30 px-3 py-2 text-sm">
-              {response.student_response
-                ? <span className="line-clamp-4 whitespace-pre-wrap">{response.student_response}</span>
-                : <span className="italic">This response type is edited in the full editor.</span>}
+            <div className="max-h-48 overflow-hidden rounded-md border bg-muted/30 px-3 py-2">
+              {response.student_response || response.image_response ? (
+                <ResponseView q={question} r={response} />
+              ) : (
+                <span className="text-muted-foreground text-sm italic">
+                  This response type is edited in the full editor.
+                </span>
+              )}
             </div>
             <Button variant="outline" size="sm" className="gap-1.5" onClick={onOpenEditor}>
               Open in editor

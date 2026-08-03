@@ -77,18 +77,6 @@ export function CommentThreadPopover({
           {isNew ? "New comment" : "Comment"}
         </span>
         <div className="flex items-center gap-1">
-          {onResolve && !isNew && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 gap-1 px-1.5 text-[11px] text-green-700 hover:bg-green-50 hover:text-green-800"
-              onClick={onResolve}
-              title="Resolve and remove the highlight"
-            >
-              <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5" />
-              Resolve
-            </Button>
-          )}
           <button
             type="button"
             onClick={onClose}
@@ -121,7 +109,20 @@ export function CommentThreadPopover({
           rows={2}
           className="text-sm"
         />
-        <div className="mt-2 flex justify-end">
+        <div className="mt-2 flex items-center justify-end gap-1.5">
+          {onResolve && !isNew && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 text-xs text-green-700 hover:bg-green-50 hover:text-green-800"
+              onClick={onResolve}
+              disabled={sending}
+              title="Resolve and remove the highlight"
+            >
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5" />
+              Resolve
+            </Button>
+          )}
           <Button size="sm" className="h-7 text-xs" onClick={send} disabled={!note.trim() || sending}>
             {sending ? "Sending…" : isNew ? "Comment" : "Reply"}
           </Button>

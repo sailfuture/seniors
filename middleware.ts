@@ -9,6 +9,7 @@ const isProtectedRoute = createRouteMatcher([
   "/api/image-generation(.*)",
   "/api/student(.*)",
   "/api/advisors(.*)",
+  "/api/essay(.*)",
 ])
 
 const isAdminRoute = createRouteMatcher(["/admin(.*)"])
