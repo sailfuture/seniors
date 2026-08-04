@@ -412,10 +412,10 @@ function ResolvedThreadEntryView({
           className="mt-0.5 size-3.5 shrink-0 text-green-600"
         />
         <span className="min-w-0 flex-1">
-          <span className="block text-[10px] font-semibold uppercase tracking-wide text-green-700">
+          <span className="block text-xs font-medium text-green-700">
             Resolved inline comment
             {ts > 0 && (
-              <span className="text-muted-foreground font-normal normal-case tracking-normal">
+              <span className="text-muted-foreground font-normal">
                 {" "}&middot; {getRelativeTime(ts)}
               </span>
             )}

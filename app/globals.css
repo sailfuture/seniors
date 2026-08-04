@@ -208,10 +208,14 @@ body {
 .rt-comments-visible .rt-comment:hover {
   background: rgba(245, 158, 11, 0.36);
 }
-/* The highlight the user is actively viewing/creating. */
+/* The highlight whose thread is open (or was just jumped to). Deeper fill
+   plus a ring so the selected passage is unmistakable among its neighbors. */
 .tiptap .rt-comment.rt-comment-active,
 .rt-comments-visible .rt-comment.rt-comment-active {
-  background: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.55);
+  border-bottom-color: rgb(180, 83, 9);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.55);
+  border-radius: 3px;
 }
 
 /* ── Print document (US Letter, 8.5×11) ──────────────────────────────────

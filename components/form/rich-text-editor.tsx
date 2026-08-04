@@ -179,6 +179,9 @@ export function RichTextEditor({
   const [sheetTab, setSheetTab] = useState<"open" | "resolved">("open")
   const [sheetThreadId, setSheetThreadId] = useState<string | null>(null)
   const [pendingThread, setPendingThread] = useState<PendingThread | null>(null)
+  // The highlight whose thread is open (or was just jumped to), so the reader
+  // can tell which passage the conversation belongs to.
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
 
   const editor = useEditor({
     // Required in the Next.js App Router: rendering the editor during SSR /
@@ -295,21 +298,51 @@ export function RichTextEditor({
   }, [editor, commentsEnabled])
 
   // Clicking a highlight opens its thread in the comments sheet (works even
-  // in read-only mode).
+  // in read-only mode); clicking elsewhere drops the selected state.
   useEffect(() => {
     if (!editor || !commentsEnabled) return
     const dom = editor.view.dom
     const onClick = (e: MouseEvent) => {
       const el = (e.target as HTMLElement)?.closest?.(".rt-comment") as HTMLElement | null
       const threadId = el?.getAttribute("data-thread-id")
-      if (!threadId) return
+      if (!threadId) {
+        setActiveThreadId(null)
+        return
+      }
       setPendingThread(null)
+      setActiveThreadId(threadId)
       setSheetThreadId(threadId)
       setThreadsOpen(true)
     }
     dom.addEventListener("click", onClick)
     return () => dom.removeEventListener("click", onClick)
   }, [editor, commentsEnabled, setThreadsOpen])
+
+  // Paint the active highlight. The mark renders as spans in the editor DOM,
+  // so the class is toggled directly — and re-applied after every document
+  // update, since ProseMirror rebuilds those nodes.
+  useEffect(() => {
+    if (!editor || !commentsEnabled) return
+    const paint = () => {
+      const dom = editor.view.dom
+      dom.querySelectorAll(".rt-comment-active").forEach((el) => {
+        if (el.getAttribute("data-thread-id") !== activeThreadId) {
+          el.classList.remove("rt-comment-active")
+        }
+      })
+      if (!activeThreadId) return
+      dom
+        .querySelectorAll(`.rt-comment[data-thread-id="${CSS.escape(activeThreadId)}"]`)
+        .forEach((el) => el.classList.add("rt-comment-active"))
+    }
+    paint()
+    editor.on("update", paint)
+    editor.on("selectionUpdate", paint)
+    return () => {
+      editor.off("update", paint)
+      editor.off("selectionUpdate", paint)
+    }
+  }, [editor, commentsEnabled, activeThreadId])
 
   // Start a comment on the current selection: open the sheet with a composer;
   // the highlight is applied only once the first message persists.
@@ -374,16 +407,24 @@ export function RichTextEditor({
     [editor, inline]
   )
 
-  // "Show in essay": close the sheet and scroll the highlight into view.
+  // "Show in essay": close the sheet, scroll the highlight into view, and
+  // leave it visually selected so it's obvious which passage was meant.
   const scrollToHighlight = useCallback(
-    (from: number) => {
+    (threadId: string, from: number) => {
       if (!editor) return
+      setActiveThreadId(threadId)
       const domAt = editor.view.domAtPos(from).node
       const el = (domAt.nodeType === Node.TEXT_NODE ? domAt.parentElement : (domAt as HTMLElement)) as HTMLElement | null
-      el?.scrollIntoView?.({ block: "center" })
+      el?.scrollIntoView?.({ block: "center", behavior: "smooth" })
     },
     [editor]
   )
+
+  /** Open a thread in the sheet and mark its highlight as selected. */
+  const openThreadInSheet = useCallback((threadId: string) => {
+    setActiveThreadId(threadId)
+    setSheetThreadId(threadId)
+  }, [])
 
   // Open threads in document order, with a short quote of the passage each
   // one anchors to. Threads whose highlight vanished (e.g. the passage was
@@ -545,7 +586,10 @@ export function RichTextEditor({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSheetThreadId(null)}
+                  onClick={() => {
+                    setSheetThreadId(null)
+                    setActiveThreadId(null)
+                  }}
                   className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-md border"
                   title="Back to all comments"
                 >
@@ -606,6 +650,7 @@ export function RichTextEditor({
               onResolve={async () => {
                 await resolveThreadById(sheetThreadId)
                 setSheetThreadId(null)
+                setActiveThreadId(null)
               }}
               onShowInEssay={
                 threadListItems.some((i) => i.thread.threadId === sheetThreadId)
@@ -614,7 +659,7 @@ export function RichTextEditor({
                       if (!item) return
                       setThreadsOpen(false)
                       setSheetThreadId(null)
-                      scrollToHighlight(item.from)
+                      scrollToHighlight(sheetThreadId, item.from)
                     }
                   : undefined
               }
@@ -637,7 +682,7 @@ export function RichTextEditor({
                         thread={thread}
                         quote={quote}
                         hasUnread={hasUnread}
-                        onOpen={() => setSheetThreadId(thread.threadId)}
+                        onOpen={() => openThreadInSheet(thread.threadId)}
                       />
                     )
                   })
@@ -653,7 +698,7 @@ export function RichTextEditor({
                     thread={thread}
                     quote={thread.comments.find((c) => c.quote)?.quote ?? undefined}
                     resolved
-                    onOpen={() => setSheetThreadId(thread.threadId)}
+                    onOpen={() => openThreadInSheet(thread.threadId)}
                   />
                 ))
               )}
