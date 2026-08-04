@@ -615,27 +615,42 @@ export function TeacherEssayReviewPage({
         >
           <SheetHeader className="shrink-0 border-b px-6 py-4">
             {openVersion ? (
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpenVersion(null)
-                      setConfirmRestore(false)
-                    }}
-                    className="text-muted-foreground hover:text-foreground inline-flex size-7 shrink-0 items-center justify-center rounded-md border"
-                    title="Back to version list"
-                  >
-                    ←
-                  </button>
-                  <SheetTitle className="truncate text-base">
-                    {(REASON_LABEL[openVersion.reason]?.label ?? openVersion.reason) +
-                      " · " +
-                      formatVersionDate(openVersion.created_at)}
-                  </SheetTitle>
-                </div>
+              // Title row only — the restore action lives with the meta line
+              // below, clear of the sheet's close button.
+              <div className="flex min-w-0 items-center gap-2 pr-8">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenVersion(null)
+                    setConfirmRestore(false)
+                  }}
+                  className="text-muted-foreground hover:text-foreground inline-flex size-7 shrink-0 items-center justify-center rounded-md border"
+                  title="Back to version list"
+                >
+                  ←
+                </button>
+                <SheetTitle className="truncate text-base">
+                  {REASON_LABEL[openVersion.reason]?.label ?? openVersion.reason}
+                </SheetTitle>
+              </div>
+            ) : (
+              <SheetTitle className="text-base">Version history</SheetTitle>
+            )}
+            <SheetDescription className="sr-only">
+              Saved snapshots of this essay
+            </SheetDescription>
+          </SheetHeader>
+
+          {openVersion ? (
+            <div className="flex-1 overflow-y-auto bg-white dark:bg-background">
+              <div className="flex flex-wrap items-center gap-3 border-b px-6 py-2 sm:px-12 lg:px-24">
+                <p className="text-muted-foreground text-xs">
+                  {formatVersionDate(openVersion.created_at)}
+                  {openVersion.actor_name && <> · {openVersion.actor_name}</>}
+                  {openVersion.wordCount != null && <> · {openVersion.wordCount} words</>}
+                </p>
                 {confirmRestore ? (
-                  <div className="flex shrink-0 items-center gap-1.5">
+                  <span className="flex items-center gap-1.5">
                     <Button
                       size="sm"
                       variant="ghost"
@@ -661,33 +676,17 @@ export function TeacherEssayReviewPage({
                     >
                       {restoring ? "Restoring…" : "Confirm restore"}
                     </Button>
-                  </div>
+                  </span>
                 ) : (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 shrink-0 bg-white text-xs dark:bg-transparent"
+                    className="h-7 bg-white text-xs dark:bg-transparent"
                     onClick={() => setConfirmRestore(true)}
                   >
                     Restore this version
                   </Button>
                 )}
-              </div>
-            ) : (
-              <SheetTitle className="text-base">Version history</SheetTitle>
-            )}
-            <SheetDescription className="sr-only">
-              Saved snapshots of this essay
-            </SheetDescription>
-          </SheetHeader>
-
-          {openVersion ? (
-            <div className="flex-1 overflow-y-auto bg-white dark:bg-background">
-              <div className="border-b px-6 py-2 sm:px-12 lg:px-24">
-                <p className="text-muted-foreground text-xs">
-                  {openVersion.actor_name && <>By {openVersion.actor_name} · </>}
-                  {openVersion.wordCount != null && <>{openVersion.wordCount} words</>}
-                </p>
               </div>
               {/* Same page margins and prose size as the editor, no card
                   frame — the snapshot reads exactly like the essay itself. */}

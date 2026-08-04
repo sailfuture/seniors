@@ -200,7 +200,13 @@ body {
   background: rgba(245, 158, 11, 0.22);
   border-bottom: 2px solid rgba(245, 158, 11, 0.7);
   border-radius: 2px;
-  padding-bottom: 1px;
+  /* Vertical padding on an inline span grows its paint and hit area WITHOUT
+     changing the line box — consecutive wrapped lines of a highlight meet
+     with no dead gap, so a click between sentences can't miss. Half the
+     prose leading (1.75 line-height) on each side closes the gap exactly. */
+  padding-block: 0.375em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   cursor: pointer;
   transition: background 0.12s ease;
 }

@@ -606,7 +606,11 @@ export function RichTextEditor({
         </button>
       )}
 
+      {/* Non-modal: the essay stays clickable beside the sheet, so clicking
+          another highlight switches threads instead of bouncing off an
+          overlay (which closed the sheet and dropped the selection). */}
       <Sheet
+        modal={false}
         open={threadsOpen}
         onOpenChange={(o) => {
           setThreadsOpen(o)
@@ -619,7 +623,20 @@ export function RichTextEditor({
           }
         }}
       >
-        <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
+        <SheetContent
+          className="flex flex-col gap-0 p-0 sm:max-w-md"
+          showOverlay={false}
+          // Clicking a highlight must swap the thread, not close the sheet;
+          // the editor's own click handler takes it from there.
+          onPointerDownOutside={(e) => {
+            const target = e.target as HTMLElement | null
+            if (target?.closest?.(".rt-comment")) e.preventDefault()
+          }}
+          onInteractOutside={(e) => {
+            const target = e.target as HTMLElement | null
+            if (target?.closest?.(".rt-comment")) e.preventDefault()
+          }}
+        >
           <SheetHeader className="shrink-0 border-b px-6 py-4">
             {pendingThread ? (
               <SheetTitle className="text-base">New comment</SheetTitle>
