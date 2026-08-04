@@ -321,7 +321,8 @@ export function RichTextEditor({
     setPendingThread({
       threadId: generateThreadId(),
       range: { from, to },
-      quote: editor.state.doc.textBetween(from, Math.min(to, from + 240), " "),
+      // The whole passage, uncut — a clipped quote reads as broken.
+      quote: editor.state.doc.textBetween(from, to, " "),
     })
     setSheetThreadId(null)
     setThreadsOpen(true)
@@ -356,7 +357,7 @@ export function RichTextEditor({
         if (ranges.length) {
           quote = editor.state.doc.textBetween(
             ranges[0].from,
-            Math.min(ranges[ranges.length - 1].to, ranges[0].from + 240),
+            ranges[ranges.length - 1].to,
             " "
           )
         }
@@ -395,7 +396,8 @@ export function RichTextEditor({
             const ranges = threadMarkRanges(editor, t.threadId)
             if (!ranges.length) return null
             const from = ranges[0].from
-            const quote = editor.state.doc.textBetween(from, Math.min(ranges[ranges.length - 1].to, from + 140), " ")
+            // Full passage; the list row truncates visually with CSS.
+            const quote = editor.state.doc.textBetween(from, ranges[ranges.length - 1].to, " ")
             return { thread: t, from, quote }
           })
           .filter((x): x is { thread: InlineThread; from: number; quote: string } => !!x)
@@ -696,7 +698,8 @@ function NewThreadComposer({
   return (
     <>
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        <p className="text-sm leading-relaxed">{quote.trim()}</p>
+        <p className="text-sm leading-relaxed">&ldquo;{quote.trim()}&rdquo;</p>
+        <Separator className="mt-4" />
       </div>
       <div className="shrink-0 border-t px-4 py-3">
         <Textarea
@@ -834,7 +837,7 @@ function SheetThreadView({
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {quote && (
           <div className="mb-3">
-            <p className="text-sm leading-relaxed">{quote.trim()}</p>
+            <p className="text-sm leading-relaxed">&ldquo;{quote.trim()}&rdquo;</p>
             {onShowInEssay && (
               <button
                 type="button"
@@ -844,6 +847,7 @@ function SheetThreadView({
                 Show in essay
               </button>
             )}
+            <Separator className="mt-3" />
           </div>
         )}
         {thread.resolved && (
