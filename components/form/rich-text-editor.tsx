@@ -44,6 +44,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { parseRichText, serializeRichText, type RichTextDoc } from "@/lib/rich-text"
 import { richTextExtensions } from "@/lib/rich-text-extensions"
@@ -87,6 +88,22 @@ function threadMarkRanges(editor: Editor, threadId: string): { from: number; to:
     }
   })
   return ranges
+}
+
+/** True when any text in [from, to) already carries a comment mark — new
+ *  threads must not overlap an existing highlight (the marks exclude each
+ *  other, so overlap would silently eat part of the older thread). */
+function rangeOverlapsComment(editor: Editor, from: number, to: number): boolean {
+  let overlaps = false
+  editor.state.doc.nodesBetween(from, to, (node) => {
+    if (overlaps) return false
+    if (node.isText && node.marks.some((m) => m.type.name === COMMENT_MARK_NAME)) {
+      overlaps = true
+      return false
+    }
+    return true
+  })
+  return overlaps
 }
 
 /** A comment being composed for a fresh selection; the highlight mark is only
@@ -279,7 +296,7 @@ export function RichTextEditor({
     if (!editor || !commentsEnabled) return
     const update = () => {
       const { from, to, empty } = editor.state.selection
-      if (empty || from === to) {
+      if (empty || from === to || rangeOverlapsComment(editor, from, to)) {
         setSelTooltip(null)
         return
       }
@@ -387,6 +404,10 @@ export function RichTextEditor({
     if (!editor) return
     const { from, to } = editor.state.selection
     if (from === to) return
+    if (rangeOverlapsComment(editor, from, to)) {
+      toast.error("That text already has a comment — open its highlight to reply instead.")
+      return
+    }
     setSelTooltip(null)
     setPendingThread({
       threadId: generateThreadId(),
@@ -443,6 +464,30 @@ export function RichTextEditor({
       }
     },
     [editor, inline]
+  )
+
+  // Delete one message from the open thread. Deleting the last message
+  // removes the whole thread, so its highlight is stripped too.
+  const deleteThreadComment = useCallback(
+    async (threadId: string, commentId: number) => {
+      const wasLast = (inline.threads.get(threadId)?.comments.length ?? 0) <= 1
+      const ok = await inline.deleteComment(commentId)
+      if (!ok) {
+        toast.error("Couldn't delete the comment — please try again.")
+        return
+      }
+      if (wasLast && editor) {
+        const ranges = threadMarkRanges(editor, threadId)
+        if (ranges.length) {
+          let chain = editor.chain()
+          for (const rg of ranges) chain = chain.setTextSelection(rg).unsetCommentThread()
+          chain.run()
+        }
+        setSheetThreadId(null)
+        setActiveThreadId(null)
+      }
+    },
+    [inline, editor]
   )
 
   // "Show in essay": close the sheet, scroll the highlight into view, and
@@ -705,6 +750,11 @@ export function RichTextEditor({
               canResolve={!disabled && !inline.threads.get(sheetThreadId)?.resolved}
               onReply={(note) => inline.reply(sheetThreadId, note).then((c) => !!c)}
               onMarkRead={inline.markRead}
+              onDeleteComment={
+                viewer === "teacher"
+                  ? (commentId) => deleteThreadComment(sheetThreadId, commentId)
+                  : undefined
+              }
               onResolve={async () => {
                 await resolveThreadById(sheetThreadId)
                 setSheetThreadId(null)
@@ -901,6 +951,7 @@ function SheetThreadView({
   canResolve,
   onReply,
   onMarkRead,
+  onDeleteComment,
   onResolve,
   onShowInEssay,
 }: {
@@ -910,6 +961,8 @@ function SheetThreadView({
   canResolve: boolean
   onReply: (note: string) => Promise<boolean>
   onMarkRead: (commentId: number) => void
+  /** Teacher-side: delete one message (confirmation handled in the stream). */
+  onDeleteComment?: (commentId: number) => Promise<void>
   onResolve: () => Promise<void>
   /** Present only while the thread's highlight still exists in the document. */
   onShowInEssay?: () => void
@@ -962,6 +1015,7 @@ function SheetThreadView({
           comments={thread.comments}
           viewer={viewer}
           onMarkRead={onMarkRead}
+          onDelete={onDeleteComment}
           autoMarkRead={viewer === "student"}
           scrollToLatest
         />

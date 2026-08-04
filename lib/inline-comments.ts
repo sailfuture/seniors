@@ -176,6 +176,22 @@ export function useInlineComments({
     [post]
   )
 
+  /** Delete one message. The caller handles what happens when it was the
+   *  thread's last message (removing the now-orphaned highlight). */
+  const deleteComment = useCallback(
+    async (commentId: number): Promise<boolean> => {
+      try {
+        const res = await fetch(`${commentsEndpoint}/${commentId}`, { method: "DELETE" })
+        if (!res.ok) return false
+        setComments((prev) => prev.filter((c) => c.id !== commentId))
+        return true
+      } catch {
+        return false
+      }
+    },
+    [commentsEndpoint]
+  )
+
   const markRead = useCallback(
     async (commentId: number) => {
       const now = new Date().toISOString()
@@ -229,5 +245,5 @@ export function useInlineComments({
     [commentsEndpoint, comments]
   )
 
-  return { threads, loading, createThread, reply, markRead, resolveThread }
+  return { threads, loading, createThread, reply, markRead, resolveThread, deleteComment }
 }
