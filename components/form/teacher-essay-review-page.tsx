@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils"
 import { CommentComposer } from "./comment-composer"
 import { TeacherEssayAnnotator } from "./teacher-essay-annotator"
 import { RichTextDisplay } from "./rich-text-display"
-import { FieldActivityStream } from "./field-activity-stream"
+import { FieldActivityStream, type ResolvedThreadEntry } from "./field-activity-stream"
 import { isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import type { Comment } from "@/lib/form-types"
@@ -111,6 +111,7 @@ export function TeacherEssayReviewPage({
   const [response, setResponse] = useState<StudentResponse | null>(null)
   const [studentName, setStudentName] = useState("")
   const [comments, setComments] = useState<Comment[]>([])
+  const [resolvedThreads, setResolvedThreads] = useState<ResolvedThreadEntry[]>([])
   const [events, setEvents] = useState<ResponseEvent[]>([])
   const [versions, setVersions] = useState<ResponseVersion[]>([])
   const [restoreNonce, setRestoreNonce] = useState(0)
@@ -171,15 +172,35 @@ export function TeacherEssayReviewPage({
         }
         if (commentsRes.ok && q) {
           const data = (await commentsRes.json()) as Comment[]
-          setComments(
-            data.filter(
-              (c) =>
-                String(c.students_id ?? "") === String(studentId) &&
-                c.field_name === q!.field_name &&
-                // Inline essay-comment threads belong to a highlight, not the overall thread.
-                !c.thread_id
-            )
+          const mine = data.filter(
+            (c) =>
+              String(c.students_id ?? "") === String(studentId) &&
+              c.field_name === q!.field_name
           )
+          // Inline essay-comment threads belong to a highlight, not the overall thread.
+          setComments(mine.filter((c) => !c.thread_id))
+
+          // Resolved inline threads lose their highlight, so they surface in
+          // the feedback activity feed instead — grouped by thread.
+          const byThread = new Map<string, Comment[]>()
+          for (const c of mine) {
+            if (!c.thread_id) continue
+            byThread.set(c.thread_id, [...(byThread.get(c.thread_id) ?? []), c])
+          }
+          const resolved: ResolvedThreadEntry[] = []
+          for (const [threadId, list] of byThread) {
+            if (!list.some((c) => c.isComplete)) continue
+            const sorted = [...list].sort(
+              (a, b) => vts(a.created_at) - vts(b.created_at)
+            )
+            resolved.push({
+              threadId,
+              quote: sorted.find((c) => c.quote)?.quote ?? null,
+              comments: sorted,
+              lastAt: sorted.reduce((m, c) => Math.max(m, vts(c.created_at)), 0),
+            })
+          }
+          setResolvedThreads(resolved)
         }
         if (studentsRes.ok) {
           const students = (await studentsRes.json()) as { id: string; firstName: string; lastName: string }[]
@@ -571,6 +592,7 @@ export function TeacherEssayReviewPage({
             <FieldActivityStream
               comments={comments}
               events={events.filter((e) => e.field_name === question.field_name)}
+              resolvedThreads={resolvedThreads}
               viewer="teacher"
               onDelete={handleDelete}
               scrollToLatest

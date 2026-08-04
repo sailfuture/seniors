@@ -71,9 +71,20 @@ interface ResponseStatus {
  * submissions/approvals appear indirectly via revision-feedback comments; the
  * terminal marker always reflects where the input stands right now.
  */
+/** A resolved inline-comment thread, folded into the activity timeline. */
+export interface ResolvedThreadEntry {
+  threadId: string
+  /** The passage the thread was anchored to, if it was captured. */
+  quote?: string | null
+  comments: Comment[]
+  /** When it was last active — where it sits in the timeline. */
+  lastAt: number
+}
+
 type TimelineItem =
   | { kind: "comment"; ts: number; c: Comment }
   | { kind: "event"; ts: number; e: ResponseEvent }
+  | { kind: "thread"; ts: number; t: ResolvedThreadEntry }
 
 const EVENT_META: Record<string, { icon: typeof SentIcon; iconClass: string; label: string; labelClass: string }> = {
   submitted: { icon: SentIcon, iconClass: "text-blue-500", label: "Submitted for review", labelClass: "text-blue-600" },
@@ -85,6 +96,7 @@ const EVENT_META: Record<string, { icon: typeof SentIcon; iconClass: string; lab
 export function FieldActivityStream({
   comments,
   events = [],
+  resolvedThreads = [],
   viewer,
   responseStatus,
   lastEdited,
@@ -99,6 +111,8 @@ export function FieldActivityStream({
   comments: Comment[]
   /** Review-state transitions for this field, shown as timeline markers. */
   events?: ResponseEvent[]
+  /** Resolved inline threads, shown as expandable entries in the timeline. */
+  resolvedThreads?: ResolvedThreadEntry[]
   viewer: "teacher" | "student"
   /** Pass to pin the current submission state at the end; omit to hide it. */
   responseStatus?: ResponseStatus | null
@@ -153,6 +167,7 @@ export function FieldActivityStream({
           !revisionCommentTimes.some((t) => Math.abs(t - parseTimestamp(e.created_at)) < 90_000)
       )
       .map((e): TimelineItem => ({ kind: "event", ts: parseTimestamp(e.created_at), e })),
+    ...resolvedThreads.map((t): TimelineItem => ({ kind: "thread", ts: t.lastAt, t })),
   ].sort((a, b) => a.ts - b.ts)
 
   const sorted = timeline.filter((i) => i.kind === "comment").map((i) => (i as { c: Comment }).c)
@@ -189,6 +204,19 @@ export function FieldActivityStream({
         const day = ts ? dayLabel(ts) : ""
         const showDay = day && day !== lastDay
         if (showDay) lastDay = day
+
+        if (item.kind === "thread") {
+          return (
+            <div key={`th-${item.t.threadId}`} className="flex flex-col gap-1">
+              {showDay && (
+                <Marker variant="separator" className="my-1">
+                  <MarkerContent>{day}</MarkerContent>
+                </Marker>
+              )}
+              <ResolvedThreadEntryView entry={item.t} viewer={viewer} ts={ts} />
+            </div>
+          )
+        }
 
         if (item.kind === "event") {
           const meta = EVENT_META[item.e.event_type] ?? EVENT_META.reopened
@@ -350,6 +378,66 @@ export function FieldActivityStream({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  )
+}
+
+/**
+ * A resolved inline thread in the timeline: collapsed to its quoted passage,
+ * expanding in place to the whole exchange. Its highlight is gone from the
+ * document, so this is the only place the conversation still surfaces.
+ */
+function ResolvedThreadEntryView({
+  entry,
+  viewer,
+  ts,
+}: {
+  entry: ResolvedThreadEntry
+  viewer: "teacher" | "student"
+  ts: number
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const preview = entry.quote?.trim() || entry.comments[0]?.note || "Inline comment"
+
+  return (
+    <div className="rounded-lg border border-dashed px-3 py-2">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-start gap-2 text-left"
+      >
+        <HugeiconsIcon
+          icon={CheckmarkCircle02Icon}
+          strokeWidth={2}
+          className="mt-0.5 size-3.5 shrink-0 text-green-600"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[10px] font-semibold uppercase tracking-wide text-green-700">
+            Resolved inline comment
+            {ts > 0 && (
+              <span className="text-muted-foreground font-normal normal-case tracking-normal">
+                {" "}&middot; {getRelativeTime(ts)}
+              </span>
+            )}
+          </span>
+          <span
+            className={cn(
+              "text-muted-foreground mt-0.5 block text-xs",
+              !expanded && "truncate"
+            )}
+          >
+            &ldquo;{preview}&rdquo;
+          </span>
+        </span>
+        <span className="text-muted-foreground/60 shrink-0 text-[10px]">
+          {expanded ? "Hide" : `${entry.comments.length}`}
+        </span>
+      </button>
+      {expanded && (
+        <div className="mt-2 border-t pt-2">
+          <FieldActivityStream comments={entry.comments} viewer={viewer} />
+        </div>
+      )}
     </div>
   )
 }
