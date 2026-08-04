@@ -605,8 +605,12 @@ export function TeacherEssayReviewPage({
         <SheetContent
           className={cn(
             "flex flex-col gap-0 p-0 transition-all",
-            // A full essay needs real width: at least half the viewport.
-            openVersion ? "w-full sm:w-[60vw] sm:max-w-[60vw]" : "sm:max-w-md"
+            // A full essay needs real width: nearly the whole viewport. The
+            // width override must carry the same data-[side] variant the base
+            // sheet uses, or its w-3/4 wins on specificity.
+            openVersion
+              ? "data-[side=right]:w-[95vw] sm:max-w-[85vw]"
+              : "sm:max-w-md"
           )}
         >
           <SheetHeader className="shrink-0 border-b px-6 py-4">
@@ -678,15 +682,17 @@ export function TeacherEssayReviewPage({
           </SheetHeader>
 
           {openVersion ? (
-            <div className="flex-1 overflow-y-auto">
-              <div className="px-6 py-2">
+            <div className="flex-1 overflow-y-auto bg-white dark:bg-background">
+              <div className="border-b px-6 py-2 sm:px-12 lg:px-24">
                 <p className="text-muted-foreground text-xs">
                   {openVersion.actor_name && <>By {openVersion.actor_name} · </>}
                   {openVersion.wordCount != null && <>{openVersion.wordCount} words</>}
                 </p>
               </div>
-              <div className="mx-6 mb-6 rounded-lg border bg-white px-6 py-10 sm:px-12 lg:px-16 dark:bg-card">
-                <RichTextDisplay raw={openVersion.student_response} />
+              {/* Same page margins and prose size as the editor, no card
+                  frame — the snapshot reads exactly like the essay itself. */}
+              <div className="px-6 py-10 sm:px-12 lg:px-24">
+                <RichTextDisplay raw={openVersion.student_response} fullSize />
               </div>
             </div>
           ) : (
