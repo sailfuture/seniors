@@ -266,7 +266,7 @@ export function TeacherComment({
                 {!responseStatus.revisionNeeded && !responseStatus.isComplete && onRequestRevision && (
                   <Button
                     variant="outline"
-                    className="flex-1 gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800 dark:bg-transparent"
+                    className="flex-1 gap-1.5 bg-white dark:bg-transparent"
                     onClick={() => { onRequestRevision() }}
                   >
                     <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-4" />

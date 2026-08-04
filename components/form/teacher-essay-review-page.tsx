@@ -556,7 +556,7 @@ export function TeacherEssayReviewPage({
           <>
             <Button
               variant="outline"
-              className="flex-1 gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800 dark:bg-transparent"
+              className="flex-1 gap-1.5 bg-white dark:bg-transparent"
               disabled={acting}
               onClick={() => {
                 setRevisionNote("")
@@ -763,7 +763,7 @@ export function TeacherEssayReviewPage({
             </Button>
             <Button
               variant="outline"
-              className="gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800 dark:bg-transparent"
+              className="gap-1.5 bg-white dark:bg-transparent"
               disabled={acting || !revisionNote.trim()}
               onClick={async () => {
                 await applyAction("revision", revisionNote)

@@ -236,7 +236,7 @@ function RequestRevisionAllButton({
           variant="outline"
           size="sm"
           disabled={loading}
-          className="border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800 dark:bg-transparent"
+          className="bg-white dark:bg-transparent"
         >
           {loading ? (
             <span className="mr-2 size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
