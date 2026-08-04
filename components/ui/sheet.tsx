@@ -67,7 +67,12 @@ function SheetContent({
       {!showOverlay && passiveOverlay && (
         <div
           aria-hidden
-          className="supports-backdrop-filter:backdrop-blur-xs pointer-events-none fixed inset-0 z-50 bg-black/10"
+          // z-40, not z-50: on a quick close→reopen this div remounts while the
+          // animating sheet content is still in the DOM, so its portal lands
+          // AFTER the sheet's — at equal z-index the blur would then paint over
+          // the sheet itself (and the whole page). Keeping it below the
+          // content's z-50 makes paint order independent of portal order.
+          className="supports-backdrop-filter:backdrop-blur-xs pointer-events-none fixed inset-0 z-40 bg-black/10"
         />
       )}
       <SheetPrimitive.Content
