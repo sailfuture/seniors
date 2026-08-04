@@ -328,7 +328,15 @@ export function RichTextEditor({
       const el = (e.target as HTMLElement)?.closest?.(".rt-comment") as HTMLElement | null
       const threadId = el?.getAttribute("data-thread-id")
       if (!threadId) {
+        // Clicking plain body text deselects — and closes the sheet, since a
+        // non-modal sheet doesn't dismiss itself on outside clicks (which is
+        // what left the blur hanging over the page).
         setActiveThreadId(null)
+        if (threadsOpen) {
+          setThreadsOpen(false)
+          setSheetThreadId(null)
+          setPendingThread(null)
+        }
         return
       }
       // Already viewing this thread (e.g. a double-click): don't re-open.
