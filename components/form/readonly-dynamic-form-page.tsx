@@ -790,9 +790,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                     </p>
                   )}
                 </div>
-                <Button asChild size="sm" variant="outline" className="shrink-0 bg-white dark:bg-transparent">
-                  <Link href={`${cfg.adminBasePath}/${studentId}/essay/${q.id}`}>Open document</Link>
-                </Button>
               </div>
               {(q.min_words > 0 || showAiFooter) && (
                 <div className="text-muted-foreground/60 mt-1 flex items-center justify-between gap-2 text-xs">
@@ -850,6 +847,20 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             isDimmed={qIsDimmed}
             isComplete={qIsComplete}
             label={q.field_label}
+            labelAction={
+              isRichText || looksLikeRichTextDoc(value) ? (
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="h-6 bg-white px-2 text-[10px] dark:bg-transparent"
+                >
+                  <Link href={`${cfg.adminBasePath}/${studentId}/essay/${q.id}`}>
+                    Open document
+                  </Link>
+                </Button>
+              ) : undefined
+            }
             displayValue={displayValue}
           >
               <div className="flex items-center gap-2">
@@ -1226,6 +1237,7 @@ function CollapsibleQuestionCard({
   isDimmed,
   isComplete,
   label,
+  labelAction,
   displayValue,
   children,
 }: {
@@ -1234,6 +1246,8 @@ function CollapsibleQuestionCard({
   isDimmed: boolean
   isComplete: boolean
   label: string
+  /** Rendered immediately to the right of the title (e.g. Open document). */
+  labelAction?: React.ReactNode
   displayValue: React.ReactNode
   children: React.ReactNode
 }) {
@@ -1269,6 +1283,7 @@ function CollapsibleQuestionCard({
           <Label className={`text-muted-foreground text-xs font-medium ${isComplete ? "cursor-pointer" : ""}`}>
             {label}
           </Label>
+          {labelAction && <div onClick={(e) => e.stopPropagation()}>{labelAction}</div>}
         </div>
         <div onClick={(e) => e.stopPropagation()}>
           {children}
