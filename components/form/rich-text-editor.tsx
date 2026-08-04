@@ -37,7 +37,6 @@ import { parseRichText, serializeRichText, type RichTextDoc } from "@/lib/rich-t
 import { richTextExtensions } from "@/lib/rich-text-extensions"
 import { COMMENT_MARK_NAME } from "@/lib/rich-text-comment-mark"
 import { useInlineComments, generateThreadId, type InlineThread } from "@/lib/inline-comments"
-import { CommentThreadPopover } from "./comment-thread-popover"
 
 export interface RichTextCommentConfig {
   commentsEndpoint: string
@@ -76,11 +75,12 @@ function threadMarkRanges(editor: Editor, threadId: string): { from: number; to:
   return ranges
 }
 
-interface ActiveThread {
+/** A comment being composed for a fresh selection; the highlight mark is only
+ *  applied once its first message persists. */
+interface PendingThread {
   threadId: string
-  isNew: boolean
-  anchor: { x: number; y: number }
-  range?: { from: number; to: number }
+  range: { from: number; to: number }
+  quote: string
 }
 
 /**
@@ -106,6 +106,10 @@ export function RichTextEditor({
   showThreadList = false,
   toolbarRight,
   toolbarLeft,
+  commentsSheetOpen,
+  onCommentsSheetOpenChange,
+  showCommentsButton = true,
+  onCommentCounts,
 }: {
   value: string
   onChange: (value: string) => void
@@ -128,6 +132,13 @@ export function RichTextEditor({
   /** Left-aligned slot (save status, submit actions). Stays interactive even
    *  when the document itself is disabled and dimmed. */
   toolbarLeft?: React.ReactNode
+  /** Control the comments sheet from outside (e.g. a page-header button). */
+  commentsSheetOpen?: boolean
+  onCommentsSheetOpenChange?: (open: boolean) => void
+  /** Hide the toolbar Comments button when the page renders its own. */
+  showCommentsButton?: boolean
+  /** Reports thread counts so an external button can badge itself. */
+  onCommentCounts?: (counts: { open: number; unread: number }) => void
 }) {
   const lastEmitted = useRef(value)
   const [loadError, setLoadError] = useState(false)
@@ -139,14 +150,23 @@ export function RichTextEditor({
 
   const commentsEnabled = !!comments
   const inline = useInlineComments(comments ?? DISABLED_COMMENTS)
-  const [activeThread, setActiveThread] = useState<ActiveThread | null>(null)
   // Floating "Comment" chip that follows a non-empty selection, so starting a
   // thread never requires reaching up to the toolbar.
   const [selTooltip, setSelTooltip] = useState<{ x: number; y: number } | null>(null)
-  const [threadsOpen, setThreadsOpen] = useState(false)
-  // Sheet state: which tab, and which thread (null = the list).
+  // Sheet state: open flag (controllable from outside), which tab, which
+  // thread (null = the list), and a thread being composed for a selection.
+  const [threadsOpenInternal, setThreadsOpenInternal] = useState(false)
+  const threadsOpen = commentsSheetOpen ?? threadsOpenInternal
+  const setThreadsOpen = useCallback(
+    (o: boolean) => {
+      setThreadsOpenInternal(o)
+      onCommentsSheetOpenChange?.(o)
+    },
+    [onCommentsSheetOpenChange]
+  )
   const [sheetTab, setSheetTab] = useState<"open" | "resolved">("open")
   const [sheetThreadId, setSheetThreadId] = useState<string | null>(null)
+  const [pendingThread, setPendingThread] = useState<PendingThread | null>(null)
 
   const editor = useEditor({
     // Required in the Next.js App Router: rendering the editor during SSR /
@@ -246,11 +266,11 @@ export function RichTextEditor({
         setSelTooltip(null)
         return
       }
+      // Sit right at the end of the highlighted text, on its line.
       const coords = editor.view.coordsAtPos(to)
-      // The chip is centered on this x, so clamp by half its width.
       setSelTooltip({
-        x: Math.max(70, Math.min(coords.left, window.innerWidth - 70)),
-        y: coords.bottom,
+        x: Math.min(coords.right + 8, window.innerWidth - 130),
+        y: coords.top - 4,
       })
     }
     const hide = () => setSelTooltip(null)
@@ -262,7 +282,8 @@ export function RichTextEditor({
     }
   }, [editor, commentsEnabled])
 
-  // Clicking a highlight opens its thread (works even in read-only mode).
+  // Clicking a highlight opens its thread in the comments sheet (works even
+  // in read-only mode).
   useEffect(() => {
     if (!editor || !commentsEnabled) return
     const dom = editor.view.dom
@@ -270,53 +291,49 @@ export function RichTextEditor({
       const el = (e.target as HTMLElement)?.closest?.(".rt-comment") as HTMLElement | null
       const threadId = el?.getAttribute("data-thread-id")
       if (!threadId) return
-      setActiveThread({ threadId, isNew: false, anchor: { x: e.clientX, y: e.clientY } })
+      setPendingThread(null)
+      setSheetThreadId(threadId)
+      setThreadsOpen(true)
     }
     dom.addEventListener("click", onClick)
     return () => dom.removeEventListener("click", onClick)
-  }, [editor, commentsEnabled])
+  }, [editor, commentsEnabled, setThreadsOpen])
 
+  // Start a comment on the current selection: open the sheet with a composer;
+  // the highlight is applied only once the first message persists.
   const startCommentOnSelection = useCallback(() => {
     if (!editor) return
     const { from, to } = editor.state.selection
     if (from === to) return
-    const coords = editor.view.coordsAtPos(to)
     setSelTooltip(null)
-    setActiveThread({
+    setPendingThread({
       threadId: generateThreadId(),
-      isNew: true,
       range: { from, to },
-      anchor: { x: coords.left, y: coords.bottom },
+      quote: editor.state.doc.textBetween(from, Math.min(to, from + 240), " "),
     })
-  }, [editor])
+    setSheetThreadId(null)
+    setThreadsOpen(true)
+  }, [editor, setThreadsOpen])
 
-  const handleSend = useCallback(
+  const sendFirstComment = useCallback(
     async (note: string): Promise<boolean> => {
-      if (!activeThread) return false
-      // A new thread stores its highlighted passage so the exchange stays
-      // legible after resolution removes the highlight.
-      const quote =
-        activeThread.isNew && activeThread.range && editor
-          ? editor.state.doc.textBetween(
-              activeThread.range.from,
-              Math.min(activeThread.range.to, activeThread.range.from + 240),
-              " "
-            )
-          : undefined
-      const created = await inline.reply(activeThread.threadId, note, quote)
-      // A brand-new thread's highlight is applied only once its first comment
-      // persists, so cancelling leaves no orphan highlight.
-      if (created && activeThread.isNew && activeThread.range && editor) {
-        editor.chain().setTextSelection(activeThread.range).setCommentThread(activeThread.threadId).run()
-        setActiveThread((prev) => (prev ? { ...prev, isNew: false } : prev))
-      }
-      return !!created
+      if (!pendingThread || !editor) return false
+      const created = await inline.reply(pendingThread.threadId, note, pendingThread.quote)
+      if (!created) return false
+      editor
+        .chain()
+        .setTextSelection(pendingThread.range)
+        .setCommentThread(pendingThread.threadId)
+        .run()
+      // Hand off to the normal thread view.
+      setSheetThreadId(pendingThread.threadId)
+      setPendingThread(null)
+      return true
     },
-    [activeThread, inline, editor]
+    [pendingThread, inline, editor]
   )
 
-  // Resolve a thread and strip its highlight, from either the popover or the
-  // sheet's thread view.
+  // Resolve a thread and strip its highlight.
   const resolveThreadById = useCallback(
     async (threadId: string) => {
       // Capture the passage while the highlight still exists — it backfills
@@ -344,22 +361,13 @@ export function RichTextEditor({
     [editor, inline]
   )
 
-  const handleResolve = useCallback(async () => {
-    if (!activeThread) return
-    await resolveThreadById(activeThread.threadId)
-    setActiveThread(null)
-  }, [activeThread, resolveThreadById])
-
-  // Open a thread from the list: scroll its highlight into view first, then
-  // anchor the popover at the highlight's on-screen position.
-  const openThreadFromList = useCallback(
-    (threadId: string, from: number) => {
+  // "Show in essay": close the sheet and scroll the highlight into view.
+  const scrollToHighlight = useCallback(
+    (from: number) => {
       if (!editor) return
       const domAt = editor.view.domAtPos(from).node
       const el = (domAt.nodeType === Node.TEXT_NODE ? domAt.parentElement : (domAt as HTMLElement)) as HTMLElement | null
       el?.scrollIntoView?.({ block: "center" })
-      const coords = editor.view.coordsAtPos(from)
-      setActiveThread({ threadId, isNew: false, anchor: { x: coords.left, y: coords.bottom } })
     },
     [editor]
   )
@@ -382,21 +390,6 @@ export function RichTextEditor({
           .sort((a, b) => a.from - b.from)
       : []
 
-  if (loadError) {
-    return (
-      <div
-        className={cn(
-          "border-destructive/40 bg-destructive/5 rounded-lg border px-4 py-3 text-sm",
-          className
-        )}
-      >
-        This essay could not be loaded for editing, so editing is disabled to protect your saved
-        work. Try refreshing the page, and ask your teacher for help if it keeps happening.
-      </div>
-    )
-  }
-
-  const showToolbar = !disabled || (commentsEnabled && annotateOnly)
   const viewer = comments?.viewer ?? "student"
 
   // Resolved threads keep their history: the highlight is gone from the
@@ -417,8 +410,31 @@ export function RichTextEditor({
   )
   const inlineBadge = viewer === "student" ? unreadInline : threadListItems.length
 
+  // Let a page-level Comments button badge itself with live counts. Declared
+  // before the load-error return so the hook order never changes.
+  const openCount = threadListItems.length
+  useEffect(() => {
+    onCommentCounts?.({ open: openCount, unread: unreadInline })
+  }, [onCommentCounts, openCount, unreadInline])
+
+  if (loadError) {
+    return (
+      <div
+        className={cn(
+          "border-destructive/40 bg-destructive/5 rounded-lg border px-4 py-3 text-sm",
+          className
+        )}
+      >
+        This essay could not be loaded for editing, so editing is disabled to protect your saved
+        work. Try refreshing the page, and ask your teacher for help if it keeps happening.
+      </div>
+    )
+  }
+
+  const showToolbar = !disabled || (commentsEnabled && annotateOnly)
+
   const threadsButton =
-    commentsEnabled && showThreadList ? (
+    commentsEnabled && showThreadList && showCommentsButton ? (
       <button
         type="button"
         onClick={() => setThreadsOpen(true)}
@@ -476,20 +492,19 @@ export function RichTextEditor({
         )}
       />
 
-      {/* Floating comment chip at the selection — mousedown is prevented so
-          clicking it doesn't collapse the selection before the click lands.
-          Offset below the selection's last line so it never sits on the text
-          being read; hidden entirely while the essay is locked. */}
-      {selTooltip && !activeThread && !disabled && (
+      {/* Floating comment chip at the end of the highlighted text — mousedown
+          is prevented so clicking it doesn't collapse the selection before
+          the click lands; hidden entirely while the essay is locked. */}
+      {selTooltip && !disabled && (
         <button
           type="button"
           style={{
             position: "fixed",
             left: selTooltip.x,
-            top: selTooltip.y + 10,
+            top: selTooltip.y,
             zIndex: 50,
           }}
-          className="flex -translate-x-1/2 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg transition-colors hover:bg-blue-700"
+          className="bg-background text-foreground hover:bg-accent flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-md transition-colors"
           onMouseDown={(e) => e.preventDefault()}
           onClick={startCommentOnSelection}
         >
@@ -502,12 +517,17 @@ export function RichTextEditor({
         open={threadsOpen}
         onOpenChange={(o) => {
           setThreadsOpen(o)
-          if (!o) setSheetThreadId(null)
+          if (!o) {
+            setSheetThreadId(null)
+            setPendingThread(null)
+          }
         }}
       >
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="shrink-0 border-b px-6 py-4">
-            {sheetThreadId ? (
+            {pendingThread ? (
+              <SheetTitle className="text-base">New comment</SheetTitle>
+            ) : sheetThreadId ? (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -555,7 +575,9 @@ export function RichTextEditor({
             </SheetDescription>
           </SheetHeader>
 
-          {sheetThreadId ? (
+          {pendingThread ? (
+            <NewThreadComposer quote={pendingThread.quote} onSend={sendFirstComment} />
+          ) : sheetThreadId ? (
             <SheetThreadView
               thread={inline.threads.get(sheetThreadId)}
               quote={
@@ -578,13 +600,13 @@ export function RichTextEditor({
                       if (!item) return
                       setThreadsOpen(false)
                       setSheetThreadId(null)
-                      openThreadFromList(sheetThreadId, item.from)
+                      scrollToHighlight(item.from)
                     }
                   : undefined
               }
             />
           ) : (
-            <div className="flex-1 divide-y overflow-y-auto px-4 py-2">
+            <div className="flex-1 divide-y overflow-y-auto">
               {sheetTab === "open" ? (
                 threadListItems.length === 0 ? (
                   <p className="text-muted-foreground py-8 text-center text-sm">
@@ -600,7 +622,6 @@ export function RichTextEditor({
                         key={thread.threadId}
                         thread={thread}
                         quote={quote}
-                        viewer={viewer}
                         hasUnread={hasUnread}
                         onOpen={() => setSheetThreadId(thread.threadId)}
                       />
@@ -617,7 +638,6 @@ export function RichTextEditor({
                     key={thread.threadId}
                     thread={thread}
                     quote={thread.comments.find((c) => c.quote)?.quote ?? undefined}
-                    viewer={viewer}
                     resolved
                     onOpen={() => setSheetThreadId(thread.threadId)}
                   />
@@ -627,82 +647,129 @@ export function RichTextEditor({
           )}
         </SheetContent>
       </Sheet>
-      {activeThread && (
-        <CommentThreadPopover
-          anchor={activeThread.anchor}
-          comments={inline.threads.get(activeThread.threadId)?.comments ?? []}
-          viewer={comments?.viewer ?? "student"}
-          isNew={activeThread.isNew}
-          onSend={handleSend}
-          onMarkRead={inline.markRead}
-          onResolve={
-            !disabled && !inline.threads.get(activeThread.threadId)?.resolved
-              ? handleResolve
-              : undefined
-          }
-          onClose={() => setActiveThread(null)}
-        />
-      )}
     </div>
   )
 }
 
+function formatThreadDate(ms: number): string {
+  if (!ms) return ""
+  return new Date(ms).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+/** Composer for a comment on a fresh selection, shown in the sheet. */
+function NewThreadComposer({
+  quote,
+  onSend,
+}: {
+  quote: string
+  onSend: (note: string) => Promise<boolean>
+}) {
+  const [note, setNote] = useState("")
+  const [sending, setSending] = useState(false)
+
+  const send = async () => {
+    if (!note.trim() || sending) return
+    setSending(true)
+    const ok = await onSend(note.trim())
+    setSending(false)
+    if (ok) setNote("")
+  }
+
+  return (
+    <>
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="bg-muted/40 rounded-md border-l-2 border-amber-300 px-3 py-2">
+          <p className="text-muted-foreground text-xs">“{quote.trim()}”</p>
+        </div>
+      </div>
+      <div className="shrink-0 border-t px-4 py-3">
+        <Textarea
+          autoFocus
+          placeholder="Write a comment…"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && note.trim() && !sending) {
+              e.preventDefault()
+              send()
+            }
+          }}
+          rows={3}
+          className="text-sm"
+        />
+        <div className="mt-2 flex">
+          <Button
+            size="sm"
+            className="h-8 flex-1 text-xs"
+            onClick={send}
+            disabled={!note.trim() || sending}
+          >
+            {sending ? "Sending…" : "Comment"}
+          </Button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 /**
- * One thread in the sheet's list, rendered as an activity-log excerpt: the
- * quoted passage as a header line, then the exchange as chat bubbles. The
- * whole block is clickable and opens the thread view.
+ * One thread in the sheet's list, formatted like a version-history row: the
+ * quoted passage as the title line, meta beneath, thin dividers between rows.
  */
 function ThreadListEntry({
   thread,
   quote,
-  viewer,
   hasUnread = false,
   resolved = false,
   onOpen,
 }: {
   thread: InlineThread
   quote?: string
-  viewer: "teacher" | "student"
   hasUnread?: boolean
   resolved?: boolean
   onOpen: () => void
 }) {
+  const last = thread.comments[thread.comments.length - 1]
+  const label = quote?.trim() || last?.note || ""
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onOpen()
-        }
-      }}
-      className={cn(
-        "hover:bg-muted/40 -mx-2 cursor-pointer rounded-lg px-2 py-3 transition-colors",
-        resolved && "opacity-75"
-      )}
+      className="hover:bg-muted/40 block w-full px-6 py-3 text-left transition-colors"
     >
-      <div className="flex items-center gap-2">
-        {resolved && (
-          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-green-700">
-            ✓ Resolved
-          </span>
-        )}
-        {quote && (
-          <p className="text-muted-foreground min-w-0 flex-1 truncate border-l-2 border-amber-300 pl-2 text-xs">
-            “{quote.trim()}”
-          </p>
-        )}
+      <p className="flex items-center gap-2 text-sm">
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate font-medium",
+            resolved && "text-muted-foreground"
+          )}
+        >
+          “{label}”
+        </span>
         {hasUnread && (
           <span className="size-1.5 shrink-0 rounded-full bg-blue-500" aria-hidden />
         )}
-      </div>
-      {/* The stream is display-only here — clicks land on the wrapper. */}
-      <div className="pointer-events-none mt-2">
-        <FieldActivityStream comments={thread.comments} viewer={viewer} />
-      </div>
-    </div>
+      </p>
+      <p className="text-muted-foreground text-xs">
+        {resolved ? (
+          <span className="font-medium text-green-700">Resolved</span>
+        ) : (
+          <span className="font-medium text-blue-600">Open</span>
+        )}
+        {last?.teacher_name && <> &middot; {last.teacher_name}</>}
+        {" · "}
+        {formatThreadDate(thread.lastAt)}
+        {" · "}
+        {thread.comments.length} {thread.comments.length === 1 ? "message" : "messages"}
+        {" · click to view"}
+      </p>
+    </button>
   )
 }
 

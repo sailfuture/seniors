@@ -120,6 +120,13 @@ export function TeacherEssayReviewPage({
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [revisionOpen, setRevisionOpen] = useState(false)
   const [revisionNote, setRevisionNote] = useState("")
+  // Inline-comments sheet, controlled here so the button sits in the header.
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [commentCounts, setCommentCounts] = useState({ open: 0, unread: 0 })
+  const handleCommentCounts = useCallback(
+    (c: { open: number; unread: number }) => setCommentCounts(c),
+    []
+  )
   // Version history sheet; opening a version widens the sheet to a full essay.
   const [historyOpen, setHistoryOpen] = useState(false)
   const [openVersion, setOpenVersion] = useState<ResponseVersion | null>(null)
@@ -425,8 +432,23 @@ export function TeacherEssayReviewPage({
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <BackButton href={backHref} />
-        <div className="flex items-center gap-3">
-          {studentName && <span className="text-muted-foreground text-sm font-medium">{studentName}</span>}
+        <div className="flex items-center gap-2">
+          {canAnnotate && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="relative gap-1.5"
+              onClick={() => setCommentsOpen(true)}
+            >
+              <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-4" />
+              Comments
+              {commentCounts.open > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">
+                  {commentCounts.open}
+                </span>
+              )}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -473,6 +495,10 @@ export function TeacherEssayReviewPage({
             patchUrl={`${cfg.responsePatchBase}/${response.id}`}
             bodyClassName="px-6 py-10 sm:px-12 lg:px-24"
             onFirstProseEdit={snapshotBeforeEdit}
+            commentsSheetOpen={commentsOpen}
+            onCommentsSheetOpenChange={setCommentsOpen}
+            showCommentsButton={false}
+            onCommentCounts={handleCommentCounts}
             comments={{
               commentsEndpoint: cfg.commentsEndpoint,
               sectionIdField: F.sectionId,
@@ -571,7 +597,8 @@ export function TeacherEssayReviewPage({
         <SheetContent
           className={cn(
             "flex flex-col gap-0 p-0 transition-all",
-            openVersion ? "sm:max-w-3xl" : "sm:max-w-md"
+            // A full essay needs real width: at least half the viewport.
+            openVersion ? "w-full sm:w-[60vw] sm:max-w-[60vw]" : "sm:max-w-md"
           )}
         >
           <SheetHeader className="shrink-0 border-b px-6 py-4">
@@ -650,7 +677,7 @@ export function TeacherEssayReviewPage({
                   {openVersion.wordCount != null && <>{openVersion.wordCount} words</>}
                 </p>
               </div>
-              <div className="mx-6 mb-6 rounded-lg border bg-white px-6 py-8 sm:px-10 dark:bg-card">
+              <div className="mx-6 mb-6 rounded-lg border bg-white px-6 py-10 sm:px-12 lg:px-16 dark:bg-card">
                 <RichTextDisplay raw={openVersion.student_response} />
               </div>
             </div>

@@ -22,6 +22,10 @@ export function TeacherEssayAnnotator({
   comments,
   bodyClassName,
   onFirstProseEdit,
+  commentsSheetOpen,
+  onCommentsSheetOpenChange,
+  showCommentsButton,
+  onCommentCounts,
 }: {
   initialValue: string
   /** Full URL of the response to PATCH, e.g. `${responsePatchBase}/${id}`. */
@@ -33,6 +37,11 @@ export function TeacherEssayAnnotator({
    *  first prose edit — so a snapshot can preserve the original. Highlight-only
    *  changes don't trigger it. */
   onFirstProseEdit?: (original: string) => void
+  /** Forwarded to RichTextEditor so the page can own the Comments button. */
+  commentsSheetOpen?: boolean
+  onCommentsSheetOpenChange?: (open: boolean) => void
+  showCommentsButton?: boolean
+  onCommentCounts?: (counts: { open: number; unread: number }) => void
 }) {
   const [value, setValue] = useState(initialValue)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -79,6 +88,10 @@ export function TeacherEssayAnnotator({
       bodyClassName={bodyClassName}
       comments={comments}
       showThreadList
+      commentsSheetOpen={commentsSheetOpen}
+      onCommentsSheetOpenChange={onCommentsSheetOpenChange}
+      showCommentsButton={showCommentsButton}
+      onCommentCounts={onCommentCounts}
     />
   )
 }
