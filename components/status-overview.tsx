@@ -17,6 +17,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import type { FormApiConfig } from "@/lib/form-api-config"
+import { isStaffRole } from "@/lib/roles"
 import { AdminReviewQueue } from "@/components/admin-review-queue"
 import { StudentReviewStatus } from "@/components/student-review-status"
 
@@ -471,9 +472,9 @@ export function StatusOverview({
         ? undefined
         : (sessionStudentId ?? null)
 
-  // Admins have no students_id; show them the consolidated cross-student queue
+  // Staff have no students_id; show them the consolidated cross-student queue
   // rather than their own (empty) status.
-  if (studentIdProp === undefined && role === "admin" && adminBasePath) {
+  if (studentIdProp === undefined && isStaffRole(role) && adminBasePath) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
         <div>

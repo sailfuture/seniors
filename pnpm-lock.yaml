@@ -26,6 +26,9 @@ importers:
       '@hugeicons/react':
         specifier: ^1.1.5
         version: 1.1.5(react@19.2.3)
+      '@tanstack/react-query':
+        specifier: ^5.101.4
+        version: 5.101.4(react@19.2.3)
       '@tiptap/core':
         specifier: ^3.27.4
         version: 3.27.4(@tiptap/pm@3.27.4)
@@ -1805,6 +1808,11 @@ packages:
 
   '@tanstack/query-core@5.101.4':
     resolution: {integrity: sha512-gNwcvOJcRbLWPOLG/2OBm+zM+Yv+MKsXKEOWC57USuZDEsI71hEErQsiEGx5wX9rzWWkfwM0fVSPoiIFSsxfiw==}
+
+  '@tanstack/react-query@5.101.4':
+    resolution: {integrity: sha512-yRg2pfOCxIs4ZJW3XYYHU/WgtD04FHSnfHlpRT7h7pR77hwkdRG4wxbKe4aq6P0RvXUTBSQpQeadS1SUYUe+KA==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@tiptap/core@3.27.4':
     resolution: {integrity: sha512-8W/GwlEn0JwNdpyVfTWcXwHYUpj9BWwO++YxtizmgjJzlwigSh7/xLVJMwVykuQHQ2fCq5rkUvmBRtpHOMLUQA==}
@@ -6249,6 +6257,11 @@ snapshots:
       tailwindcss: 4.2.0
 
   '@tanstack/query-core@5.101.4': {}
+
+  '@tanstack/react-query@5.101.4(react@19.2.3)':
+    dependencies:
+      '@tanstack/query-core': 5.101.4
+      react: 19.2.3
 
   '@tiptap/core@3.27.4(@tiptap/pm@3.27.4)':
     dependencies:

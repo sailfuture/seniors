@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSession } from "@/components/session-provider"
+import { isStaffRole } from "@/lib/roles"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -56,7 +57,7 @@ export default function LibraryPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (status !== "authenticated" || role === "admin") return
+    if (status !== "authenticated" || isStaffRole(role)) return
     let cancelled = false
     const load = async () => {
       setLoading(true)
@@ -118,7 +119,7 @@ export default function LibraryPage() {
     )
   }
 
-  if (role === "admin") {
+  if (isStaffRole(role)) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-6">
         <h1 className="text-2xl font-bold">Image Library</h1>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSession } from "@/components/session-provider"
+import { isStaffRole } from "@/lib/roles"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -97,7 +98,7 @@ export default function ImageGenerationPage() {
     )
   }
 
-  if (role === "admin") {
+  if (isStaffRole(role)) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-6">
         <h1 className="text-2xl font-bold">Image Generation</h1>

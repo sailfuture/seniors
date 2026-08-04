@@ -14,6 +14,9 @@ const isProtectedRoute = createRouteMatcher([
 
 const isAdminRoute = createRouteMatcher(["/admin(.*)"])
 
+// The one staff surface reserved for admins: the thesis-advisor directory.
+const isAdvisorDirectoryRoute = createRouteMatcher(["/admin/advisors(.*)"])
+
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
     // Send signed-out visitors to our branded login, not Clerk's hosted page.
@@ -22,9 +25,10 @@ export default clerkMiddleware(async (auth, req) => {
     })
   }
 
-  // Keep students and advisors out of the admin surface. Only enforceable
-  // when the session token is configured to carry publicMetadata; without
-  // that claim we let the request through rather than lock admins out.
+  // Keep students and advisors out of the staff surface, and teachers out of
+  // the advisor directory. Only enforceable when the session token is
+  // configured to carry publicMetadata; without that claim we let the request
+  // through rather than lock staff out.
   if (isAdminRoute(req)) {
     const { sessionClaims } = await auth.protect({
       unauthenticatedUrl: new URL("/login", req.url).toString(),
@@ -34,7 +38,10 @@ export default clerkMiddleware(async (auth, req) => {
       metadata && typeof metadata === "object"
         ? (metadata as Record<string, unknown>).role
         : undefined
-    if (typeof role === "string" && role !== "admin") {
+    if (typeof role === "string" && role !== "admin" && role !== "teacher") {
+      return Response.redirect(new URL("/dashboard", req.url))
+    }
+    if (isAdvisorDirectoryRoute(req) && typeof role === "string" && role !== "admin") {
       return Response.redirect(new URL("/dashboard", req.url))
     }
   }

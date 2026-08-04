@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { usePathname } from "next/navigation"
 import { useSession } from "@/components/session-provider"
 
@@ -35,6 +35,9 @@ import Link from "next/link"
 import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import { fetchBtSections, invalidateBtSectionsCache, btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
 import { useRefreshKey } from "@/lib/refresh-context"
+import { isStaffRole } from "@/lib/roles"
+import { useStudents } from "@/lib/queries"
+import { classYearOf, currentClassYear } from "@/lib/students"
 import type { Comment } from "@/lib/form-types"
 
 const XANO_BASE =
@@ -53,9 +56,6 @@ const BT_COMMENTS_ENDPOINT = `${BT_BASE}/businessthesis_comments`
 const BT_RESPONSES_ENDPOINT = `${BT_BASE}/businessthesis_responses_by_student`
 const BT_TEMPLATE_ENDPOINT = `${BT_BASE}/businessthesis_template`
 
-const STUDENTS_ENDPOINT =
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
-
 // Per-student graduation transcript, keyed by the student's id.
 const TRANSCRIPT_BASE =
   "https://professionalism.sailfutureacademy.org/graduation-requirements"
@@ -67,48 +67,21 @@ interface StudentInfo {
   initials: string
 }
 
-const studentInfoCache = new Map<string, StudentInfo>()
-
 function useStudentInfo(studentId: string | null): StudentInfo | null {
-  const [info, setInfo] = useState<StudentInfo | null>(
-    studentId ? (studentInfoCache.get(studentId) ?? null) : null
-  )
-
-  useEffect(() => {
-    if (!studentId) {
-      setInfo(null)
-      return
+  // Derived from the shared students cache — the old version fetched the
+  // whole table again into a module-level Map.
+  const { data } = useStudents()
+  return useMemo(() => {
+    if (!studentId) return null
+    const s = (data ?? []).find((x) => String(x.id) === String(studentId))
+    if (!s) return null
+    return {
+      name: `${s.firstName} ${s.lastName}`,
+      email: s.studentEmail ?? "",
+      image: s.profileImage,
+      initials: `${s.firstName.charAt(0)}${s.lastName.charAt(0)}`.toUpperCase(),
     }
-
-    if (studentInfoCache.has(studentId)) {
-      setInfo(studentInfoCache.get(studentId)!)
-      return
-    }
-
-    let cancelled = false
-    const fetchInfo = async () => {
-      try {
-        const res = await fetch(STUDENTS_ENDPOINT)
-        if (!res.ok || cancelled) return
-        const students = await res.json()
-        for (const s of students as { id: string; firstName: string; lastName: string; profileImage: string; studentEmail: string }[]) {
-          const name = `${s.firstName} ${s.lastName}`
-          const initials = `${s.firstName.charAt(0)}${s.lastName.charAt(0)}`.toUpperCase()
-          studentInfoCache.set(s.id, { name, email: s.studentEmail ?? "", image: s.profileImage, initials })
-        }
-        if (!cancelled && studentInfoCache.has(studentId)) {
-          setInfo(studentInfoCache.get(studentId)!)
-        }
-      } catch {
-        // Silently fail
-      }
-    }
-
-    fetchInfo()
-    return () => { cancelled = true }
-  }, [studentId])
-
-  return info
+  }, [data, studentId])
 }
 
 interface StudentListItem {
@@ -117,29 +90,18 @@ interface StudentListItem {
 }
 
 function useStudentList(): StudentListItem[] {
-  const [students, setStudents] = useState<StudentListItem[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        const res = await fetch(STUDENTS_ENDPOINT)
-        if (!res.ok || cancelled) return
-        const data = await res.json()
-        if (Array.isArray(data)) {
-          const list = (data as { id: string; firstName: string; lastName: string; yearGroup?: string }[])
-            .filter((s) => s.yearGroup === "Batch Year 2026")
-            .map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}` }))
-            .sort((a, b) => a.name.localeCompare(b.name))
-          if (!cancelled) setStudents(list)
-        }
-      } catch { /* ignore */ }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [])
-
-  return students
+  // Shared students cache (also read by the rosters and advisor surfaces).
+  // The staff sidebar lists the current graduating class — the old hardcoded
+  // "Batch Year 2026" filter matched nothing once the data said "Batch of
+  // 2026", and would have been a graduated class by now anyway.
+  const { data } = useStudents()
+  return useMemo(() => {
+    const current = currentClassYear()
+    return (data ?? [])
+      .filter((s) => classYearOf(s) === current)
+      .map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}` }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [data])
 }
 
 function useLifeMapSections(refreshKey: number) {
@@ -603,7 +565,7 @@ function buildStudentNav(
   return groups
 }
 
-function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThesisSection[], pathname: string, students: StudentListItem[]) {
+function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThesisSection[], pathname: string, students: StudentListItem[], canManageAdvisors: boolean) {
   const mapItems = buildLifeMapNavItems(sections)
   const btItems = buildBusinessSectionItems(btSections)
   const onTemplate = pathname.startsWith("/admin/life-map-template")
@@ -653,13 +615,18 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
         url: `/admin/business-thesis-template/${s.slug}`,
       })),
     },
-    {
-      title: "Thesis Advisors",
-      url: "/admin/advisors",
-      icon: <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} />,
-      isActive: pathname.startsWith("/admin/advisors"),
-      items: [],
-    },
+    // Admin-only: teachers see everything else but can't manage advisors.
+    ...(canManageAdvisors
+      ? [
+          {
+            title: "Thesis Advisors",
+            url: "/admin/advisors",
+            icon: <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} />,
+            isActive: pathname.startsWith("/admin/advisors"),
+            items: [],
+          },
+        ]
+      : []),
   ]
 }
 
@@ -749,12 +716,12 @@ interface NavBadgeData {
   btCompleteSet?: Set<number>
 }
 
-function getNavFromPathname(pathname: string, isAdmin: boolean, sections: LifeMapSection[], btSections: BusinessThesisSection[], badges: NavBadgeData, students: StudentListItem[]) {
+function getNavFromPathname(pathname: string, isStaff: boolean, canManageAdvisors: boolean, sections: LifeMapSection[], btSections: BusinessThesisSection[], badges: NavBadgeData, students: StudentListItem[]) {
   if (pathname.startsWith("/admin/")) {
-    return getTeacherStudentNav(pathname, sections, btSections, badges.readyReviewCounts, badges.revisionCounts, badges.btReadyReviewCounts, badges.btRevisionCounts, badges.completeSet, badges.btCompleteSet) ?? buildTeacherBaseNav(sections, btSections, pathname, students)
+    return getTeacherStudentNav(pathname, sections, btSections, badges.readyReviewCounts, badges.revisionCounts, badges.btReadyReviewCounts, badges.btRevisionCounts, badges.completeSet, badges.btCompleteSet) ?? buildTeacherBaseNav(sections, btSections, pathname, students, canManageAdvisors)
   }
-  if (isAdmin) {
-    return buildTeacherBaseNav(sections, btSections, pathname, students)
+  if (isStaff) {
+    return buildTeacherBaseNav(sections, btSections, pathname, students, canManageAdvisors)
   }
   return buildStudentNav(sections, btSections, pathname, badges.revisionCounts, badges.btRevisionCounts, badges.readyReviewCounts, badges.btReadyReviewCounts, badges.completeSet, badges.btCompleteSet)
 }
@@ -782,21 +749,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const role = (session?.user as Record<string, unknown>)?.role as string | undefined
-  const isAdmin = role === "admin"
+  // Teachers share the staff sidebar; only admins get the advisor directory.
+  const isStaff = isStaffRole(role)
   const refreshKey = useRefreshKey()
   const { sections, loading: sectionsLoading } = useLifeMapSections(refreshKey)
   const { sections: btSections, loading: btSectionsLoading } = useBusinessThesisSections(refreshKey)
 
   const adminStudentId = extractStudentId(pathname)
-  const ownStudentId = !isAdmin ? ((session?.user as Record<string, unknown>)?.students_id as string | undefined) ?? null : null
+  const ownStudentId = !isStaff ? ((session?.user as Record<string, unknown>)?.students_id as string | undefined) ?? null : null
   const studentId = adminStudentId ?? ownStudentId
   const { counts: reviewCounts, loading: reviewLoading } = useSectionReviewCounts(studentId, refreshKey)
-  const { counts: commentCounts, loading: commentLoading } = useSectionCommentCounts(!isAdmin ? studentId : null, refreshKey)
+  const { counts: commentCounts, loading: commentLoading } = useSectionCommentCounts(!isStaff ? studentId : null, refreshKey)
   const { counts: btReviewCounts, loading: btReviewLoading } = useBtSectionReviewCounts(studentId, refreshKey)
-  const { counts: btCommentCounts, loading: btCommentLoading } = useBtSectionCommentCounts(!isAdmin ? studentId : null, refreshKey)
+  const { counts: btCommentCounts, loading: btCommentLoading } = useBtSectionCommentCounts(!isStaff ? studentId : null, refreshKey)
   const sidebarLoading = sectionsLoading || btSectionsLoading || reviewLoading || commentLoading || btReviewLoading || btCommentLoading
   const studentList = useStudentList()
-  const navItems = getNavFromPathname(pathname, isAdmin, sections, btSections, {
+  const navItems = getNavFromPathname(pathname, isStaff, role === "admin", sections, btSections, {
     commentCounts: commentCounts,
     revisionCounts: reviewCounts.revisionNeeded,
     readyReviewCounts: reviewCounts.readyReview,
@@ -807,7 +775,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     btCompleteSet: btReviewCounts.complete,
   }, studentList)
   const studentInfo = useStudentInfo(adminStudentId)
-  const publicPagesNav = !isAdmin ? buildStudentPublicPagesNav(ownStudentId) : null
+  const publicPagesNav = !isStaff ? buildStudentPublicPagesNav(ownStudentId) : null
 
   const isLifeMap = pathname.startsWith("/admin/life-map/") && adminStudentId
 
@@ -843,7 +811,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </>
       )}
       <SidebarContent>
-        {!isAdmin && !studentInfo && (
+        {!isStaff && !studentInfo && (
           <SidebarGroup className="pb-0">
             <SidebarMenu>
               <SidebarMenuItem>
@@ -872,7 +840,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         )}
         <NavMain items={navItems} hideLabel={!!studentInfo} loading={sidebarLoading} />
-        {!isAdmin && (
+        {!isStaff && (
           <SidebarGroup>
             <SidebarGroupLabel>Tools</SidebarGroupLabel>
             <SidebarMenu>

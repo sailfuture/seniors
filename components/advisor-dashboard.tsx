@@ -1,13 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 import { useSession } from "@/components/session-provider"
 import {
-  fetchAdvisorAssignments,
   type AdvisorAssignment,
   type AdvisorProduct,
 } from "@/lib/advisors"
-import { fetchActiveStudents, type RosterStudent } from "@/lib/students"
+import { type RosterStudent } from "@/lib/students"
+import { useAdvisorAssignments, useStudents } from "@/lib/queries"
 import {
   Avatar,
   AvatarFallback,
@@ -41,52 +41,39 @@ interface AdvisedStudent {
 export function AdvisorDashboard() {
   const { data: session } = useSession()
   const advisorsId = session?.user?.advisors_id
-  const [advised, setAdvised] = useState<AdvisedStudent[] | null>(null)
+  const assignmentsQuery = useAdvisorAssignments()
+  const studentsQuery = useStudents()
 
-  useEffect(() => {
-    if (advisorsId == null) return
-    let cancelled = false
+  // Same shared caches the staff surfaces use; the advisor only ever sees
+  // their own slice of them.
+  const advised = useMemo<AdvisedStudent[] | null>(() => {
+    if (advisorsId == null || !assignmentsQuery.data || !studentsQuery.data) return null
 
-    async function load() {
-      const [assignments, students] = await Promise.all([
-        fetchAdvisorAssignments(),
-        fetchActiveStudents(),
-      ])
-      if (cancelled) return
+    const byId = new Map(studentsQuery.data.map((s: RosterStudent) => [String(s.id), s]))
 
-      const byId = new Map(students.map((s: RosterStudent) => [String(s.id), s]))
+    const mine = assignmentsQuery.data.filter(
+      (a: AdvisorAssignment) => Number(a.advisors_id) === Number(advisorsId)
+    )
 
-      const mine = assignments.filter(
-        (a: AdvisorAssignment) => Number(a.advisors_id) === Number(advisorsId)
-      )
-
-      const grouped = new Map<string, AdvisedStudent>()
-      for (const a of mine) {
-        const student = byId.get(String(a.students_id))
-        if (!student) continue
-        const key = String(student.id)
-        const entry = grouped.get(key) ?? { student, products: [] }
-        const product = a.type as AdvisorProduct
-        if (product in PRODUCT_LABEL && !entry.products.includes(product)) {
-          entry.products.push(product)
-        }
-        grouped.set(key, entry)
+    const grouped = new Map<string, AdvisedStudent>()
+    for (const a of mine) {
+      const student = byId.get(String(a.students_id))
+      if (!student) continue
+      const key = String(student.id)
+      const entry = grouped.get(key) ?? { student, products: [] }
+      const product = a.type as AdvisorProduct
+      if (product in PRODUCT_LABEL && !entry.products.includes(product)) {
+        entry.products.push(product)
       }
+      grouped.set(key, entry)
+    }
 
-      setAdvised(
-        [...grouped.values()].sort((x, y) =>
-          `${x.student.lastName} ${x.student.firstName}`.localeCompare(
-            `${y.student.lastName} ${y.student.firstName}`
-          )
-        )
+    return [...grouped.values()].sort((x, y) =>
+      `${x.student.lastName} ${x.student.firstName}`.localeCompare(
+        `${y.student.lastName} ${y.student.firstName}`
       )
-    }
-
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [advisorsId])
+    )
+  }, [advisorsId, assignmentsQuery.data, studentsQuery.data])
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">

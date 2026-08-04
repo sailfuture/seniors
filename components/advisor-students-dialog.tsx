@@ -13,12 +13,33 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Combobox,
+  ComboboxCollection,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxLabel,
+  ComboboxList,
+} from "@/components/ui/combobox"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Delete02Icon } from "@hugeicons/core-free-icons"
 import {
@@ -29,7 +50,7 @@ import {
   type AdvisorAssignment,
   type AdvisorProduct,
 } from "@/lib/advisors"
-import { studentName, type RosterStudent } from "@/lib/students"
+import { currentClassYear, studentName, type RosterStudent } from "@/lib/students"
 
 const PRODUCT_LABEL: Record<AdvisorProduct, string> = {
   "business-thesis": "Business Thesis",
@@ -37,6 +58,36 @@ const PRODUCT_LABEL: Record<AdvisorProduct, string> = {
 }
 
 const PRODUCTS = Object.keys(PRODUCT_LABEL) as AdvisorProduct[]
+
+interface StudentGroup {
+  value: string
+  items: RosterStudent[]
+}
+
+/** Xano stores the year as "Batch of 2026"; the UI calls it "Class of 2026". */
+function classLabel(s: RosterStudent): string {
+  const raw = (s.yearGroup ?? "").trim()
+  if (!raw) return "No class year"
+  return raw.replace(/^batch of\b/i, "Class of")
+}
+
+/**
+ * Group order: the current class first, future classes ascending, year-less
+ * students next, and already-graduated classes last (most recent first) —
+ * past classes stay pickable but never crowd out the classes still enrolled.
+ */
+function compareGroups(a: string, b: string, current: number): number {
+  const rank = (label: string): [number, number] => {
+    const year = Number(label.match(/\d{4}/)?.[0] ?? NaN)
+    if (Number.isNaN(year)) return [2, 0]
+    if (year === current) return [0, 0]
+    if (year > current) return [1, year] // future: ascending
+    return [3, -year] // graduated: most recent first
+  }
+  const [ra, ka] = rank(a)
+  const [rb, kb] = rank(b)
+  return ra - rb || ka - kb || a.localeCompare(b)
+}
 
 /**
  * Per-advisor view of assignments: shows every student this advisor covers
@@ -60,9 +111,11 @@ export function AdvisorStudentsDialog({
   onAssigned: (a: AdvisorAssignment) => void
   onUnassigned: (assignmentId: number) => void
 }) {
-  const [pickedStudent, setPickedStudent] = useState("")
+  const [pickedStudent, setPickedStudent] = useState<RosterStudent | null>(null)
   const [pickedProduct, setPickedProduct] = useState<AdvisorProduct>("business-thesis")
   const [busy, setBusy] = useState(false)
+  // Removal is confirmed in a warning dialog rather than firing off the icon.
+  const [confirmRemove, setConfirmRemove] = useState<AdvisorAssignment | null>(null)
 
   const studentsById = useMemo(
     () => new Map(students.map((s) => [String(s.id), s])),
@@ -96,15 +149,35 @@ export function AdvisorStudentsDialog({
     [students, alreadyAssigned, pickedProduct]
   )
 
+  // Combobox groups: one per class year — current class first, then future
+  // classes, with graduated classes separated out at the bottom.
+  const studentGroups = useMemo<StudentGroup[]>(() => {
+    const current = currentClassYear()
+    const byLabel = new Map<string, RosterStudent[]>()
+    for (const s of addable) {
+      const label = classLabel(s)
+      byLabel.set(label, [...(byLabel.get(label) ?? []), s])
+    }
+    return [...byLabel.entries()]
+      .sort(([a], [b]) => compareGroups(a, b, current))
+      .map(([value, items]) => {
+        const year = Number(value.match(/\d{4}/)?.[0] ?? NaN)
+        return {
+          value: !Number.isNaN(year) && year < current ? `${value} · Graduated` : value,
+          items,
+        }
+      })
+  }, [addable])
+
   const add = async () => {
-    const student = studentsById.get(pickedStudent)
+    const student = pickedStudent
     if (!student) return
     setBusy(true)
     try {
       const created = await assignAdvisor(String(student.id), advisor.id, pickedProduct)
       if (!created) throw new Error()
       onAssigned(created)
-      setPickedStudent("")
+      setPickedStudent(null)
       toast.success(
         `${studentName(student)} assigned for ${PRODUCT_LABEL[pickedProduct]}`
       )
@@ -121,6 +194,7 @@ export function AdvisorStudentsDialog({
       const ok = await unassignAdvisor(a.id)
       if (!ok) throw new Error()
       onUnassigned(a.id)
+      setConfirmRemove(null)
       const student = studentsById.get(String(a.students_id))
       toast.success(
         `${student ? studentName(student) : "Student"} unassigned from ${
@@ -178,7 +252,7 @@ export function AdvisorStudentsDialog({
                       className="text-muted-foreground hover:text-destructive size-7 shrink-0"
                       title="Remove assignment"
                       disabled={busy}
-                      onClick={() => remove(a)}
+                      onClick={() => setConfirmRemove(a)}
                     >
                       <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
                     </Button>
@@ -193,7 +267,7 @@ export function AdvisorStudentsDialog({
               value={pickedProduct}
               onValueChange={(v) => {
                 setPickedProduct(v as AdvisorProduct)
-                setPickedStudent("")
+                setPickedStudent(null)
               }}
               disabled={busy}
             >
@@ -208,23 +282,84 @@ export function AdvisorStudentsDialog({
                 ))}
               </SelectContent>
             </Select>
-            <Select value={pickedStudent} onValueChange={setPickedStudent} disabled={busy}>
-              <SelectTrigger className="min-w-0 flex-1">
-                <SelectValue placeholder="Choose a student…" />
-              </SelectTrigger>
-              <SelectContent>
-                {addable.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {studentName(s)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              items={studentGroups}
+              value={pickedStudent}
+              onValueChange={(s) => setPickedStudent((s as RosterStudent | null) ?? null)}
+              itemToStringLabel={(s: RosterStudent) => studentName(s)}
+              disabled={busy}
+            >
+              <ComboboxInput
+                placeholder="Search students…"
+                className="min-w-0 flex-1"
+                disabled={busy}
+              />
+              <ComboboxContent>
+                <ComboboxEmpty>No students found.</ComboboxEmpty>
+                <ComboboxList>
+                  {(group: StudentGroup) => (
+                    <ComboboxGroup key={group.value} items={group.items}>
+                      <ComboboxLabel>{group.value}</ComboboxLabel>
+                      <ComboboxCollection>
+                        {(s: RosterStudent) => (
+                          <ComboboxItem key={s.id} value={s}>
+                            {studentName(s)}
+                          </ComboboxItem>
+                        )}
+                      </ComboboxCollection>
+                    </ComboboxGroup>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
             <Button disabled={busy || !pickedStudent} onClick={add}>
               Assign
             </Button>
           </div>
         </div>
+
+        <AlertDialog
+          open={confirmRemove != null}
+          onOpenChange={(open) => {
+            if (!open && !busy) setConfirmRemove(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Remove{" "}
+                {(() => {
+                  const s = confirmRemove && studentsById.get(String(confirmRemove.students_id))
+                  return s ? studentName(s) : "this student"
+                })()}
+                ?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {advisorName(advisor)} will lose access to this student&apos;s{" "}
+                {confirmRemove
+                  ? (PRODUCT_LABEL[confirmRemove.type as AdvisorProduct] ?? confirmRemove.type)
+                  : "work"}{" "}
+                and can no longer view or comment on it. Their existing comments stay. You can
+                re-assign the student at any time.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={busy}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(e) => {
+                  // Keep the dialog open while the request runs so a failure
+                  // can be retried in place.
+                  e.preventDefault()
+                  if (confirmRemove) remove(confirmRemove)
+                }}
+              >
+                {busy ? "Removing…" : "Remove student"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   )

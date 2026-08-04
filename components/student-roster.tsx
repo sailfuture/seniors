@@ -44,14 +44,12 @@ import {
   advisorName,
   assignAdvisor,
   assignmentsFor,
-  fetchAdvisorAssignments,
-  fetchAdvisors,
   unassignAdvisor,
-  type Advisor,
-  type AdvisorAssignment,
   type AdvisorProduct,
 } from "@/lib/advisors"
 import { AdvisorAssignDialog } from "@/components/advisor-assign-dialog"
+import { useAdvisorAssignments, useAdvisorCacheActions, useAdvisors } from "@/lib/queries"
+import { currentClassYear } from "@/lib/students"
 
 interface Student {
   id: string
@@ -200,8 +198,11 @@ export function StudentRoster({
   // The student a Lock/Unlock confirm dialog is open for, and in-flight state.
   const [lockDialog, setLockDialog] = useState<Student | null>(null)
   const [lockActing, setLockActing] = useState(false)
-  const [advisors, setAdvisors] = useState<Advisor[]>([])
-  const [assignments, setAssignments] = useState<AdvisorAssignment[]>([])
+  // Advisor tables come from the shared cache, so assigning here also updates
+  // the advisor directory and dashboard without a refetch.
+  const advisors = useAdvisors().data ?? []
+  const assignments = useAdvisorAssignments().data ?? []
+  const advisorCache = useAdvisorCacheActions()
   const [advisorDialog, setAdvisorDialog] = useState<Student | null>(null)
   const [advisorBusy, setAdvisorBusy] = useState(false)
 
@@ -212,28 +213,26 @@ export function StudentRoster({
 
   const fetchData = useCallback(async () => {
     try {
-      const [studentsRes, reviewsRes, templateRes, typesRes, lockMap, advisorList, assignmentList] =
+      const [studentsRes, reviewsRes, templateRes, typesRes, lockMap] =
         await Promise.all([
           fetch(STUDENTS_ENDPOINT),
           fetch(responsesEndpoint),
           fetch(templateEndpoint),
           fetch(QUESTION_TYPES_ENDPOINT),
           locksEndpoint ? fetchAllProjectLocks(locksEndpoint) : Promise.resolve(new Map<string, ProjectLock>()),
-          fetchAdvisors(),
-          fetchAdvisorAssignments(),
         ])
       setLocks(lockMap)
-      setAdvisors(advisorList)
-      setAssignments(assignmentList)
 
       if (studentsRes.ok) {
         const data = await studentsRes.json()
         const studentList: Student[] = Array.isArray(data) ? data : []
         setStudents(studentList)
 
+        // Only the current graduating class is expanded by default; every
+        // other class year (including graduated ones) starts collapsed.
+        const current = String(currentClassYear())
         const yearGroups = new Set(studentList.map((s) => s.yearGroup || "Other"))
-        const nonBatch2026 = [...yearGroups].filter((g) => !g.includes("2026"))
-        setCollapsedGroups(new Set(nonBatch2026))
+        setCollapsedGroups(new Set([...yearGroups].filter((g) => !g.includes(current))))
       }
 
       // Question types flagged noInput (headers etc.) never require answers,
@@ -324,7 +323,7 @@ export function StudentRoster({
       try {
         const created = await assignAdvisor(advisorDialog.id, advisorId, advisorProduct)
         if (!created) throw new Error()
-        setAssignments((prev) => [...prev, created])
+        advisorCache.assignmentCreated(created)
         const a = advisors.find((x) => x.id === advisorId)
         toast.success(`${a ? advisorName(a) : "Advisor"} assigned to ${advisorDialog.firstName}`)
       } catch {
@@ -333,7 +332,7 @@ export function StudentRoster({
         setAdvisorBusy(false)
       }
     },
-    [advisorDialog, advisorProduct, advisors]
+    [advisorDialog, advisorProduct, advisors, advisorCache]
   )
 
   const handleUnassignAdvisor = useCallback(async (assignmentId: number) => {
@@ -341,14 +340,14 @@ export function StudentRoster({
     try {
       const ok = await unassignAdvisor(assignmentId)
       if (!ok) throw new Error()
-      setAssignments((prev) => prev.filter((a) => a.id !== assignmentId))
+      advisorCache.assignmentRemoved(assignmentId)
       toast.success("Advisor removed")
     } catch {
       toast.error("Couldn't remove the advisor — please try again.")
     } finally {
       setAdvisorBusy(false)
     }
-  }, [])
+  }, [advisorCache])
 
   // Lock = freeze the public page + PDF as they render right now; Unlock
   // returns them to the live template join.

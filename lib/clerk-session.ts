@@ -1,5 +1,6 @@
 import { auth, currentUser, clerkClient } from "@clerk/nextjs/server"
-import { lookupRoster, type RosterMetadata } from "@/lib/roster"
+import { lookupRoster, ROSTER_METADATA_VERSION, type RosterMetadata } from "@/lib/roster"
+import type { AppRole } from "@/lib/roles"
 
 /**
  * The session shape the app has always consumed. Kept identical to the old
@@ -9,7 +10,7 @@ export interface AppSessionUser {
   name?: string | null
   email?: string | null
   image?: string | null
-  role?: "student" | "admin" | "advisor"
+  role?: AppRole
   students_id?: string
   teachers_id?: string
   advisors_id?: number
@@ -22,7 +23,17 @@ export interface AppSession {
 function isRosterMetadata(value: unknown): value is RosterMetadata {
   if (!value || typeof value !== "object") return false
   const role = (value as Record<string, unknown>).role
-  return role === "student" || role === "admin" || role === "advisor"
+  return role === "student" || role === "admin" || role === "teacher" || role === "advisor"
+}
+
+/**
+ * Cached metadata is only trusted at the current version. Older metadata
+ * (e.g. v1 staff, all written as "admin" before the admin/teacher split) is
+ * re-resolved against Xano so the role tiers take effect without manually
+ * resetting every Clerk user.
+ */
+function isCurrentRosterMetadata(value: unknown): value is RosterMetadata {
+  return isRosterMetadata(value) && value.v === ROSTER_METADATA_VERSION
 }
 
 /**
@@ -34,7 +45,7 @@ function metadataFromClaims(sessionClaims: unknown): RosterMetadata | null {
   if (!sessionClaims || typeof sessionClaims !== "object") return null
   const claims = sessionClaims as Record<string, unknown>
   const candidate = claims.metadata ?? claims.publicMetadata
-  return isRosterMetadata(candidate) ? candidate : null
+  return isCurrentRosterMetadata(candidate) ? candidate : null
 }
 
 /**
@@ -59,10 +70,13 @@ export async function resolveRosterUser(): Promise<
   const cached = metadataFromClaims(sessionClaims)
   if (cached) return { userId, email, metadata: cached }
 
-  if (isRosterMetadata(user?.publicMetadata)) {
+  if (isCurrentRosterMetadata(user?.publicMetadata)) {
     return { userId, email, metadata: user.publicMetadata }
   }
 
+  // No metadata, or metadata from before the current version: resolve fresh.
+  // A roster miss here also revokes users whose stale metadata no longer has
+  // a backing row (e.g. an archived teacher).
   const metadata = await lookupRoster(email)
   if (!metadata) return null
 

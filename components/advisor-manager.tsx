@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
+import { useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,13 +42,17 @@ import {
   advisorName,
   createAdvisor,
   deleteAdvisor,
-  fetchAdvisorAssignments,
-  fetchAdvisors,
   updateAdvisor,
   type Advisor,
   type AdvisorAssignment,
 } from "@/lib/advisors"
-import { fetchActiveStudents, studentName, type RosterStudent } from "@/lib/students"
+import { studentName } from "@/lib/students"
+import {
+  useAdvisorCacheActions,
+  useAdvisorAssignments,
+  useAdvisors,
+  useStudents,
+} from "@/lib/queries"
 import { AdvisorStudentsDialog } from "@/components/advisor-students-dialog"
 
 const PRODUCT_LABEL: Record<string, string> = {
@@ -62,10 +67,18 @@ const PRODUCT_LABEL: Record<string, string> = {
  * Assigning an advisor to a student happens on each product's roster.
  */
 export function AdvisorManager() {
-  const [advisors, setAdvisors] = useState<Advisor[]>([])
-  const [assignments, setAssignments] = useState<AdvisorAssignment[]>([])
-  const [students, setStudents] = useState<RosterStudent[]>([])
-  const [loading, setLoading] = useState(true)
+  // Shared caches: the same three tables the rosters and dialogs read, fetched
+  // once app-wide instead of once per surface.
+  const advisorsQuery = useAdvisors()
+  const assignmentsQuery = useAdvisorAssignments()
+  const studentsQuery = useStudents()
+  const advisors = advisorsQuery.data ?? []
+  const assignments = assignmentsQuery.data ?? []
+  const students = studentsQuery.data ?? []
+  const loading =
+    advisorsQuery.isPending || assignmentsQuery.isPending || studentsQuery.isPending
+  const cache = useAdvisorCacheActions()
+
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Advisor | null>(null)
   const [managing, setManaging] = useState<Advisor | null>(null)
@@ -73,22 +86,6 @@ export function AdvisorManager() {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<Advisor | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
-
-  const load = useCallback(async () => {
-    const [a, asg, s] = await Promise.all([
-      fetchAdvisors(),
-      fetchAdvisorAssignments(),
-      fetchActiveStudents(),
-    ])
-    setAdvisors(a)
-    setAssignments(asg)
-    setStudents(s)
-    setLoading(false)
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   // Assignments per advisor, so the table can show who they cover.
   const countsByAdvisor = useMemo(() => {
@@ -139,13 +136,11 @@ export function AdvisorManager() {
           email,
         })
         if (!ok) throw new Error()
-        setAdvisors((prev) =>
-          prev.map((a) =>
-            a.id === editing.id
-              ? { ...a, firstName: form.firstName.trim(), lastName: form.lastName.trim(), email }
-              : a
-          )
-        )
+        cache.advisorUpdated(editing.id, {
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim(),
+          email,
+        })
         toast.success("Advisor updated")
       } else {
         const created = await createAdvisor({
@@ -154,7 +149,7 @@ export function AdvisorManager() {
           email,
         })
         if (!created) throw new Error()
-        setAdvisors((prev) => [...prev, created])
+        cache.advisorCreated(created)
 
         // Welcome email goes through our server route (the Resend key can't
         // live in the browser). The advisor exists either way, so a mail
@@ -189,17 +184,30 @@ export function AdvisorManager() {
     }
   }
 
-  const toggleActive = async (a: Advisor) => {
-    const next = !(a.isActive ?? true)
-    setAdvisors((prev) => prev.map((x) => (x.id === a.id ? { ...x, isActive: next } : x)))
-    const ok = await updateAdvisor(a.id, { isActive: next })
-    if (!ok) {
-      setAdvisors((prev) => prev.map((x) => (x.id === a.id ? { ...x, isActive: !next } : x)))
+  // Optimistic toggle: the row flips instantly, and onError puts it back if
+  // Xano rejects the PATCH — the rollback the old hand-rolled version did
+  // manually now comes from the mutation lifecycle.
+  const toggleMutation = useMutation({
+    mutationFn: async (a: Advisor) => {
+      const next = !(a.isActive ?? true)
+      const ok = await updateAdvisor(a.id, { isActive: next })
+      if (!ok) throw new Error("update failed")
+      return { a, next }
+    },
+    onMutate: (a) => {
+      const previous = a.isActive ?? true
+      cache.advisorUpdated(a.id, { isActive: !previous })
+      return { previous }
+    },
+    onError: (_err, a, ctx) => {
+      cache.advisorUpdated(a.id, { isActive: ctx?.previous ?? true })
       toast.error("Couldn't update — please try again.")
-      return
-    }
-    toast.success(next ? `${advisorName(a)} reactivated` : `${advisorName(a)} deactivated`)
-  }
+    },
+    onSuccess: ({ a, next }) => {
+      toast.success(next ? `${advisorName(a)} reactivated` : `${advisorName(a)} deactivated`)
+    },
+  })
+  const toggleActive = (a: Advisor) => toggleMutation.mutate(a)
 
   const confirmDelete = async () => {
     if (!deleting) return
@@ -210,8 +218,7 @@ export function AdvisorManager() {
       toast.error(error)
       return
     }
-    setAdvisors((prev) => prev.filter((x) => x.id !== deleting.id))
-    setAssignments((prev) => prev.filter((x) => x.advisors_id !== deleting.id))
+    cache.advisorDeleted(deleting.id)
     toast.success(`${advisorName(deleting)} deleted — their sign-in access is revoked.`)
     setDeleting(null)
   }
@@ -357,8 +364,8 @@ export function AdvisorManager() {
           students={students}
           open
           onOpenChange={(o) => { if (!o) setManaging(null) }}
-          onAssigned={(a) => setAssignments((prev) => [...prev, a])}
-          onUnassigned={(id) => setAssignments((prev) => prev.filter((x) => x.id !== id))}
+          onAssigned={cache.assignmentCreated}
+          onUnassigned={cache.assignmentRemoved}
         />
       )}
 

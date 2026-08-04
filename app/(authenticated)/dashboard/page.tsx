@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useSession } from "@/components/session-provider"
+import { isStaffRole } from "@/lib/roles"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -146,7 +147,7 @@ export default function DashboardPage() {
   const { data: session } = useSession()
   const role = (session?.user as Record<string, unknown>)?.role as string | undefined
 
-  if (role === "admin") {
+  if (isStaffRole(role)) {
     return <TeacherDashboard />
   }
 
