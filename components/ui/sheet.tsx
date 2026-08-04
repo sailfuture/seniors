@@ -49,6 +49,7 @@ function SheetContent({
   side = "right",
   showCloseButton = true,
   showOverlay = true,
+  passiveOverlay = false,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
@@ -56,10 +57,19 @@ function SheetContent({
   /** Skip the dimming overlay — for non-modal sheets whose page should stay
    *  readable and clickable alongside them. */
   showOverlay?: boolean
+  /** With showOverlay off: render the same dim/blur as a purely visual layer
+   *  that clicks pass straight through. */
+  passiveOverlay?: boolean
 }) {
   return (
     <SheetPortal>
       {showOverlay && <SheetOverlay />}
+      {!showOverlay && passiveOverlay && (
+        <div
+          aria-hidden
+          className="supports-backdrop-filter:backdrop-blur-xs pointer-events-none fixed inset-0 z-50 bg-black/10"
+        />
+      )}
       <SheetPrimitive.Content
         data-slot="sheet-content"
         data-side={side}

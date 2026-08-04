@@ -296,7 +296,9 @@ export function RichTextEditor({
     if (!editor || !commentsEnabled) return
     const update = () => {
       const { from, to, empty } = editor.state.selection
-      if (empty || from === to || rangeOverlapsComment(editor, from, to)) {
+      // No chip while the comments sheet is open — a double-click word
+      // selection mid-thread must not offer a second comment.
+      if (threadsOpen || empty || from === to || rangeOverlapsComment(editor, from, to)) {
         setSelTooltip(null)
         return
       }
@@ -308,13 +310,14 @@ export function RichTextEditor({
       })
     }
     const hide = () => setSelTooltip(null)
+    if (threadsOpen) hide()
     editor.on("selectionUpdate", update)
     editor.on("blur", hide)
     return () => {
       editor.off("selectionUpdate", update)
       editor.off("blur", hide)
     }
-  }, [editor, commentsEnabled])
+  }, [editor, commentsEnabled, threadsOpen])
 
   // Clicking a highlight opens its thread in the comments sheet (works even
   // in read-only mode); clicking elsewhere drops the selected state.
@@ -328,6 +331,8 @@ export function RichTextEditor({
         setActiveThreadId(null)
         return
       }
+      // Already viewing this thread (e.g. a double-click): don't re-open.
+      if (threadsOpen && sheetThreadId === threadId && !pendingThread) return
       setPendingThread(null)
       setActiveThreadId(threadId)
       setSheetThreadId(threadId)
@@ -335,7 +340,7 @@ export function RichTextEditor({
     }
     dom.addEventListener("click", onClick)
     return () => dom.removeEventListener("click", onClick)
-  }, [editor, commentsEnabled, setThreadsOpen])
+  }, [editor, commentsEnabled, setThreadsOpen, threadsOpen, sheetThreadId, pendingThread])
 
   // While a new comment is being composed, its selected range is painted like
   // an active highlight via a decoration — the real mark is only applied once
@@ -671,6 +676,7 @@ export function RichTextEditor({
         <SheetContent
           className="flex flex-col gap-0 p-0 sm:max-w-md"
           showOverlay={false}
+          passiveOverlay
           // Clicking a highlight must swap the thread, not close the sheet;
           // the editor's own click handler takes it from there.
           onPointerDownOutside={(e) => {
