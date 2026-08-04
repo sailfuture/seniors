@@ -58,6 +58,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
+import { groupResolvedThreads } from "./field-activity-stream"
 import { BlurredFitImage } from "./blurred-fit-image"
 import { ImageCropDialog } from "./image-crop-dialog"
 import { GoogleFontPicker } from "./google-font-picker"
@@ -175,6 +176,8 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const [localValues, setLocalValues] = useState<Map<number, string>>(new Map())
   const [localSourceValues, setLocalSourceValues] = useState<Map<number, SourceFields>>(new Map())
   const [comments, setComments] = useState<Comment[]>([])
+  // Inline-thread comments, kept apart so badges/unread counts ignore them.
+  const [threadComments, setThreadComments] = useState<Comment[]>([])
   // Mirror for callbacks that must read current comments without depending on
   // the state (a `comments` dep would re-create every field's props per change).
   const commentsRef = useRef<Comment[]>([])
@@ -274,9 +277,6 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             .filter((c: Record<string, unknown>) => {
               if (String(c.students_id) !== String(studentId)) return false
               if (Number(c[F.sectionId]) !== sectionId) return false
-              // Inline essay-comment threads live on their highlight, not the
-              // general per-field comment stream.
-              if (c.thread_id) return false
               const tid = c[F.templateId] as number | null | undefined
               if (tid && excludedTemplateIds.has(tid)) return false
               return true
@@ -290,7 +290,11 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
                 : (c.teacher_name as string | undefined)
               return { ...c, teacher_name: teacherName || undefined } as Comment
             })
-          setComments(enriched)
+          // Inline essay-comment threads live on their highlight, not the
+          // general per-field comment stream — but resolved ones fold into
+          // the activity feed, so keep them in a separate bucket.
+          setComments(enriched.filter((c) => !c.thread_id))
+          setThreadComments(enriched.filter((c) => !!c.thread_id))
         }
       }
 
@@ -792,6 +796,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         <DynamicField
           key={q.id}
           comments={comments}
+          threadComments={threadComments}
           onMarkRead={handleMarkRead}
           onReplyToComments={handleStudentReply}
           question={q}
@@ -1271,6 +1276,7 @@ function DynamicField({
   onBlur,
   onImageUpload,
   comments,
+  threadComments,
   onMarkRead,
   onReplyToComments,
   lastEdited,
@@ -1291,6 +1297,8 @@ function DynamicField({
   onBlur?: () => void
   onImageUpload: (file: File) => void
   comments: Comment[]
+  /** Inline-thread comments; resolved ones fold into the activity feed. */
+  threadComments?: Comment[]
   onMarkRead: (commentIds: number[]) => void
   onReplyToComments?: (fieldName: string, note: string) => Promise<boolean>
   lastEdited?: string | number | null
@@ -1371,6 +1379,9 @@ function DynamicField({
               fieldLabel={question.field_label}
               fieldValue={(isRichTextType ? extractPlainText(value) : value) || "—"}
               essayHref={isRichTextType ? `${pathname}/write/${question.id}` : undefined}
+              resolvedThreads={groupResolvedThreads(
+                (threadComments ?? []).filter((c) => c.field_name === question.field_name)
+              )}
               minWords={question.min_words > 0 ? question.min_words : undefined}
               comments={comments}
               onMarkRead={onMarkRead}

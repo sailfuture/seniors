@@ -19,7 +19,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import type { Comment } from "@/lib/form-types"
-import { FieldActivityStream } from "@/components/form/field-activity-stream"
+import { FieldActivityStream, groupResolvedThreads, type ResolvedThreadEntry } from "@/components/form/field-activity-stream"
 import { RichTextDisplay } from "@/components/form/rich-text-display"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
@@ -195,6 +195,8 @@ export function StudentReviewStatus({
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
   const [comments, setComments] = useState<Comment[]>([])
+  // Inline-thread comments, kept apart so badges/unread counts ignore them.
+  const [threadComments, setThreadComments] = useState<Comment[]>([])
   const [sheet, setSheet] = useState<SheetTarget | null>(null)
   // Comments read while a sheet is open stay in the "Unread comments" table
   // (held) until the sheet closes, then animate off (exiting) before removal.
@@ -225,11 +227,13 @@ export function StudentReviewStatus({
         const responsesData: StudentResponse[] = (responsesRes.ok ? await responsesRes.json() : []).filter(
           (r: StudentResponse) => String(r.students_id ?? "") === String(studentId)
         )
-        const commentsData: Comment[] = (commentsRes.ok ? await commentsRes.json() : []).filter(
-          // Exclude inline essay-comment threads — they belong to a highlight,
-          // not the field/section comment surfaces.
-          (c: Comment) => String(c.students_id ?? "") === String(studentId) && !c.thread_id
+        const allComments: Comment[] = (commentsRes.ok ? await commentsRes.json() : []).filter(
+          (c: Comment) => String(c.students_id ?? "") === String(studentId)
         )
+        // Inline essay-comment threads belong to a highlight, not the
+        // field/section comment surfaces — but resolved ones fold into the
+        // activity feed, so keep them in a separate bucket.
+        const commentsData = allComments.filter((c) => !c.thread_id)
         if (cancelled) return
 
         const live = template.filter((q) => !q.isArchived && q.isPublished)
@@ -241,6 +245,7 @@ export function StudentReviewStatus({
         setQuestions(live)
         setResponses(respMap)
         setComments(commentsData)
+        setThreadComments(allComments.filter((c) => !!c.thread_id))
       } catch {
         /* leave empty */
       } finally {
@@ -514,6 +519,12 @@ export function StudentReviewStatus({
   // Exclude resolved (isComplete) comments, matching the editor's stream. For
   // the shared "_section_comment" field_name, scope to the clicked comment's
   // own section/group so unrelated sections' threads don't bleed together.
+  // Resolved inline threads for the open field, folded into its feed.
+  const sheetResolvedThreads = useMemo(() => {
+    if (!sheet || sheet.fieldName === "_section_comment") return []
+    return groupResolvedThreads(threadComments.filter((c) => c.field_name === sheet.fieldName))
+  }, [sheet, threadComments])
+
   const sheetComments = useMemo(() => {
     if (!sheet) return []
     if (sheet.fieldName === "_section_comment") {
@@ -716,6 +727,7 @@ export function StudentReviewStatus({
             <div className="px-6 py-4">
               <FieldActivityStream
                 comments={sheetComments}
+                resolvedThreads={sheetResolvedThreads}
                 viewer="student"
                 responseStatus={openStatus}
                 lastEdited={openResponse?.last_edited}
@@ -744,6 +756,7 @@ export function StudentReviewStatus({
               question={openField}
               response={openResponse}
               comments={sheetComments}
+              resolvedThreads={sheetResolvedThreads}
               locked={!!projectLock}
               onMarkRead={handleMarkRead}
               onSaveDraft={(value) => handleSaveDraft(openResponse.id, openField.id, value)}
@@ -865,6 +878,7 @@ function RevisionEditor({
   question,
   response,
   comments,
+  resolvedThreads,
   locked = false,
   onMarkRead,
   onSaveDraft,
@@ -874,6 +888,7 @@ function RevisionEditor({
   question: TemplateQuestion
   response: StudentResponse
   comments: Comment[]
+  resolvedThreads?: ResolvedThreadEntry[]
   /** Project lock: feedback stays readable, but nothing can be edited. */
   locked?: boolean
   onMarkRead: (commentId: number) => void
@@ -913,6 +928,7 @@ function RevisionEditor({
         <p className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">Feedback</p>
         <FieldActivityStream
           comments={comments}
+          resolvedThreads={resolvedThreads}
           viewer="student"
           responseStatus={{ revisionNeeded: response.revisionNeeded, readyReview: response.readyReview, isComplete: response.isComplete }}
           lastEdited={response.last_edited}

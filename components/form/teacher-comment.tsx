@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import { BlurredFitImage } from "./blurred-fit-image"
-import { FieldActivityStream } from "./field-activity-stream"
+import { FieldActivityStream, type ResolvedThreadEntry } from "./field-activity-stream"
 
 interface PlagiarismData {
   class_probability_ai?: number
@@ -45,6 +45,8 @@ interface TeacherCommentProps {
   /** Rich-text questions link out to the full document instead of dumping the
    *  whole essay at the top of the sheet. */
   essayHref?: string
+  /** Resolved inline threads for this field, folded into the feed. */
+  resolvedThreads?: ResolvedThreadEntry[]
   imageUrl?: string | null
   minWords?: number
   comments: Comment[]
@@ -70,6 +72,7 @@ export function TeacherComment({
   fieldLabel,
   fieldValue,
   essayHref,
+  resolvedThreads,
   imageUrl,
   minWords,
   comments,
@@ -210,6 +213,7 @@ export function TeacherComment({
 
             <div className="px-6 py-4">
               <FieldActivityStream
+                resolvedThreads={resolvedThreads}
                 comments={fieldComments}
                 viewer="teacher"
                 responseStatus={responseStatus}

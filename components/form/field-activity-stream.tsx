@@ -81,6 +81,33 @@ export interface ResolvedThreadEntry {
   lastAt: number
 }
 
+/**
+ * Groups inline-thread comments (those carrying a thread_id) into resolved
+ * thread entries for the timeline. Open threads are skipped — they still live
+ * on their highlight in the document.
+ */
+export function groupResolvedThreads(threadComments: Comment[]): ResolvedThreadEntry[] {
+  const byThread = new Map<string, Comment[]>()
+  for (const c of threadComments) {
+    if (!c.thread_id) continue
+    byThread.set(c.thread_id, [...(byThread.get(c.thread_id) ?? []), c])
+  }
+  const out: ResolvedThreadEntry[] = []
+  for (const [threadId, list] of byThread) {
+    if (!list.some((c) => c.isComplete)) continue
+    const sorted = [...list].sort(
+      (a, b) => parseTimestamp(a.created_at) - parseTimestamp(b.created_at)
+    )
+    out.push({
+      threadId,
+      quote: sorted.find((c) => c.quote)?.quote ?? null,
+      comments: sorted,
+      lastAt: sorted.reduce((m, c) => Math.max(m, parseTimestamp(c.created_at)), 0),
+    })
+  }
+  return out
+}
+
 type TimelineItem =
   | { kind: "comment"; ts: number; c: Comment }
   | { kind: "event"; ts: number; e: ResponseEvent }

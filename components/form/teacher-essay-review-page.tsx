@@ -35,7 +35,11 @@ import { cn } from "@/lib/utils"
 import { CommentComposer } from "./comment-composer"
 import { TeacherEssayAnnotator } from "./teacher-essay-annotator"
 import { RichTextDisplay } from "./rich-text-display"
-import { FieldActivityStream, type ResolvedThreadEntry } from "./field-activity-stream"
+import {
+  FieldActivityStream,
+  groupResolvedThreads,
+  type ResolvedThreadEntry,
+} from "./field-activity-stream"
 import { isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import type { Comment } from "@/lib/form-types"
@@ -182,25 +186,7 @@ export function TeacherEssayReviewPage({
 
           // Resolved inline threads lose their highlight, so they surface in
           // the feedback activity feed instead — grouped by thread.
-          const byThread = new Map<string, Comment[]>()
-          for (const c of mine) {
-            if (!c.thread_id) continue
-            byThread.set(c.thread_id, [...(byThread.get(c.thread_id) ?? []), c])
-          }
-          const resolved: ResolvedThreadEntry[] = []
-          for (const [threadId, list] of byThread) {
-            if (!list.some((c) => c.isComplete)) continue
-            const sorted = [...list].sort(
-              (a, b) => vts(a.created_at) - vts(b.created_at)
-            )
-            resolved.push({
-              threadId,
-              quote: sorted.find((c) => c.quote)?.quote ?? null,
-              comments: sorted,
-              lastAt: sorted.reduce((m, c) => Math.max(m, vts(c.created_at)), 0),
-            })
-          }
-          setResolvedThreads(resolved)
+          setResolvedThreads(groupResolvedThreads(mine.filter((c) => !!c.thread_id)))
         }
         if (studentsRes.ok) {
           const students = (await studentsRes.json()) as { id: string; firstName: string; lastName: string }[]

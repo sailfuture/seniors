@@ -49,6 +49,8 @@ import { parseRichText, serializeRichText, type RichTextDoc } from "@/lib/rich-t
 import { richTextExtensions } from "@/lib/rich-text-extensions"
 import { COMMENT_MARK_NAME } from "@/lib/rich-text-comment-mark"
 import { useInlineComments, generateThreadId, type InlineThread } from "@/lib/inline-comments"
+import { Plugin, PluginKey } from "@tiptap/pm/state"
+import { Decoration, DecorationSet } from "@tiptap/pm/view"
 
 export interface RichTextCommentConfig {
   commentsEndpoint: string
@@ -318,6 +320,41 @@ export function RichTextEditor({
     return () => dom.removeEventListener("click", onClick)
   }, [editor, commentsEnabled, setThreadsOpen])
 
+  // While a new comment is being composed, its selected range is painted like
+  // an active highlight via a decoration — the real mark is only applied once
+  // the first message persists, so cancelling leaves the text untouched.
+  const pendingRangeRef = useRef<{ from: number; to: number } | null>(null)
+  useEffect(() => {
+    pendingRangeRef.current = pendingThread?.range ?? null
+    // Nudge ProseMirror so the decoration set recomputes.
+    if (editor) editor.view.dispatch(editor.state.tr)
+  }, [pendingThread, editor])
+
+  useEffect(() => {
+    if (!editor) return
+    const key = new PluginKey("pending-comment-highlight")
+    const plugin = new Plugin({
+      key,
+      props: {
+        decorations: (state) => {
+          const r = pendingRangeRef.current
+          if (!r) return null
+          const max = state.doc.content.size
+          if (r.from >= max) return null
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(r.from, Math.min(r.to, max), {
+              class: "rt-comment rt-comment-active",
+            }),
+          ])
+        },
+      },
+    })
+    editor.registerPlugin(plugin)
+    return () => {
+      editor.unregisterPlugin(key)
+    }
+  }, [editor])
+
   // Paint the active highlight. The mark renders as spans in the editor DOM,
   // so the class is toggled directly — and re-applied after every document
   // update, since ProseMirror rebuilds those nodes.
@@ -371,8 +408,9 @@ export function RichTextEditor({
         .setTextSelection(pendingThread.range)
         .setCommentThread(pendingThread.threadId)
         .run()
-      // Hand off to the normal thread view.
+      // Hand off to the normal thread view, with the new highlight selected.
       setSheetThreadId(pendingThread.threadId)
+      setActiveThreadId(pendingThread.threadId)
       setPendingThread(null)
       return true
     },
@@ -573,8 +611,11 @@ export function RichTextEditor({
         onOpenChange={(o) => {
           setThreadsOpen(o)
           if (!o) {
+            // Closing the sheet (or cancelling a draft comment) returns the
+            // document to normal: no selected highlight, no pending range.
             setSheetThreadId(null)
             setPendingThread(null)
+            setActiveThreadId(null)
           }
         }}
       >

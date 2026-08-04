@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { TeacherComment } from "./teacher-comment"
+import { groupResolvedThreads } from "./field-activity-stream"
 import type { Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LineItemsTable } from "@/components/line-items-table"
@@ -298,6 +299,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
   const [comments, setComments] = useState<Comment[]>([])
+  // Inline-thread comments, kept apart so badges/unread counts ignore them.
+  const [threadComments, setThreadComments] = useState<Comment[]>([])
   const [loading, setLoading] = useState(true)
   const [plagiarismData, setPlagiarismData] = useState<Map<number, GptZeroResult>>(new Map())
   const [revisionModal, setRevisionModal] = useState<{ responseId: number; templateId: number } | null>(null)
@@ -357,9 +360,6 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               .filter((c: Record<string, unknown>) => {
                 if (String(c.students_id) !== String(studentId)) return false
                 if (Number(c[F.sectionId]) !== sectionId) return false
-                // Inline essay-comment threads share the field's name; they
-                // belong to the highlight, not the general activity stream.
-                if (c.thread_id) return false
                 const tid = c[F.templateId] as number | null | undefined
                 if (tid && excludedTemplateIds.has(tid)) return false
                 return true
@@ -373,7 +373,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   : (c.teacher_name as string | undefined)
                 return { ...c, teacher_name: teacherName || undefined } as Comment
               })
-            setComments(enriched)
+            // Inline essay-comment threads belong to the highlight; resolved
+            // ones fold into the activity feed via a separate bucket.
+            setComments(enriched.filter((c: Comment) => !c.thread_id))
+            setThreadComments(enriched.filter((c: Comment) => !!c.thread_id))
           }
         }
         if (cfg.gptzeroEndpoint) {
@@ -876,6 +879,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       ? `${cfg.adminBasePath}/${studentId}/essay/${q.id}`
                       : undefined
                   }
+                  resolvedThreads={groupResolvedThreads(
+                    threadComments.filter((c) => c.field_name === q.field_name)
+                  )}
                   imageUrl={isImage ? getImageUrl(imageValue) : undefined}
                   minWords={q.min_words > 0 ? q.min_words : undefined}
                   comments={comments}

@@ -17,7 +17,7 @@ import { Comment01Icon, LicenseDraftIcon } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
-import { FieldActivityStream } from "./field-activity-stream"
+import { FieldActivityStream, type ResolvedThreadEntry } from "./field-activity-stream"
 
 function parseTimestamp(ts: string | number | undefined): number {
   if (!ts) return 0
@@ -51,6 +51,8 @@ interface CommentBadgeProps {
   fieldValue?: string
   /** Rich-text questions link to the full editor instead of dumping the essay. */
   essayHref?: string
+  /** Resolved inline threads for this field, folded into the feed. */
+  resolvedThreads?: ResolvedThreadEntry[]
   minWords?: number
   comments: Comment[]
   onMarkRead?: (commentIds: number[]) => void
@@ -66,6 +68,7 @@ export function CommentBadge({
   fieldLabel,
   fieldValue,
   essayHref,
+  resolvedThreads,
   minWords,
   comments,
   onMarkRead,
@@ -167,6 +170,7 @@ export function CommentBadge({
 
             <div className="px-6 py-4">
               <FieldActivityStream
+                resolvedThreads={resolvedThreads}
                 comments={fieldComments}
                 viewer="student"
                 responseStatus={responseStatus}
