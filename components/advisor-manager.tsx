@@ -24,12 +24,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { UserAdd01Icon, PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
+import { UserAdd01Icon, PencilEdit02Icon, UserGroupIcon, Delete02Icon } from "@hugeicons/core-free-icons"
 import {
   advisorInitials,
   advisorName,
   createAdvisor,
+  deleteAdvisor,
   fetchAdvisorAssignments,
   fetchAdvisors,
   updateAdvisor,
@@ -45,8 +56,9 @@ const PRODUCT_LABEL: Record<string, string> = {
 }
 
 /**
- * Advisor directory: add outside thesis advisors, edit their details, and
- * deactivate them without deleting (so their past feedback keeps its author).
+ * Advisor directory: add outside thesis advisors, edit their details,
+ * deactivate them without deleting (so their past feedback keeps its author),
+ * or delete them outright — which also removes their Clerk sign-in account.
  * Assigning an advisor to a student happens on each product's roster.
  */
 export function AdvisorManager() {
@@ -59,6 +71,8 @@ export function AdvisorManager() {
   const [managing, setManaging] = useState<Advisor | null>(null)
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "" })
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState<Advisor | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   const load = useCallback(async () => {
     const [a, asg, s] = await Promise.all([
@@ -187,6 +201,21 @@ export function AdvisorManager() {
     toast.success(next ? `${advisorName(a)} reactivated` : `${advisorName(a)} deactivated`)
   }
 
+  const confirmDelete = async () => {
+    if (!deleting) return
+    setDeleteBusy(true)
+    const error = await deleteAdvisor(deleting.id)
+    setDeleteBusy(false)
+    if (error) {
+      toast.error(error)
+      return
+    }
+    setAdvisors((prev) => prev.filter((x) => x.id !== deleting.id))
+    setAssignments((prev) => prev.filter((x) => x.advisors_id !== deleting.id))
+    toast.success(`${advisorName(deleting)} deleted — their sign-in access is revoked.`)
+    setDeleting(null)
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div className="flex items-start justify-between gap-4">
@@ -302,6 +331,15 @@ export function AdvisorManager() {
                         >
                           {active ? "Deactivate" : "Activate"}
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="text-destructive hover:text-destructive size-8"
+                          title="Delete advisor"
+                          onClick={() => setDeleting(a)}
+                        >
+                          <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -323,6 +361,42 @@ export function AdvisorManager() {
           onUnassigned={(id) => setAssignments((prev) => prev.filter((x) => x.id !== id))}
         />
       )}
+
+      <AlertDialog
+        open={deleting != null}
+        onOpenChange={(open) => {
+          if (!open && !deleteBusy) setDeleting(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {deleting ? advisorName(deleting) : "this advisor"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the advisor, their student assignments, and their
+              sign-in account — they will be signed out and can no longer access the
+              dashboard. Their past comments keep their name but lose their author link.
+              If they might return, use Deactivate instead. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteBusy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                // Keep the dialog open while the server route runs, so a
+                // failure can be retried in place.
+                e.preventDefault()
+                confirmDelete()
+              }}
+            >
+              {deleteBusy ? "Deleting…" : "Delete advisor"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={(o) => { if (!saving) setDialogOpen(o) }}>
         <DialogContent>

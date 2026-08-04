@@ -13,6 +13,9 @@ export interface Advisor {
   lastName: string
   profileImage?: string | null
   isActive?: boolean
+  /** Stamped by the Clerk webhook on first sign-in; links the row to its
+   *  Clerk account so a dashboard-side user deletion can deactivate it. */
+  clerk_user_id?: string | null
   created_at?: number
 }
 
@@ -88,6 +91,22 @@ export async function updateAdvisor(id: number, patch: Partial<Advisor>): Promis
     return res.ok
   } catch {
     return false
+  }
+}
+
+/**
+ * Permanently removes an advisor through our server route, which also deletes
+ * their Clerk sign-in account and every student assignment. Returns an error
+ * message on failure, null on success.
+ */
+export async function deleteAdvisor(id: number): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/advisors/${id}`, { method: "DELETE" })
+    if (res.ok) return null
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    return body?.error ?? "Couldn't delete the advisor — please try again."
+  } catch {
+    return "Couldn't delete the advisor — please try again."
   }
 }
 

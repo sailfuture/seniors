@@ -695,6 +695,13 @@ export function RichTextEditor({
             const target = e.target as HTMLElement | null
             if (target?.closest?.(".rt-comment")) e.preventDefault()
           }}
+          // A highlight click moves focus into the editor, and Radix treats
+          // that focusin as a dismissal (its guard for this only arms after an
+          // UNprevented pointerdown-outside — which the handler above just
+          // prevented). That closed and instantly reopened the sheet, replaying
+          // the slide-in. Closing is owned by explicit interactions (body-text
+          // click, the X, Escape), so focus alone must never dismiss.
+          onFocusOutside={(e) => e.preventDefault()}
         >
           <SheetHeader className="shrink-0 border-b px-6 py-4">
             {pendingThread ? (
