@@ -741,7 +741,7 @@ export function TeacherEssayReviewPage({
             </Button>
             <Button
               variant="outline"
-              className="gap-1.5 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+              className="gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800 dark:bg-transparent"
               disabled={acting || !revisionNote.trim()}
               onClick={async () => {
                 await applyAction("revision", revisionNote)

@@ -236,7 +236,7 @@ function RequestRevisionAllButton({
           variant="outline"
           size="sm"
           disabled={loading}
-          className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+          className="border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800 dark:bg-transparent"
         >
           {loading ? (
             <span className="mr-2 size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -871,6 +871,11 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   fieldName={q.field_name}
                   fieldLabel={q.field_label}
                   fieldValue={(isRichText ? extractPlainText(value) : value) || "—"}
+                  essayHref={
+                    isRichText || looksLikeRichTextDoc(value)
+                      ? `${cfg.adminBasePath}/${studentId}/essay/${q.id}`
+                      : undefined
+                  }
                   imageUrl={isImage ? getImageUrl(imageValue) : undefined}
                   minWords={q.min_words > 0 ? q.min_words : undefined}
                   comments={comments}

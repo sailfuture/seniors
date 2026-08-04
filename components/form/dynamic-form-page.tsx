@@ -1370,6 +1370,7 @@ function DynamicField({
               fieldName={question.field_name}
               fieldLabel={question.field_label}
               fieldValue={(isRichTextType ? extractPlainText(value) : value) || "—"}
+              essayHref={isRichTextType ? `${pathname}/write/${question.id}` : undefined}
               minWords={question.min_words > 0 ? question.min_words : undefined}
               comments={comments}
               onMarkRead={onMarkRead}

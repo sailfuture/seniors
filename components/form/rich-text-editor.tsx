@@ -24,6 +24,18 @@ import {
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
 import { FieldActivityStream } from "./field-activity-stream"
 import {
   Sheet,
@@ -684,9 +696,7 @@ function NewThreadComposer({
   return (
     <>
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="bg-muted/40 rounded-md border-l-2 border-amber-300 px-3 py-2">
-          <p className="text-muted-foreground text-xs">“{quote.trim()}”</p>
-        </div>
+        <p className="text-sm leading-relaxed">{quote.trim()}</p>
       </div>
       <div className="shrink-0 border-t px-4 py-3">
         <Textarea
@@ -801,6 +811,7 @@ function SheetThreadView({
   const [note, setNote] = useState("")
   const [sending, setSending] = useState(false)
   const [resolving, setResolving] = useState(false)
+  const [confirmResolve, setConfirmResolve] = useState(false)
 
   if (!thread) {
     return (
@@ -822,8 +833,8 @@ function SheetThreadView({
     <>
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {quote && (
-          <div className="bg-muted/40 mb-3 rounded-md border-l-2 border-amber-300 px-3 py-2">
-            <p className="text-muted-foreground text-xs">“{quote.trim()}”</p>
+          <div className="mb-3">
+            <p className="text-sm leading-relaxed">{quote.trim()}</p>
             {onShowInEssay && (
               <button
                 type="button"
@@ -867,15 +878,12 @@ function SheetThreadView({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 flex-1 gap-1 text-xs text-green-700 hover:bg-green-50 hover:text-green-800"
+              className="h-8 flex-1 gap-1.5 text-xs text-green-700 hover:bg-green-50 hover:text-green-800"
               disabled={sending || resolving}
-              onClick={async () => {
-                setResolving(true)
-                await onResolve()
-                setResolving(false)
-              }}
+              onClick={() => setConfirmResolve(true)}
               title="Resolve and remove the highlight"
             >
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5" />
               {resolving ? "Resolving…" : "Resolve"}
             </Button>
           )}
@@ -884,6 +892,35 @@ function SheetThreadView({
           </Button>
         </div>
       </div>
+
+      {/* Resolving removes the highlight from the essay, so confirm first. */}
+      <AlertDialog open={confirmResolve} onOpenChange={(o) => { if (!resolving) setConfirmResolve(o) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resolve this comment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The highlight will be removed from the essay and this thread moves
+              to the Resolved tab. The conversation is kept, and this can&rsquo;t
+              be undone from here.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resolving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={resolving}
+              onClick={async (e) => {
+                e.preventDefault()
+                setResolving(true)
+                await onResolve()
+                setResolving(false)
+                setConfirmResolve(false)
+              }}
+            >
+              {resolving ? "Resolving…" : "Resolve"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import {
   Sheet,
   SheetContent,
@@ -16,6 +17,7 @@ import {
   Comment01Icon,
   CheckmarkCircle02Icon,
   ArrowTurnBackwardIcon,
+  LicenseDraftIcon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
@@ -40,6 +42,9 @@ interface TeacherCommentProps {
   fieldName: string
   fieldLabel: string
   fieldValue?: string
+  /** Rich-text questions link out to the full document instead of dumping the
+   *  whole essay at the top of the sheet. */
+  essayHref?: string
   imageUrl?: string | null
   minWords?: number
   comments: Comment[]
@@ -64,6 +69,7 @@ export function TeacherComment({
   fieldName,
   fieldLabel,
   fieldValue,
+  essayHref,
   imageUrl,
   minWords,
   comments,
@@ -169,7 +175,15 @@ export function TeacherComment({
           <div className="flex-1 overflow-y-auto">
             <div className="space-y-3 px-6 py-4">
               <p className="text-sm font-semibold">{fieldLabel}</p>
-              {imageUrl ? (
+              {essayHref ? (
+                // Essays are long: link to the document rather than dumping it.
+                <Button asChild size="sm" variant="outline" className="gap-1.5">
+                  <Link href={essayHref}>
+                    <HugeiconsIcon icon={LicenseDraftIcon} strokeWidth={2} className="size-4" />
+                    Open document
+                  </Link>
+                </Button>
+              ) : imageUrl ? (
                 <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="block">
                   <BlurredFitImage src={imageUrl} alt={fieldLabel} className="rounded-lg border" />
                 </a>
@@ -178,7 +192,7 @@ export function TeacherComment({
               ) : (
                 <p className="text-muted-foreground/50 text-sm italic">No response</p>
               )}
-              {wordCount !== null && minWords && (
+              {!essayHref && wordCount !== null && minWords && (
                 <p className="text-muted-foreground/60 text-xs">
                   {wordCount} / {minWords} words
                 </p>
@@ -252,7 +266,7 @@ export function TeacherComment({
                 {!responseStatus.revisionNeeded && !responseStatus.isComplete && onRequestRevision && (
                   <Button
                     variant="outline"
-                    className="flex-1 gap-1.5 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                    className="flex-1 gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800 dark:bg-transparent"
                     onClick={() => { onRequestRevision() }}
                   >
                     <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-4" />

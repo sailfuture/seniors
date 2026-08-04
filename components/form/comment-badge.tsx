@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import {
   Sheet,
   SheetContent,
@@ -12,7 +13,7 @@ import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Comment01Icon } from "@hugeicons/core-free-icons"
+import { Comment01Icon, LicenseDraftIcon } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
@@ -48,6 +49,8 @@ interface CommentBadgeProps {
   fieldName: string
   fieldLabel: string
   fieldValue?: string
+  /** Rich-text questions link to the full editor instead of dumping the essay. */
+  essayHref?: string
   minWords?: number
   comments: Comment[]
   onMarkRead?: (commentIds: number[]) => void
@@ -62,6 +65,7 @@ export function CommentBadge({
   fieldName,
   fieldLabel,
   fieldValue,
+  essayHref,
   minWords,
   comments,
   onMarkRead,
@@ -139,12 +143,20 @@ export function CommentBadge({
           <div className="flex-1 overflow-y-auto">
             <div className="space-y-1 px-6 py-4">
               <p className="text-sm font-semibold">{fieldLabel}</p>
-              {displayAnswer ? (
+              {essayHref ? (
+                // Essays are long: link to the document rather than dumping it.
+                <Button asChild size="sm" variant="outline" className="mt-1 gap-1.5">
+                  <Link href={essayHref}>
+                    <HugeiconsIcon icon={LicenseDraftIcon} strokeWidth={2} className="size-4" />
+                    Open document
+                  </Link>
+                </Button>
+              ) : displayAnswer ? (
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
               ) : (
                 <p className="text-muted-foreground/50 text-sm italic">No response</p>
               )}
-              {wordCount !== null && minWords && (
+              {!essayHref && wordCount !== null && minWords && (
                 <p className="text-muted-foreground/60 text-xs">
                   {wordCount} / {minWords} words
                 </p>
