@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useRef } from "react"
 import { toast } from "sonner"
+import { syncCurrentClassResponses } from "@/lib/response-provisioning"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   SquareLock02Icon,
@@ -44,6 +45,7 @@ import {
   Alert02Icon,
   SentIcon,
   PencilEdit02Icon,
+  UserGroupIcon,
 } from "@hugeicons/core-free-icons"
 import {
   titleToSlug,
@@ -117,6 +119,7 @@ export function TemplateOverview({
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([])
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [sheetSection, setSheetSection] = useState<SectionSummary | null>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dropIdx, setDropIdx] = useState<number | null>(null)
@@ -189,6 +192,40 @@ export function TemplateOverview({
   }, [allQuestions])
 
   const totalDrafts = allQuestions.filter((q) => q.isDraft && !q.isArchived).length
+
+  // Publishing only provisions rows for the roster as it stands at that
+  // moment, so a new senior class starts with nothing to write into. This
+  // fills the gaps for the current graduating class and skips anyone who
+  // already has a row, which makes it safe to run whenever the roster changes.
+  const handleSyncStudents = async () => {
+    setSyncing(true)
+    const t = toast.loading("Checking which students need setting up...")
+    try {
+      const result = await syncCurrentClassResponses(cfg, (done, total) => {
+        if (total > 0) toast.loading(`Setting up students... ${done} of ${total}`, { id: t })
+      })
+      if (result.created === 0 && result.failed === 0) {
+        toast.success(
+          `All ${result.students} current seniors are already set up for ${result.questions} questions.`,
+          { id: t }
+        )
+      } else if (result.failed > 0) {
+        toast.warning(
+          `Added ${result.created} missing entries, but ${result.failed} failed. Run it again to retry those.`,
+          { id: t }
+        )
+      } else {
+        toast.success(
+          `Added ${result.created} missing entries for ${result.students} current seniors.`,
+          { id: t }
+        )
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't sync students", { id: t })
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const handlePublishDrafts = async (sectionId?: number) => {
     const drafts = allQuestions.filter(
@@ -446,6 +483,16 @@ export function TemplateOverview({
           >
             <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4" />
             {publishing ? "Publishing..." : `Publish (${totalDrafts})`}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleSyncStudents}
+            disabled={syncing}
+            className="gap-2"
+            title="Give every current senior an entry for each published question"
+          >
+            <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} className="size-4" />
+            {syncing ? "Syncing..." : "Sync Students"}
           </Button>
           <Button variant="outline" onClick={() => setAddSectionOpen(true)} className="gap-2">
             <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4" />

@@ -254,6 +254,46 @@ export function EssayEditorPage({
   // overlapped a save never adopts the pre-save server snapshot
   const saveEpochRef = useRef(0)
 
+  // Response rows are only provisioned by Xano's publish_questions, which runs
+  // when a teacher publishes drafts — so a student who joined the roster after
+  // a question was published has no row for it and would dead-end on this
+  // page. Create the missing row on demand rather than turning them away.
+  const createInFlightRef = useRef<Promise<StudentResponse | null> | null>(null)
+
+  const createMissingResponse = useCallback(
+    async (q: TemplateQuestion): Promise<StudentResponse | null> => {
+      if (!studentId) return null
+      try {
+        const res = await fetch(cfg.responsePatchBase, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            students_id: studentId,
+            [F.templateId]: q.id,
+            // Mirrors what publish_questions writes, so the section form and
+            // the review queue group this answer exactly as they would a
+            // normally provisioned one.
+            [F.customGroupId]: q[F.customGroupId] ?? null,
+            student_response: "",
+            wordCount: 0,
+            readyReview: false,
+            revisionNeeded: false,
+            isComplete: false,
+          }),
+        })
+        if (!res.ok) return null
+        const created = (await res.json()) as StudentResponse
+        // Without the identifying fields echoed back, autosave would PATCH a
+        // row that isn't this student's answer to this question — fail instead.
+        if (!created?.id || Number(created[F.templateId]) !== Number(q.id)) return null
+        return created
+      } catch {
+        return null
+      }
+    },
+    [studentId, cfg, F]
+  )
+
   const loadData = useCallback(async () => {
     if (!studentId) return
     const epochAtFetch = saveEpochRef.current
@@ -263,15 +303,25 @@ export function EssayEditorPage({
         fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
       ])
 
+      let q: TemplateQuestion | null = null
       if (templateRes.ok) {
         const all = (await templateRes.json()) as TemplateQuestion[]
-        const q = all.find((tq) => tq.id === questionId && tq.isPublished && !tq.isArchived)
-        setQuestion(q ?? null)
+        q = all.find((tq) => tq.id === questionId && tq.isPublished && !tq.isArchived) ?? null
+        setQuestion(q)
       }
 
       if (responsesRes.ok) {
         const data = (await responsesRes.json()) as StudentResponse[]
-        const r = data.find((resp) => !resp.isArchived && Number(resp[F.templateId]) === questionId)
+        let r = data.find((resp) => !resp.isArchived && Number(resp[F.templateId]) === questionId)
+        if (!r && q && isRichTextQuestion(q)) {
+          // Share one in-flight POST: a StrictMode double-mount or an
+          // overlapping refresh must not create two rows for the same answer.
+          if (!createInFlightRef.current) createInFlightRef.current = createMissingResponse(q)
+          const created = await createInFlightRef.current
+          // Keep a successful result cached; only clear so a failure can retry.
+          if (!created) createInFlightRef.current = null
+          r = created ?? undefined
+        }
         setResponse(r ?? null)
         responseRef.current = r ?? null
         // Never clobber unsaved local edits or a fresher save with a refetch
@@ -287,7 +337,7 @@ export function EssayEditorPage({
     } finally {
       setLoading(false)
     }
-  }, [studentId, questionId, cfg, F])
+  }, [studentId, questionId, cfg, F, createMissingResponse])
 
   useEffect(() => {
     loadData()
@@ -427,8 +477,8 @@ export function EssayEditorPage({
         <BackButton href={backHref} label={backLabel} />
         <h1 className="text-2xl font-bold">{question.field_label}</h1>
         <p className="text-muted-foreground">
-          This question is not set up for your account yet. Please check back later or ask your
-          teacher to publish it.
+          We couldn&apos;t open this essay just now. Refresh the page to try again — if it keeps
+          happening, let your teacher know.
         </p>
       </div>
     )
