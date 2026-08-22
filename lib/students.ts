@@ -23,6 +23,18 @@ export function currentClassYear(now = new Date()): number {
   return now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear()
 }
 
+/**
+ * The exact `yearGroup` string the current graduating class is stored under,
+ * read off the roster rather than assembled from a prefix. Xano matches this
+ * value literally, so a guessed format ("Batch of 2027") that ever drifts from
+ * what Toddle syncs would silently match no students at all.
+ */
+export function currentYearGroupValue(students: RosterStudent[] | undefined): string | null {
+  const year = currentClassYear()
+  const match = (students ?? []).find((s) => classYearOf(s) === year)
+  return match?.yearGroup?.trim() || null
+}
+
 /** The 4-digit class year in a student's yearGroup ("Batch of 2027" → 2027). */
 export function classYearOf(s: RosterStudent): number | null {
   const year = Number((s.yearGroup ?? "").match(/\d{4}/)?.[0] ?? NaN)

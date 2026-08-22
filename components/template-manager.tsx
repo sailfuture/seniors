@@ -65,6 +65,8 @@ import {
 import { toast } from "sonner"
 import { invalidateSectionsCache } from "@/lib/lifemap-sections"
 import { uploadImageToXano, type XanoImageResponse } from "@/lib/xano"
+import { useStudents } from "@/lib/queries"
+import { currentYearGroupValue } from "@/lib/students"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useBumpSidebar } from "@/lib/refresh-context"
 
@@ -220,6 +222,8 @@ export function TemplateManager({
   
   const [hideArchived, setHideArchived] = useState(true)
   const [publishing, setPublishing] = useState(false)
+  // Publish has to name the cohort whose response rows get provisioned.
+  const { data: rosterStudents } = useStudents()
   const [deleteSectionOpen, setDeleteSectionOpen] = useState(false)
   const [deletingSection, setDeletingSection] = useState(false)
   const [lockConfirmOpen, setLockConfirmOpen] = useState(false)
@@ -597,12 +601,22 @@ export function TemplateManager({
       toast("No drafts to publish", { duration: 2000 })
       return
     }
+    // Publishing without a cohort would mark questions live that no student
+    // has a row for — exactly the state that stranded the current seniors.
+    const yearGroup = currentYearGroupValue(rosterStudents)
+    if (!yearGroup) {
+      toast.error("No students found for the current class year, so publishing would leave these questions unanswerable.", { duration: 5000 })
+      return
+    }
+
     setPublishing(true)
     try {
+      // NOTE: the endpoint takes no section filter — it publishes every
+      // pending draft in the product, not just this section's.
       const res = await fetch(cfg.publishQuestionsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [F.sectionId]: sectionId }),
+        body: JSON.stringify({ yearGroup }),
       })
       if (!res.ok) throw new Error("Publish failed")
       setQuestions((prev) =>

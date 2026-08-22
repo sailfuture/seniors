@@ -35,6 +35,8 @@ import {
 import { useRef } from "react"
 import { toast } from "sonner"
 import { syncCurrentClassResponses } from "@/lib/response-provisioning"
+import { useStudents } from "@/lib/queries"
+import { currentYearGroupValue } from "@/lib/students"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   SquareLock02Icon,
@@ -120,6 +122,9 @@ export function TemplateOverview({
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  // Publishing has to name the cohort to provision rows for; without it
+  // Xano skips the whole operation rather than target a graduated class.
+  const { data: rosterStudents } = useStudents()
   const [sheetSection, setSheetSection] = useState<SectionSummary | null>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dropIdx, setDropIdx] = useState<number | null>(null)
@@ -236,9 +241,21 @@ export function TemplateOverview({
       return
     }
 
+    // Publishing without a cohort would mark questions live that no student
+    // has a row for — exactly the state that stranded the current seniors.
+    const yearGroup = currentYearGroupValue(rosterStudents)
+    if (!yearGroup) {
+      toast.error("No students found for the current class year, so publishing would leave these questions unanswerable.", { duration: 5000 })
+      return
+    }
+
     setPublishing(true)
     try {
-      const res = await fetch(cfg.publishQuestionsEndpoint, { method: "POST" })
+      const res = await fetch(cfg.publishQuestionsEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ yearGroup }),
+      })
       if (!res.ok) throw new Error("Publish failed")
       setAllQuestions((prev) =>
         prev.map((q) =>
