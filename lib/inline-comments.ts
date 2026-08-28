@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 
 /** Opaque id shared by a highlight's `comment` mark and its thread's rows. */
@@ -28,6 +29,10 @@ interface UseInlineCommentsArgs {
   sectionId: number
   /** Question this essay belongs to; threads are scoped to it. */
   fieldName: string
+  /** The question's template id — field names can repeat across questions. */
+  templateId?: number
+  /** FK column name for the template id, e.g. "lifemap_template_id". */
+  templateIdField?: string
   viewer: "teacher" | "student"
   authorName: string
   teachersId?: string | null
@@ -54,6 +59,8 @@ export function useInlineComments({
   studentId,
   sectionId,
   fieldName,
+  templateId,
+  templateIdField,
   viewer,
   authorName,
   teachersId,
@@ -79,7 +86,9 @@ export function useInlineComments({
           data.filter(
             (c) =>
               String(c.students_id ?? "") === String(studentId) &&
-              c.field_name === fieldName &&
+              (templateIdField
+                ? commentMatchesQuestion(c, fieldName, templateId, templateIdField)
+                : c.field_name === fieldName) &&
               !!c.thread_id
           )
         )
@@ -93,7 +102,7 @@ export function useInlineComments({
     return () => {
       cancelled = true
     }
-  }, [commentsEndpoint, studentId, fieldName])
+  }, [commentsEndpoint, studentId, fieldName, templateId, templateIdField])
 
   const threads = useMemo(() => {
     const byId = new Map<string, Comment[]>()
@@ -126,6 +135,7 @@ export function useInlineComments({
         teachers_id: isTeacher ? (teachersId ?? null) : null,
         field_name: fieldName,
         [sectionIdField]: sectionId,
+        ...(templateIdField && templateId ? { [templateIdField]: templateId } : {}),
         thread_id: threadId,
         // The anchored passage, so the thread stays legible after resolution
         // removes the highlight. Harmless if the column doesn't exist yet.
@@ -160,7 +170,7 @@ export function useInlineComments({
         return null
       }
     },
-    [commentsEndpoint, studentId, sectionId, sectionIdField, fieldName, viewer, authorName, teachersId]
+    [commentsEndpoint, studentId, sectionId, sectionIdField, fieldName, templateId, templateIdField, viewer, authorName, teachersId]
   )
 
   const createThread = useCallback(

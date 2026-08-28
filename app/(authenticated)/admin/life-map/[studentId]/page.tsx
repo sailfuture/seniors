@@ -455,6 +455,7 @@ export default function AdminStudentLifeMapOverviewPage({
           onOpenChange={(o) => { if (!o) setActivity(null) }}
           groupName={activityName}
           viewer="teacher"
+          templateIdKey="lifemap_template_id"
           questions={activityQs.map((q) => ({
             id: q.id,
             field_name: q.field_name,

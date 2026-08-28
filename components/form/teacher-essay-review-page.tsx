@@ -42,8 +42,10 @@ import {
 } from "./field-activity-stream"
 import { isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
 import type { FormApiConfig } from "@/lib/form-api-config"
+import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import {
+  eventMatchesQuestion,
   eventTypeForAction,
   fetchResponseEvents,
   postResponseEvent,
@@ -179,7 +181,7 @@ export function TeacherEssayReviewPage({
           const mine = data.filter(
             (c) =>
               String(c.students_id ?? "") === String(studentId) &&
-              c.field_name === q!.field_name
+              commentMatchesQuestion(c, q!.field_name, questionId, F.templateId)
           )
           // Inline essay-comment threads belong to a highlight, not the overall thread.
           setComments(mine.filter((c) => !c.thread_id))
@@ -224,6 +226,7 @@ export function TeacherEssayReviewPage({
         teachers_id: teachersId,
         field_name: fieldName,
         [F.sectionId]: sectionId,
+        [F.templateId]: questionId,
         note: noteText.trim(),
         isOld: false,
         isComplete: false,
@@ -244,7 +247,7 @@ export function TeacherEssayReviewPage({
         return false
       }
     },
-    [response, fieldName, studentId, teachersId, F.sectionId, sectionId, teacherName, cfg.commentsEndpoint]
+    [response, fieldName, studentId, teachersId, F.sectionId, F.templateId, questionId, sectionId, teacherName, cfg.commentsEndpoint]
   )
 
   const handleDelete = useCallback(
@@ -512,6 +515,8 @@ export function TeacherEssayReviewPage({
               studentId,
               sectionId,
               fieldName: question.field_name,
+              templateId: question.id,
+              templateIdField: F.templateId,
               viewer: "teacher",
               authorName: teacherName,
               teachersId,
@@ -577,7 +582,7 @@ export function TeacherEssayReviewPage({
           <div className="flex-1 overflow-y-auto px-4 py-4">
             <FieldActivityStream
               comments={comments}
-              events={events.filter((e) => e.field_name === question.field_name)}
+              events={events.filter((e) => eventMatchesQuestion(e, question.field_name, questionId, F.templateId))}
               resolvedThreads={resolvedThreads}
               viewer="teacher"
               onDelete={handleDelete}

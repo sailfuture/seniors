@@ -18,6 +18,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons"
 import type { FormApiConfig } from "@/lib/form-api-config"
+import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import { FieldActivityStream, groupResolvedThreads, type ResolvedThreadEntry } from "@/components/form/field-activity-stream"
 import { RichTextDisplay } from "@/components/form/rich-text-display"
@@ -25,7 +26,7 @@ import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { checkSubmissionForAi, AI_BLOCK_THRESHOLD } from "@/lib/ai-submission-check"
-import { isLineItemsQuestion } from "@/lib/line-items"
+import { isLineItemsQuestion, looksLikeLineItems } from "@/lib/line-items"
 import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
 
@@ -132,7 +133,7 @@ function ResponseView({ q, r }: { q: TemplateQuestion; r: StudentResponse | unde
       <p className="text-muted-foreground text-sm italic">No image uploaded.</p>
     )
   }
-  if (isLineItemsQuestion(q)) return <LineItemsTable raw={value} />
+  if (isLineItemsQuestion(q) || looksLikeLineItems(value)) return <LineItemsTable raw={value} />
   if (isRichTextQuestion(q) || looksLikeRichTextDoc(value)) return <RichTextDisplay raw={value} />
   return <p className="whitespace-pre-wrap text-sm leading-relaxed">{value || "—"}</p>
 }
@@ -296,7 +297,12 @@ export function StudentReviewStatus({
         // and through the exit animation (exiting) before dropping out.
         const lingering = c.id != null && (heldRead.has(c.id) || exiting.has(c.id))
         if (c.isOld && !lingering) continue
-        const q = questionByField.get(c.field_name)
+        // Newer comments record their question's template id — prefer it,
+        // since field names can repeat across questions.
+        const commentTemplateId = Number(c[F.templateId] ?? 0)
+        const q =
+          (commentTemplateId ? questionById.get(commentTemplateId) : undefined) ??
+          questionByField.get(c.field_name)
         const section = sectionById.get(Number(c[F.sectionId]))
         if (!section || section.isLocked) continue
         unreadItems.push({ c, q, section, when: toTs(c.created_at as number | undefined) })
@@ -369,9 +375,9 @@ export function StudentReviewStatus({
   }, [])
 
   const handleReply = useCallback(
-    async (fieldName: string, note: string): Promise<boolean> => {
+    async (fieldName: string, note: string, questionId?: number | null): Promise<boolean> => {
       if (!studentId) return false
-      const q = questionByField.get(fieldName)
+      const q = (questionId != null ? questionById.get(questionId) : undefined) ?? questionByField.get(fieldName)
       const section = q ? sectionOf(q) : undefined
       const studentName = session?.user?.name ?? "Student"
       const payload: Record<string, unknown> = {
@@ -379,6 +385,9 @@ export function StudentReviewStatus({
         teachers_id: null,
         field_name: fieldName,
         [F.sectionId]: section?.id ?? Number(q?.[F.sectionId] ?? 0),
+        // Field names can repeat across questions — record which question
+        // this reply belongs to so it only shows on that one.
+        ...(q ? { [F.templateId]: q.id } : {}),
         note,
         isOld: false,
         isComplete: false,
@@ -405,7 +414,7 @@ export function StudentReviewStatus({
         return false
       }
     },
-    [studentId, session, cfg.commentsEndpoint, F, questionByField, sectionOf]
+    [studentId, session, cfg.commentsEndpoint, F, questionById, questionByField, sectionOf]
   )
 
   // --- Revision editing / resubmit -----------------------------------------
@@ -495,7 +504,12 @@ export function StudentReviewStatus({
         // Addressing the revision clears its unread feedback so it doesn't
         // linger in the "Unread comments" card as still needing attention.
         for (const c of comments) {
-          if (c.field_name === q.field_name && !c.isOld && !c.isStudentReply && c.id != null) {
+          if (
+            commentMatchesQuestion(c, q.field_name, q.id, F.templateId) &&
+            !c.isOld &&
+            !c.isStudentReply &&
+            c.id != null
+          ) {
             handleMarkRead(c.id)
           }
         }
@@ -522,8 +536,12 @@ export function StudentReviewStatus({
   // Resolved inline threads for the open field, folded into its feed.
   const sheetResolvedThreads = useMemo(() => {
     if (!sheet || sheet.fieldName === "_section_comment") return []
-    return groupResolvedThreads(threadComments.filter((c) => c.field_name === sheet.fieldName))
-  }, [sheet, threadComments])
+    return groupResolvedThreads(
+      threadComments.filter((c) =>
+        commentMatchesQuestion(c, sheet.fieldName, sheet.questionId, F.templateId)
+      )
+    )
+  }, [sheet, threadComments, F])
 
   const sheetComments = useMemo(() => {
     if (!sheet) return []
@@ -536,7 +554,9 @@ export function StudentReviewStatus({
           (sheet.groupId != null ? Number(c[F.customGroupId]) === sheet.groupId : !c[F.customGroupId])
       )
     }
-    return comments.filter((c) => c.field_name === sheet.fieldName && !c.isComplete)
+    return comments.filter(
+      (c) => commentMatchesQuestion(c, sheet.fieldName, sheet.questionId, F.templateId) && !c.isComplete
+    )
   }, [sheet, comments, F])
   const openStatus = openResponse
     ? {
@@ -738,7 +758,7 @@ export function StudentReviewStatus({
             </div>
           </div>
           {openField && sheet?.fieldName !== "_section_comment" && (
-            <ReplyBox onSend={(note) => handleReply(sheet!.fieldName, note)} />
+            <ReplyBox onSend={(note) => handleReply(sheet!.fieldName, note, sheet!.questionId)} />
           )}
         </SheetContent>
       </Sheet>

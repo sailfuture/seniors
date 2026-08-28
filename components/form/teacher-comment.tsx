@@ -20,8 +20,10 @@ import {
   LicenseDraftIcon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
-import { getWordCount } from "@/lib/form-types"
+import { commentMatchesQuestion, getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
+import { looksLikeLineItems } from "@/lib/line-items"
+import { LineItemsTable } from "@/components/line-items-table"
 import { BlurredFitImage } from "./blurred-fit-image"
 import { FieldActivityStream, type ResolvedThreadEntry } from "./field-activity-stream"
 
@@ -40,6 +42,10 @@ interface ResponseStatus {
 
 interface TeacherCommentProps {
   fieldName: string
+  /** The question's template id — scopes comments when field names repeat. */
+  templateId?: number
+  /** FK column name for the template id, e.g. "lifemap_template_id". */
+  templateIdKey?: string
   fieldLabel: string
   fieldValue?: string
   /** Rich-text questions link out to the full document instead of dumping the
@@ -69,6 +75,8 @@ interface TeacherCommentProps {
 
 export function TeacherComment({
   fieldName,
+  templateId,
+  templateIdKey,
   fieldLabel,
   fieldValue,
   essayHref,
@@ -93,7 +101,9 @@ export function TeacherComment({
   const [note, setNote] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
-  const fieldComments = comments.filter((c) => c.field_name === fieldName)
+  const fieldComments = templateIdKey
+    ? comments.filter((c) => commentMatchesQuestion(c, fieldName, templateId, templateIdKey))
+    : comments.filter((c) => c.field_name === fieldName)
   // Two directions of "unread": teacher comments the student hasn't read yet,
   // and student replies the teacher hasn't seen yet. Both surface in the
   // badge; only the replies are the teacher's own to-do (blue).
@@ -190,6 +200,8 @@ export function TeacherComment({
                 <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="block">
                   <BlurredFitImage src={imageUrl} alt={fieldLabel} className="rounded-lg border" />
                 </a>
+              ) : displayAnswer && looksLikeLineItems(displayAnswer) ? (
+                <LineItemsTable raw={displayAnswer} />
               ) : displayAnswer ? (
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
               ) : (

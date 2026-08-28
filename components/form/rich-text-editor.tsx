@@ -60,6 +60,10 @@ export interface RichTextCommentConfig {
   studentId: string
   sectionId: number
   fieldName: string
+  /** The question's template id — field names can repeat across questions. */
+  templateId?: number
+  /** Template FK on the comments table, e.g. "lifemap_template_id". */
+  templateIdField?: string
   viewer: "teacher" | "student"
   authorName: string
   teachersId?: string | null

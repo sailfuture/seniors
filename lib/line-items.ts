@@ -87,6 +87,16 @@ export function parseLineItemProducts(raw: string | null | undefined): LineItemP
   return legacyRows.length > 0 ? [{ name: "", rows: legacyRows }] : []
 }
 
+/**
+ * True when a raw response holds line-items JSON regardless of the question's
+ * current type — a question changed away from Line Items can leave this data
+ * behind, and it should still render as a table, never as raw JSON.
+ */
+export function looksLikeLineItems(raw: string | null | undefined): boolean {
+  if (!raw || !raw.trim().startsWith("{")) return false
+  return parseLineItemProducts(raw).length > 0
+}
+
 export function serializeLineItemProducts(products: LineItemProduct[]): string {
   const kept = products.filter((p) => p.name.trim() || p.rows.length > 0)
   if (kept.length === 0) return ""

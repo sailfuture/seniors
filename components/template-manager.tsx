@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -298,6 +298,19 @@ export function TemplateManager({
   }, [initialEditQuestionId, openNewQuestion, loading, questions])
 
   const [defaultGroupId, setDefaultGroupId] = useState<number | null>(null)
+
+  // Field names shared by more than one live question in this section —
+  // comments, response events, and ?focus= deep links all key on field_name,
+  // so collisions bleed activity between questions. Flagged in the list so
+  // admins can rename one.
+  const duplicateFieldNames = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const q of questions) {
+      if (q.isArchived || !q.field_name) continue
+      counts.set(q.field_name, (counts.get(q.field_name) ?? 0) + 1)
+    }
+    return new Set([...counts].filter(([, n]) => n > 1).map(([name]) => name))
+  }, [questions])
 
   const handleAdd = (groupId?: number | null) => {
     setEditingQuestion(null)
@@ -1075,6 +1088,14 @@ export function TemplateManager({
                                       {q.id != null ? questionOrderMap.get(q.id) ?? "" : ""}
                                     </span>
                                     <span className="text-sm font-medium">{q.field_label || q.field_name}</span>
+                                    {!q.isArchived && duplicateFieldNames.has(q.field_name) && (
+                                      <span
+                                        className="shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-600 dark:bg-red-500/10 dark:text-red-400"
+                                        title={`Field name "${q.field_name}" is used by more than one question in this section, so their comments and links can collide. Rename one of them.`}
+                                      >
+                                        Duplicate field name
+                                      </span>
+                                    )}
                                   </div>
                                 </TableCell>
                                 <TableCell>
@@ -1171,6 +1192,7 @@ export function TemplateManager({
         onDelete={(q) => { setSheetOpen(false); setDeleteTarget(q) }}
         defaultGroupId={defaultGroupId}
         fields={F}
+        existingQuestions={questions}
       />
 
       <GroupSheet
@@ -1439,6 +1461,7 @@ function QuestionSheet({
   onDelete,
   defaultGroupId,
   fields: F,
+  existingQuestions,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1450,6 +1473,8 @@ function QuestionSheet({
   onDelete?: (q: TemplateQuestion) => void
   defaultGroupId?: number | null
   fields: FormApiConfig["fields"]
+  /** The section's questions, to reject a field_name another one already uses. */
+  existingQuestions: TemplateQuestion[]
 }) {
   const isEdit = !!question
   const [form, setForm] = useState<Omit<TemplateQuestion, "id"> & { id?: number }>(
@@ -1492,6 +1517,18 @@ function QuestionSheet({
   const selectedType = questionTypes.find((t) => t.id === form.question_types_id)
   const selectedTypeName = selectedType?.type ?? ""
 
+  // The name this question will save under (typed, or derived from the label).
+  // Comments, response events, and ?focus= links key on field_name, so a name
+  // another live question in this section already uses is rejected.
+  const resolvedFieldName =
+    form.field_name.trim() ||
+    form.field_label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
+  const duplicateOf = resolvedFieldName
+    ? existingQuestions.find(
+        (q) => !q.isArchived && q.id !== form.id && q.field_name === resolvedFieldName
+      )
+    : undefined
+
   const handleSubmit = () => {
     if (!form.field_label.trim()) {
       toast("Field label is required", { duration: 2000 })
@@ -1506,8 +1543,14 @@ function QuestionSheet({
       toast("Minimum word count is required for this question type", { duration: 2000 })
       return
     }
-    const fieldName = form.field_name.trim() || form.field_label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
-    onSave({ ...form, field_name: fieldName })
+    if (duplicateOf) {
+      toast(
+        `Field name "${resolvedFieldName}" is already used by "${duplicateOf.field_label || duplicateOf.field_name}" in this section`,
+        { duration: 3500 }
+      )
+      return
+    }
+    onSave({ ...form, field_name: resolvedFieldName })
   }
 
   const isSource = selectedTypeName === "Source"
@@ -1891,10 +1934,19 @@ function QuestionSheet({
               placeholder="Auto-generated from label if empty"
               value={form.field_name}
               onChange={(e) => updateField("field_name", e.target.value)}
+              aria-invalid={!!duplicateOf}
             />
-            <p className="text-muted-foreground text-xs">
-              Database field name. Leave empty to auto-generate.
-            </p>
+            {duplicateOf ? (
+              <p className="text-xs text-red-600">
+                &ldquo;{resolvedFieldName}&rdquo; is already used by &ldquo;
+                {duplicateOf.field_label || duplicateOf.field_name}&rdquo; — field names must be
+                unique within a section.
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-xs">
+                Database field name. Leave empty to auto-generate.
+              </p>
+            )}
           </div>
         </div>
 

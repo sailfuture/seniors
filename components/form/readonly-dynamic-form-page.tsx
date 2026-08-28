@@ -41,10 +41,11 @@ import {
 import { toast } from "sonner"
 import { TeacherComment } from "./teacher-comment"
 import { groupResolvedThreads } from "./field-activity-stream"
+import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LineItemsTable } from "@/components/line-items-table"
-import { isLineItemsQuestion } from "@/lib/line-items"
+import { isLineItemsQuestion, looksLikeLineItems } from "@/lib/line-items"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
@@ -439,7 +440,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   }, [focusField, loading])
 
   const handlePostComment = useCallback(
-    async (fieldName: string, note: string) => {
+    async (fieldName: string, note: string, templateId?: number) => {
       const teacherName = session?.user?.name ?? "Teacher"
       const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
 
@@ -448,6 +449,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         teachers_id: teachersId,
         field_name: fieldName,
         [F.sectionId]: sectionId,
+        // Field names can repeat across questions, so the comment records
+        // which question it belongs to; filters prefer this id.
+        ...(templateId ? { [F.templateId]: templateId } : {}),
         note,
         isOld: false,
         isComplete: false,
@@ -576,6 +580,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 teachers_id: teachersId,
                 field_name: q?.field_name ?? "",
                 [F.sectionId]: sectionId,
+                [F.templateId]: templateId,
                 note: comment.trim(),
                 isOld: false,
                 isComplete: false,
@@ -699,7 +704,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         let studentEditedSinceRevision = false
         if (qNeedsRevision && response) {
           const revisionComments = comments.filter(
-            (c) => c.field_name === q.field_name && c.isRevisionFeedback
+            (c) => commentMatchesQuestion(c, q.field_name, q.id, F.templateId) && c.isRevisionFeedback
           )
           if (revisionComments.length > 0) {
             const latestRevision = revisionComments.reduce((a, b) => {
@@ -772,7 +777,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           ) : (
             <p className="text-muted-foreground text-sm">—</p>
           )
-        } else if (isLineItemsQuestion(q)) {
+        } else if (isLineItemsQuestion(q) || looksLikeLineItems(value)) {
           displayValue = <LineItemsTable raw={value} />
         } else if (isRichText || looksLikeRichTextDoc(value)) {
           // Essays never render inline here — the teacher opens them as a
@@ -872,6 +877,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 )}
                 <TeacherComment
                   fieldName={q.field_name}
+                  templateId={q.id}
+                  templateIdKey={F.templateId}
                   fieldLabel={q.field_label}
                   fieldValue={(isRichText ? extractPlainText(value) : value) || "—"}
                   essayHref={
@@ -880,12 +887,14 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       : undefined
                   }
                   resolvedThreads={groupResolvedThreads(
-                    threadComments.filter((c) => c.field_name === q.field_name)
+                    threadComments.filter((c) =>
+                      commentMatchesQuestion(c, q.field_name, q.id, F.templateId)
+                    )
                   )}
                   imageUrl={isImage ? getImageUrl(imageValue) : undefined}
                   minWords={q.min_words > 0 ? q.min_words : undefined}
                   comments={comments}
-                  onSubmit={handlePostComment}
+                  onSubmit={(fieldName, note) => handlePostComment(fieldName, note, q.id)}
                   onDelete={handleDelete}
                   plagiarism={(isLong || isRichText) && isSubmitted ? gptzero : undefined}
                   teacherGuideline={q.teacher_guideline}

@@ -230,7 +230,11 @@ export function ProductStatusCard({
           // Skip read and resolved comments (matching the field sheets, which
           // hide isComplete ones) and the student's own replies.
           if (c.isOld || c.isComplete || c.isStudentReply) continue
-          const q = [...liveQuestions.values()].find((q) => q.field_name === c.field_name)
+          // Prefer the comment's own template id — field names can repeat.
+          const commentTemplateId = Number(c[F.templateId] ?? 0)
+          const q =
+            (commentTemplateId ? liveQuestions.get(commentTemplateId) : undefined) ??
+            [...liveQuestions.values()].find((q) => q.field_name === c.field_name)
           const section = sectionById.get(Number(c[F.sectionId]))
           if (!section || section.isLocked) continue
           const teacher = c.teacher_name || c._teachers?.name || undefined

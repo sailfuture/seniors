@@ -13,6 +13,23 @@ export interface ResponseEvent {
   [key: string]: unknown
 }
 
+/**
+ * True when an event belongs to this question. Events record the template id
+ * alongside field_name, and the id wins when both sides have one — field
+ * names are teacher-editable, can repeat across questions, and can be renamed
+ * after events were logged. Events missing the id fall back to field_name.
+ */
+export function eventMatchesQuestion(
+  e: ResponseEvent,
+  fieldName: string,
+  questionId: number | null | undefined,
+  templateIdKey: string
+): boolean {
+  const eventTemplateId = Number(e[templateIdKey] ?? 0)
+  if (eventTemplateId && questionId) return eventTemplateId === Number(questionId)
+  return e.field_name === fieldName
+}
+
 /** Map a review PATCH action to its event type. */
 export function eventTypeForAction(action: "complete" | "revision" | "ready" | "clear"): ResponseEventType {
   if (action === "complete") return "completed"

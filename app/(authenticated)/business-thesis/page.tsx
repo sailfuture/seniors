@@ -414,6 +414,7 @@ export default function StudentBusinessThesisOverviewPage() {
           onOpenChange={(o) => { if (!o) setActivity(null) }}
           groupName={activityName}
           viewer="student"
+          templateIdKey="businessthesis_template_id"
           questions={activityQs.map((q) => ({
             id: q.id,
             field_name: q.field_name,

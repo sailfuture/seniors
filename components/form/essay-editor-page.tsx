@@ -610,6 +610,8 @@ export function EssayEditorPage({
                   studentId,
                   sectionId: Number(question[F.sectionId] ?? 0),
                   fieldName: question.field_name,
+                  templateId: question.id,
+                  templateIdField: F.templateId,
                   viewer: "student",
                   authorName: session?.user?.name ?? "Student",
                 }

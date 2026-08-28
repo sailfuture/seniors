@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowTurnBackwardIcon, CheckmarkCircle02Icon, LicenseDraftIcon } from "@hugeicons/core-free-icons"
+import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import { FieldActivityStream } from "./field-activity-stream"
@@ -22,8 +23,9 @@ import { ZoomableImage } from "@/components/zoomable-image"
 import { RichTextDisplay } from "./rich-text-display"
 import { LineItemsTable } from "@/components/line-items-table"
 import { isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
-import { isLineItemsQuestion } from "@/lib/line-items"
+import { isLineItemsQuestion, looksLikeLineItems } from "@/lib/line-items"
 import {
+  eventMatchesQuestion,
   eventTypeForAction,
   fetchResponseEvents,
   postResponseEvent,
@@ -121,12 +123,12 @@ export function ResponseReviewSheet({
           data.filter(
             (c) =>
               String(c.students_id ?? "") === String(studentId) &&
-              c.field_name === fieldName &&
+              commentMatchesQuestion(c, fieldName ?? "", target.question.id, F.templateId) &&
               // Inline essay-comment threads belong to a highlight, not here.
               !c.thread_id
           )
         )
-        setEvents(evts.filter((e) => e.field_name === fieldName))
+        setEvents(evts.filter((e) => eventMatchesQuestion(e, fieldName ?? "", target.question.id, F.templateId)))
       } catch {
         /* leave empty */
       } finally {
@@ -151,6 +153,7 @@ export function ResponseReviewSheet({
         teachers_id: teachersId,
         field_name: fieldName,
         [F.sectionId]: target.sectionId,
+        [F.templateId]: target.question.id,
         note: noteText.trim(),
         isOld: false,
         isComplete: false,
@@ -171,7 +174,7 @@ export function ResponseReviewSheet({
         return false
       }
     },
-    [target, studentId, fieldName, teacherName, teachersId, cfg.commentsEndpoint, F.sectionId]
+    [target, studentId, fieldName, teacherName, teachersId, cfg.commentsEndpoint, F.sectionId, F.templateId]
   )
 
   const handleDelete = useCallback(
@@ -259,7 +262,7 @@ export function ResponseReviewSheet({
               ) : (
                 <p className="text-muted-foreground text-sm italic">No image uploaded.</p>
               )
-            ) : target && isLineItemsQuestion(target.question) ? (
+            ) : target && (isLineItemsQuestion(target.question) || looksLikeLineItems(value)) ? (
               <LineItemsTable raw={value} />
             ) : target && (isRichTextQuestion(target.question) || looksLikeRichTextDoc(value)) ? (
               <div className="space-y-3">

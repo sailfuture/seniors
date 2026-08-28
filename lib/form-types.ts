@@ -57,6 +57,25 @@ export interface Comment {
   [key: string]: unknown
 }
 
+/**
+ * True when a comment belongs to this question. Field names are
+ * teacher-editable and can repeat across questions, so comments written since
+ * the fix also carry the template question id (`templateIdKey`, e.g.
+ * "lifemap_template_id") and only match their own question; legacy comments
+ * (id absent or 0 — Xano's column default) fall back to the field_name match.
+ */
+export function commentMatchesQuestion(
+  c: Comment,
+  fieldName: string,
+  questionId: number | null | undefined,
+  templateIdKey: string
+): boolean {
+  if (c.field_name !== fieldName) return false
+  const commentTemplateId = Number(c[templateIdKey] ?? 0)
+  if (!commentTemplateId || !questionId) return true
+  return commentTemplateId === Number(questionId)
+}
+
 export type SectionStatus = "empty" | "in-progress" | "complete"
 
 export function getWordCount(text: string): number {

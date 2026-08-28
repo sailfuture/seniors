@@ -48,6 +48,7 @@ export function GroupActivitySheet({
   responses,
   comments,
   events,
+  templateIdKey,
   loading = false,
 }: {
   open: boolean
@@ -62,10 +63,17 @@ export function GroupActivitySheet({
   comments: Comment[]
   /** The student's full event log; filtered to the group's fields here. */
   events: ResponseEvent[]
+  /** FK column name for the template id on events, e.g. "lifemap_template_id".
+   *  When set, events match by question id (field names can repeat/rename). */
+  templateIdKey?: string
   loading?: boolean
 }) {
   const fieldNames = useMemo(
     () => new Set(questions.map((q) => q.field_name)),
+    [questions]
+  )
+  const questionIds = useMemo(
+    () => new Set(questions.map((q) => q.id)),
     [questions]
   )
   const labelByField = useMemo(
@@ -73,8 +81,12 @@ export function GroupActivitySheet({
     [questions]
   )
   const groupEvents = useMemo(
-    () => events.filter((e) => fieldNames.has(e.field_name)),
-    [events, fieldNames]
+    () =>
+      events.filter((e) => {
+        const eventTemplateId = templateIdKey ? Number(e[templateIdKey] ?? 0) : 0
+        return eventTemplateId ? questionIds.has(eventTemplateId) : fieldNames.has(e.field_name)
+      }),
+    [events, fieldNames, questionIds, templateIdKey]
   )
 
   const statusByTemplate = new Map(responses.map((r) => [r.templateId, r]))

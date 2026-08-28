@@ -15,8 +15,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Comment01Icon, LicenseDraftIcon } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
-import { getWordCount } from "@/lib/form-types"
+import { commentMatchesQuestion, getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
+import { looksLikeLineItems } from "@/lib/line-items"
+import { LineItemsTable } from "@/components/line-items-table"
 import { FieldActivityStream, type ResolvedThreadEntry } from "./field-activity-stream"
 
 function parseTimestamp(ts: string | number | undefined): number {
@@ -47,6 +49,10 @@ interface ResponseStatus {
 
 interface CommentBadgeProps {
   fieldName: string
+  /** The question's template id — scopes comments when field names repeat. */
+  templateId?: number
+  /** FK column name for the template id, e.g. "lifemap_template_id". */
+  templateIdKey?: string
   fieldLabel: string
   fieldValue?: string
   /** Rich-text questions link to the full editor instead of dumping the essay. */
@@ -65,6 +71,8 @@ interface CommentBadgeProps {
 
 export function CommentBadge({
   fieldName,
+  templateId,
+  templateIdKey,
   fieldLabel,
   fieldValue,
   essayHref,
@@ -83,7 +91,12 @@ export function CommentBadge({
   const [replyError, setReplyError] = useState<string | null>(null)
 
   const fieldComments = comments
-    .filter((c) => c.field_name === fieldName && !c.isComplete)
+    .filter(
+      (c) =>
+        (templateIdKey
+          ? commentMatchesQuestion(c, fieldName, templateId, templateIdKey)
+          : c.field_name === fieldName) && !c.isComplete
+    )
     .sort((a, b) => parseTimestamp(b.created_at) - parseTimestamp(a.created_at))
 
   if (fieldComments.length === 0) return null
@@ -154,6 +167,8 @@ export function CommentBadge({
                     Open document
                   </Link>
                 </Button>
+              ) : displayAnswer && looksLikeLineItems(displayAnswer) ? (
+                <LineItemsTable raw={displayAnswer} />
               ) : displayAnswer ? (
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayAnswer}</p>
               ) : (

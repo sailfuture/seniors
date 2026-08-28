@@ -72,6 +72,7 @@ import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
 import type { SaveStatus, Comment } from "@/lib/form-types"
+import { commentMatchesQuestion } from "@/lib/form-types"
 import { isGroupDisplayType, DISPLAY_TYPE } from "@/components/group-display-types"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { postResponseEvent } from "@/lib/response-events"
@@ -539,7 +540,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     } catch { /* ignore */ }
   }, [dispatchCommentRead, cfg.commentsEndpoint])
 
-  const handleStudentReply = useCallback(async (fieldName: string, note: string): Promise<boolean> => {
+  const handleStudentReply = useCallback(async (fieldName: string, note: string, templateId?: number): Promise<boolean> => {
     if (!studentId) return false
     const studentName = session?.user?.name ?? "Student"
     const payload: Record<string, unknown> = {
@@ -547,6 +548,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
       teachers_id: null,
       field_name: fieldName,
       [F.sectionId]: sectionId,
+      // Field names can repeat across questions — record which question this
+      // reply belongs to so it only shows on that one.
+      ...(templateId ? { [F.templateId]: templateId } : {}),
       note,
       // Born unread so the teacher's comment badge picks it up; for student
       // replies isOld means "seen by the teacher". Student-facing unread
@@ -580,7 +584,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     } catch {
       return false
     }
-  }, [studentId, session, sectionId, cfg.commentsEndpoint, F.sectionId])
+  }, [studentId, session, sectionId, cfg.commentsEndpoint, F.sectionId, F.templateId])
 
   const handleImageUpload = async (templateId: number, file: File) => {
     try {
@@ -797,6 +801,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           key={q.id}
           comments={comments}
           threadComments={threadComments}
+          templateIdKey={F.templateId}
           onMarkRead={handleMarkRead}
           onReplyToComments={handleStudentReply}
           question={q}
@@ -1277,6 +1282,7 @@ function DynamicField({
   onImageUpload,
   comments,
   threadComments,
+  templateIdKey,
   onMarkRead,
   onReplyToComments,
   lastEdited,
@@ -1299,8 +1305,10 @@ function DynamicField({
   comments: Comment[]
   /** Inline-thread comments; resolved ones fold into the activity feed. */
   threadComments?: Comment[]
+  /** FK column name for the template id, e.g. "lifemap_template_id". */
+  templateIdKey?: string
   onMarkRead: (commentIds: number[]) => void
-  onReplyToComments?: (fieldName: string, note: string) => Promise<boolean>
+  onReplyToComments?: (fieldName: string, note: string, templateId?: number) => Promise<boolean>
   lastEdited?: string | number | null
   plagiarism?: GptZeroResult
   submittingForReview?: boolean
@@ -1318,7 +1326,12 @@ function DynamicField({
 
   const hasInstructions = question.detailed_instructions || question.resources?.length > 0 || question.examples?.length > 0 || question.sentence_starters?.length > 0 || question.min_words > 0
 
-  const fieldComments = comments.filter((c) => c.field_name === question.field_name && !c.isComplete)
+  const fieldComments = comments.filter(
+    (c) =>
+      (templateIdKey
+        ? commentMatchesQuestion(c, question.field_name, question.id, templateIdKey)
+        : c.field_name === question.field_name) && !c.isComplete
+  )
   const hasComments = fieldComments.length > 0
   const aiIsHighest = plagiarism ? (() => {
     const ai = toPercent(plagiarism.class_probability_ai ?? 0)
@@ -1376,11 +1389,17 @@ function DynamicField({
           {hasComments && (
             <CommentBadge
               fieldName={question.field_name}
+              templateId={question.id}
+              templateIdKey={templateIdKey}
               fieldLabel={question.field_label}
               fieldValue={(isRichTextType ? extractPlainText(value) : value) || "—"}
               essayHref={isRichTextType ? `${pathname}/write/${question.id}` : undefined}
               resolvedThreads={groupResolvedThreads(
-                (threadComments ?? []).filter((c) => c.field_name === question.field_name)
+                (threadComments ?? []).filter((c) =>
+                  templateIdKey
+                    ? commentMatchesQuestion(c, question.field_name, question.id, templateIdKey)
+                    : c.field_name === question.field_name
+                )
               )}
               minWords={question.min_words > 0 ? question.min_words : undefined}
               comments={comments}
@@ -1388,7 +1407,11 @@ function DynamicField({
               plagiarism={plagiarism}
               responseStatus={responseStatus}
               lastEdited={lastEdited}
-              onReply={onReplyToComments}
+              onReply={
+                onReplyToComments
+                  ? (fieldName, note) => onReplyToComments(fieldName, note, question.id)
+                  : undefined
+              }
             />
           )}
           {hasInstructions && (
