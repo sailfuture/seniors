@@ -22,7 +22,9 @@ export default function LoginPage() {
           Sign in to your senior projects.
         </h1>
         <p className="-mt-2 text-sm text-white/60">
-          Only SailFuture Academy students and staff with a school Google account.
+          Students and teachers continue with Google.
+          <br />
+          Thesis advisors sign in with email or phone.
         </p>
         <Suspense>
           <LoginForm />

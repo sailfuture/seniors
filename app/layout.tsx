@@ -48,6 +48,14 @@ export default function RootLayout({
               borderRadius: "0.5rem",
             },
           }}
+          localization={{
+            // Say who each sign-in method is for, right on the control:
+            // students & teachers use school Google; thesis advisors get
+            // email/phone from their welcome invite.
+            socialButtonsBlockButton: "Students & Teachers — Continue with {{provider|titleize}}",
+            formFieldLabel__emailAddress: "Thesis Advisors — Email address",
+            formFieldLabel__phoneNumber: "Thesis Advisors — Phone number",
+          }}
         >
           <QueryProvider>
             <TooltipProvider>{children}</TooltipProvider>
