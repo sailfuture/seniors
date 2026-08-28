@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ClerkProvider } from "@clerk/nextjs";
@@ -16,6 +17,17 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Self-hosted so the login headline never flashes a fallback face. Only the
+// Medium (500) cut is loaded — style it with font-medium, never font-bold, or
+// the browser synthesizes a faux bold from this file.
+const switzer = localFont({
+  src: "./fonts/Switzer-Medium.woff2",
+  weight: "500",
+  style: "normal",
+  variable: "--font-switzer",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -35,7 +47,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${switzer.variable} antialiased`}
       >
         <ClerkProvider
           signInUrl="/login"

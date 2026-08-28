@@ -15,11 +15,8 @@ export default function LoginPage() {
           alt="SailFuture Academy"
           className="size-16 rounded-full border-2 border-gray-300 shadow-lg"
         />
-        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/70">
+        <h1 className="text-balance font-[family-name:var(--font-switzer)] text-4xl font-medium tracking-tight text-white md:text-5xl">
           SailFuture Academy Senior Dashboard
-        </p>
-        <h1 className="text-balance text-4xl font-bold tracking-tight text-white md:text-5xl">
-          Sign in to your senior projects.
         </h1>
         <p className="-mt-2 text-sm text-white/60">
           Students and teachers continue with Google.
