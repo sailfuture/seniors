@@ -7,13 +7,13 @@ export default function LoginPage() {
       {/* Soft blue glow falling from the top, fading into the navy base. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,#2b4a8b_0%,#1b2c52_40%,transparent_75%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,#1d3160_0%,#16223f_40%,transparent_75%)]"
       />
       <div className="relative flex w-full max-w-md flex-col items-center gap-6 text-center">
         <img
           src="/images/sailfuture-square.webp"
           alt="SailFuture Academy"
-          className="size-12 rounded-xl shadow-lg ring-1 ring-white/10"
+          className="size-16 rounded-full border-4 border-white shadow-lg"
         />
         <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/70">
           SailFuture Academy Senior Dashboard
