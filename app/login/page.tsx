@@ -13,7 +13,7 @@ export default function LoginPage() {
         <img
           src="/images/sailfuture-square.webp"
           alt="SailFuture Academy"
-          className="size-16 rounded-full border-4 border-white shadow-lg"
+          className="size-16 rounded-full border-2 border-gray-300 shadow-lg"
         />
         <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/70">
           SailFuture Academy Senior Dashboard
