@@ -39,13 +39,14 @@ import {
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
 import { LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
-import { RichTextDisplay } from "@/components/form/rich-text-display"
+import { LazyRichTextDisplay } from "@/components/form/rich-text-display-lazy"
 import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { aspectRatioCss } from "@/lib/image-ratio"
 import { formatYearGroup } from "@/lib/year-group"
 import { fetchProjectLock } from "@/lib/project-lock"
 import { StatusBadge, statusOf, groupStatusOf } from "@/components/field-status"
-import { icons as lucideIcons } from "lucide-react"
+import { Printer } from "lucide-react"
+import { DynamicIcon, iconNames } from "lucide-react/dynamic"
 
 const BT_BASE =
   process.env.NEXT_PUBLIC_XANO_BT_API_BASE ??
@@ -211,15 +212,13 @@ function getInitials(name: string): string {
 
 function GroupIcon({ name }: { name: string }) {
   const brand = useBrandTheme()
-  const pascalName = name
-    .split(/[-_ ]+/)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join("") as keyof typeof lucideIcons
-  const Icon = lucideIcons[pascalName]
-  if (!Icon) return null
+  // Loaded by name on demand, so the page doesn't ship every Lucide icon.
+  const iconName = name.trim().toLowerCase().split(/[-_ ]+/).join("-") as (typeof iconNames)[number]
+  if (!iconNames.includes(iconName)) return null
   return (
     <div className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-gray-100 bg-white">
-      <Icon
+      <DynamicIcon
+        name={iconName}
         className="size-4 text-gray-600"
         strokeWidth={1.5}
         style={brand.hasBrand ? { color: brand.primaryInk } : undefined}
@@ -478,7 +477,7 @@ export default function PublicBusinessThesisPage({
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild tooltip="Print / PDF">
                       <a href={`/public/business-thesis/${studentId}/print`} target="_blank" rel="noopener noreferrer">
-                        <lucideIcons.Printer />
+                        <Printer />
                         <span>Print / PDF</span>
                       </a>
                     </SidebarMenuButton>
@@ -1239,7 +1238,7 @@ function ResponseDisplay({
   // The doc-shape fallback guarantees stored TipTap JSON never renders raw,
   // even if the question's type id changes out from under us
   if (typeId === RICH_TEXT_TYPE_ID || looksLikeRichTextDoc(text)) {
-    return <RichTextDisplay raw={text} className="text-foreground" />
+    return <LazyRichTextDisplay raw={text} className="text-foreground" />
   }
 
   if (!text) return <p className="text-muted-foreground text-sm italic">—</p>

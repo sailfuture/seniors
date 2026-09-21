@@ -69,6 +69,7 @@ import { useStudents } from "@/lib/queries"
 import { currentYearGroupValue } from "@/lib/students"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useBumpSidebar } from "@/lib/refresh-context"
+import { invalidateCachedFetch } from "@/lib/cached-fetch"
 
 interface TemplateQuestion {
   id?: number
@@ -202,6 +203,9 @@ export function TemplateManager({
   const F = cfg.fields
   const router = useRouter()
   const bumpSidebar = useBumpSidebar()
+  // Edits here change tables other screens read through the shared cache;
+  // drop it on the way out so they load the new template.
+  useEffect(() => () => invalidateCachedFetch(), [])
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([])
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])

@@ -1,9 +1,22 @@
 import { Suspense } from "react"
+import localFont from "next/font/local"
 import { LoginForm } from "@/components/login-form"
+
+// Self-hosted so the login headline never flashes a fallback face, and
+// declared here so only this page preloads it. Only the Medium (500) cut is
+// loaded — style it with font-medium, never font-bold, or the browser
+// synthesizes a faux bold from this file.
+const switzer = localFont({
+  src: "../fonts/Switzer-Medium.woff2",
+  weight: "500",
+  style: "normal",
+  variable: "--font-switzer",
+  display: "swap",
+})
 
 export default function LoginPage() {
   return (
-    <div className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-[#111a2e] p-6 md:p-10">
+    <div className={`${switzer.variable} relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-[#111a2e] p-6 md:p-10`}>
       {/* Soft blue glow falling from the top, fading into the navy base. */}
       <div
         aria-hidden

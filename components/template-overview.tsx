@@ -57,6 +57,7 @@ import {
 import { uploadImageToXano, type XanoImageResponse } from "@/lib/xano"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useBumpSidebar } from "@/lib/refresh-context"
+import { invalidateCachedFetch } from "@/lib/cached-fetch"
 
 interface TemplateQuestion {
   id: number
@@ -115,6 +116,9 @@ export function TemplateOverview({
   const F = cfg.fields
   const router = useRouter()
   const bumpSidebar = useBumpSidebar()
+  // Edits here change tables other screens read through the shared cache;
+  // drop it on the way out so they load the new template.
+  useEffect(() => () => invalidateCachedFetch(), [])
   const [summaries, setSummaries] = useState<SectionSummary[]>([])
   const [allQuestions, setAllQuestions] = useState<TemplateQuestion[]>([])
   const [allGroups, setAllGroups] = useState<CustomGroup[]>([])

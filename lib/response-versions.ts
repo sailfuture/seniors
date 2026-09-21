@@ -55,7 +55,7 @@ export function postResponseVersion(
   }).catch(() => {})
 }
 
-/** One student's version snapshots (Xano ignores the query param — re-filter). */
+/** One student's version snapshots (Xano filters on students_id; re-filtered as a guard). */
 export async function fetchResponseVersions(cfg: FormApiConfig, studentId: string): Promise<ResponseVersion[]> {
   if (!cfg.responseVersionsEndpoint || !studentId) return []
   try {

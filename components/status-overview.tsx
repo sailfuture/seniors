@@ -20,6 +20,7 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { isStaffRole } from "@/lib/roles"
 import { AdminReviewQueue } from "@/components/admin-review-queue"
 import { StudentReviewStatus } from "@/components/student-review-status"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 interface TemplateQuestion {
   id: number
@@ -160,16 +161,16 @@ export function ProductStatusCard({
     const load = async () => {
       try {
         const [sectionsRes, templateRes, responsesRes, commentsRes] = await Promise.all([
-          fetch(cfg.sectionsEndpoint),
-          fetch(cfg.templateEndpoint),
+          cachedFetch(cfg.sectionsEndpoint),
+          cachedFetch(cfg.templateEndpoint),
           fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
           fetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
         ])
         const sections: SectionInfo[] = sectionsRes.ok ? await sectionsRes.json() : []
         const template: TemplateQuestion[] = templateRes.ok ? await templateRes.json() : []
-        // Xano ignores the students_id query param on the comments endpoints
-        // and returns every student's records (verified live: 13 students came
-        // back for one id) — enforce the scope here, like every other consumer.
+        // The endpoints scope to students_id (comments only since Sept 2026 —
+        // they used to return every student's records), so enforce the scope
+        // here too, like every other consumer.
         const responses: StudentResponse[] = (responsesRes.ok ? await responsesRes.json() : []).filter(
           (r: StudentResponse) => String(r.students_id ?? "") === String(studentId)
         )

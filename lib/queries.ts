@@ -25,8 +25,8 @@ export const queryKeys = {
   advisorAssignments: ["advisor-assignments"] as const,
 }
 
-export function useStudents() {
-  return useQuery({ queryKey: queryKeys.students, queryFn: fetchActiveStudents })
+export function useStudents({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: queryKeys.students, queryFn: fetchActiveStudents, enabled })
 }
 
 export function useAdvisors() {

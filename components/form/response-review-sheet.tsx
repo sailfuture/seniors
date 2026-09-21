@@ -20,7 +20,7 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { FieldActivityStream } from "./field-activity-stream"
 import { CommentComposer } from "./comment-composer"
 import { ZoomableImage } from "@/components/zoomable-image"
-import { RichTextDisplay } from "./rich-text-display"
+import { LazyRichTextDisplay } from "./rich-text-display-lazy"
 import { LineItemsTable } from "@/components/line-items-table"
 import { isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { isLineItemsQuestion, looksLikeLineItems } from "@/lib/line-items"
@@ -278,7 +278,7 @@ export function ResponseReviewSheet({
                     Open Full Essay
                   </Link>
                 </Button>
-                <RichTextDisplay raw={value} showComments />
+                <LazyRichTextDisplay raw={value} showComments />
               </div>
             ) : (
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{value || "—"}</p>

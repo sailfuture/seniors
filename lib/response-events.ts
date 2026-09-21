@@ -71,7 +71,7 @@ export function postResponseEvent(
   }).catch(() => {})
 }
 
-/** All of one student's events (Xano ignores the query param — re-filter). */
+/** All of one student's events (Xano filters on students_id; re-filtered as a guard). */
 export async function fetchResponseEvents(cfg: FormApiConfig, studentId: string): Promise<ResponseEvent[]> {
   if (!cfg.responseEventsEndpoint || !studentId) return []
   try {

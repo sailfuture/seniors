@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useCallback, useContext, useState } from "react"
+import { invalidateCachedFetch } from "@/lib/cached-fetch"
 
 interface RefreshContextValue {
   refreshFn: (() => Promise<void>) | null
@@ -29,6 +30,8 @@ export function RefreshProvider({ children }: { children: React.ReactNode }) {
 
   const triggerRefresh = useCallback(async () => {
     setRefreshing(true)
+    // An explicit refresh should never be answered from the table cache.
+    invalidateCachedFetch()
     setRefreshKey((k) => k + 1)
     try {
       if (refreshFn) await refreshFn()

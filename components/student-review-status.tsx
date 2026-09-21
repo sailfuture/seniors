@@ -21,7 +21,7 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import { FieldActivityStream, groupResolvedThreads, type ResolvedThreadEntry } from "@/components/form/field-activity-stream"
-import { RichTextDisplay } from "@/components/form/rich-text-display"
+import { LazyRichTextDisplay } from "@/components/form/rich-text-display-lazy"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
@@ -29,6 +29,7 @@ import { checkSubmissionForAi, AI_BLOCK_THRESHOLD } from "@/lib/ai-submission-ch
 import { isLineItemsQuestion, looksLikeLineItems } from "@/lib/line-items"
 import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 const QUESTION_TYPE = {
   LONG_RESPONSE: 1,
@@ -134,7 +135,7 @@ function ResponseView({ q, r }: { q: TemplateQuestion; r: StudentResponse | unde
     )
   }
   if (isLineItemsQuestion(q) || looksLikeLineItems(value)) return <LineItemsTable raw={value} />
-  if (isRichTextQuestion(q) || looksLikeRichTextDoc(value)) return <RichTextDisplay raw={value} />
+  if (isRichTextQuestion(q) || looksLikeRichTextDoc(value)) return <LazyRichTextDisplay raw={value} />
   return <p className="whitespace-pre-wrap text-sm leading-relaxed">{value || "—"}</p>
 }
 
@@ -189,7 +190,7 @@ export function StudentReviewStatus({
   const { data: session } = useSession()
   // While the teacher has the project locked, this page is view-only:
   // no draft edits or resubmits (replies to comments stay open).
-  const projectLock = useProjectLock(cfg.locksEndpoint, studentId ?? undefined)
+  const projectLock = useProjectLock(cfg.lockStatusEndpoint, studentId ?? undefined)
 
   const [loading, setLoading] = useState(true)
   const [sections, setSections] = useState<SectionInfo[]>([])
@@ -217,14 +218,14 @@ export function StudentReviewStatus({
     const load = async () => {
       try {
         const [sectionsRes, templateRes, responsesRes, commentsRes] = await Promise.all([
-          fetch(cfg.sectionsEndpoint),
-          fetch(cfg.templateEndpoint),
+          cachedFetch(cfg.sectionsEndpoint),
+          cachedFetch(cfg.templateEndpoint),
           fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
           fetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
         ])
         const sectionsData: SectionInfo[] = sectionsRes.ok ? await sectionsRes.json() : []
         const template: TemplateQuestion[] = templateRes.ok ? await templateRes.json() : []
-        // Xano ignores students_id on these endpoints — re-filter client-side.
+        // Both endpoints scope to students_id; re-filter anyway as a guard.
         const responsesData: StudentResponse[] = (responsesRes.ok ? await responsesRes.json() : []).filter(
           (r: StudentResponse) => String(r.students_id ?? "") === String(studentId)
         )

@@ -7,9 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MapsIcon, BookOpen02Icon } from "@hugeicons/core-free-icons"
 import { LIFEMAP_API_CONFIG, BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
-import { AdminReviewQueue } from "@/components/admin-review-queue"
-import { titleToSlug } from "@/lib/lifemap-sections"
-import { btTitleToSlug } from "@/lib/businessthesis-sections"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 export function TeacherDashboard() {
   const [lmSections, setLmSections] = useState(0)
@@ -20,10 +18,10 @@ export function TeacherDashboard() {
 
   useEffect(() => {
     Promise.all([
-      fetch(LIFEMAP_API_CONFIG.sectionsEndpoint).then((r) => r.ok ? r.json() : []),
-      fetch(LIFEMAP_API_CONFIG.templateEndpoint).then((r) => r.ok ? r.json() : []),
-      fetch(BUSINESSTHESIS_API_CONFIG.sectionsEndpoint).then((r) => r.ok ? r.json() : []),
-      fetch(BUSINESSTHESIS_API_CONFIG.templateEndpoint).then((r) => r.ok ? r.json() : []),
+      cachedFetch(LIFEMAP_API_CONFIG.sectionsEndpoint).then((r) => r.ok ? r.json() : []),
+      cachedFetch(LIFEMAP_API_CONFIG.templateEndpoint).then((r) => r.ok ? r.json() : []),
+      cachedFetch(BUSINESSTHESIS_API_CONFIG.sectionsEndpoint).then((r) => r.ok ? r.json() : []),
+      cachedFetch(BUSINESSTHESIS_API_CONFIG.templateEndpoint).then((r) => r.ok ? r.json() : []),
     ]).then(([lmSec, lmTpl, btSec, btTpl]) => {
       setLmSections(lmSec.length)
       setLmQuestions((lmTpl as { isArchived?: boolean }[]).filter((q) => !q.isArchived).length)
@@ -81,21 +79,6 @@ export function TeacherDashboard() {
             </CardContent>
           </Card>
         </Link>
-      </div>
-
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <AdminReviewQueue
-          title="Life Map — Review Queue"
-          apiConfig={LIFEMAP_API_CONFIG}
-          slugify={titleToSlug}
-          viewAllHref="/life-map/status"
-        />
-        <AdminReviewQueue
-          title="Business Thesis — Review Queue"
-          apiConfig={BUSINESSTHESIS_API_CONFIG}
-          slugify={btTitleToSlug}
-          viewAllHref="/business-thesis/status"
-        />
       </div>
     </div>
   )

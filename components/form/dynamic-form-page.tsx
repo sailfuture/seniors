@@ -58,6 +58,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
+import { QuestionInstructions } from "./question-instructions"
 import { groupResolvedThreads } from "./field-activity-stream"
 import { BlurredFitImage } from "./blurred-fit-image"
 import { ImageCropDialog } from "./image-crop-dialog"
@@ -79,6 +80,7 @@ import { postResponseEvent } from "@/lib/response-events"
 import { postResponseVersion } from "@/lib/response-versions"
 import { checkSubmissionForAi, AI_BLOCK_THRESHOLD, AI_CHECK_MIN_WORDS } from "@/lib/ai-submission-check"
 import { Linkify } from "@/components/linkify"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -202,7 +204,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
 
   // A locked project is view-only: every control below is disabled and no
   // save ever fires until a teacher unlocks it.
-  const projectLock = useProjectLock(cfg.locksEndpoint, studentId)
+  const projectLock = useProjectLock(cfg.lockStatusEndpoint, studentId)
   const projectLockRef = useRef(false)
   useEffect(() => {
     projectLockRef.current = !!projectLock
@@ -214,11 +216,11 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
 
     try {
       const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
-        fetch(cfg.templateEndpoint),
+        cachedFetch(cfg.templateEndpoint),
         fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
-        fetch(cfg.customGroupEndpoint),
+        cachedFetch(cfg.customGroupEndpoint),
         fetch(`${cfg.commentsEndpoint}?students_id=${studentId}&${F.sectionId}=${sectionId}`),
-        fetch(cfg.questionTypesEndpoint),
+        cachedFetch(cfg.questionTypesEndpoint),
       ])
 
       const noInputTypeIds = new Set<number>()
@@ -1321,10 +1323,7 @@ function DynamicField({
   onEditSubmission?: () => void
 }) {
   const typeId = question.question_types_id
-  const [detailedOpen, setDetailedOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<"send" | "reopen" | "edit" | null>(null)
-
-  const hasInstructions = question.detailed_instructions || question.resources?.length > 0 || question.examples?.length > 0 || question.sentence_starters?.length > 0 || question.min_words > 0
 
   const fieldComments = comments.filter(
     (c) =>
@@ -1414,83 +1413,7 @@ function DynamicField({
               }
             />
           )}
-          {hasInstructions && (
-            <>
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setDetailedOpen(true)}
-              >
-                <HugeiconsIcon icon={HelpCircleIcon} strokeWidth={1.5} className="size-4" />
-              </button>
-              <Sheet open={detailedOpen} onOpenChange={setDetailedOpen}>
-                <SheetContent className="flex flex-col gap-0 p-0">
-                  <SheetHeader className="shrink-0 border-b px-6 py-4">
-                    <SheetTitle className="text-base">Question Instructions</SheetTitle>
-                  </SheetHeader>
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-                  {question.detailed_instructions && (
-                    <div className="space-y-2">
-                      <Label className="text-muted-foreground text-xs uppercase tracking-wide">Instructions</Label>
-                      <div className="text-sm whitespace-pre-wrap">{question.detailed_instructions}</div>
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Question</Label>
-                    <p className="text-sm font-medium">{question.field_label}</p>
-                  </div>
-                  {question.sentence_starters?.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-muted-foreground text-xs uppercase tracking-wide">Sentence Starters</Label>
-                      <div className="space-y-1.5">
-                        {question.sentence_starters.map((s, i) => (
-                          <p key={i} className="text-muted-foreground text-sm italic">&ldquo;{s}&rdquo;</p>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {question.min_words > 0 && (
-                    <div className="space-y-1">
-                      <Label className="text-muted-foreground text-xs uppercase tracking-wide">Word Count</Label>
-                      <p className="text-sm">Minimum {question.min_words} words required</p>
-                    </div>
-                  )}
-                  {question.examples?.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-muted-foreground text-xs uppercase tracking-wide">Examples</Label>
-                      <div className="space-y-2">
-                        {question.examples.map((ex, i) => (
-                          <div key={i} className="rounded-md border border-dashed bg-muted/30 px-3 py-2.5">
-                            <p className="text-sm">{ex}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {question.resources?.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-muted-foreground text-xs uppercase tracking-wide">Resources</Label>
-                      <div className="space-y-2">
-                        {question.resources.map((url, i) => (
-                          <a
-                            key={i}
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors hover:bg-muted/50"
-                          >
-                            <HugeiconsIcon icon={Link01Icon} strokeWidth={1.5} className="text-muted-foreground size-4 shrink-0" />
-                            <span className="truncate text-sm text-blue-600 dark:text-blue-400">{url}</span>
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </SheetContent>
-            </Sheet>
-          </>
-        )}
+          <QuestionInstructions question={question} />
           {isRichTextType && (
             <Button
               variant="outline"

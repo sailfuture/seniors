@@ -39,6 +39,7 @@ import { isStaffRole } from "@/lib/roles"
 import { useStudents } from "@/lib/queries"
 import { classYearOf, currentClassYear } from "@/lib/students"
 import type { Comment } from "@/lib/form-types"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -70,7 +71,7 @@ interface StudentInfo {
 function useStudentInfo(studentId: string | null): StudentInfo | null {
   // Derived from the shared students cache — the old version fetched the
   // whole table again into a module-level Map.
-  const { data } = useStudents()
+  const { data } = useStudents({ enabled: !!studentId })
   return useMemo(() => {
     if (!studentId) return null
     const s = (data ?? []).find((x) => String(x.id) === String(studentId))
@@ -89,12 +90,13 @@ interface StudentListItem {
   name: string
 }
 
-function useStudentList(): StudentListItem[] {
+function useStudentList(enabled: boolean): StudentListItem[] {
   // Shared students cache (also read by the rosters and advisor surfaces).
   // The staff sidebar lists the current graduating class — the old hardcoded
   // "Batch Year 2026" filter matched nothing once the data said "Batch of
-  // 2026", and would have been a graduated class by now anyway.
-  const { data } = useStudents()
+  // 2026", and would have been a graduated class by now anyway. Only staff
+  // see the list, so students never download the roster for it.
+  const { data } = useStudents({ enabled })
   return useMemo(() => {
     const current = currentClassYear()
     return (data ?? [])
@@ -138,7 +140,7 @@ const QUESTION_TYPES_ENDPOINT = `${XANO_BASE}/question_types`
 async function fetchNoInputTypeIds(): Promise<Set<number>> {
   const noInput = new Set<number>()
   try {
-    const res = await fetch(QUESTION_TYPES_ENDPOINT)
+    const res = await cachedFetch(QUESTION_TYPES_ENDPOINT)
     if (res.ok) {
       const types = (await res.json()) as { id: number; noInput?: boolean }[]
       for (const t of types) if (t.noInput) noInput.add(t.id)
@@ -159,7 +161,7 @@ function useSectionReviewCounts(studentId: string | null, refreshKey: number): {
       try {
         const [responsesRes, templateRes, noInput] = await Promise.all([
           fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
-          fetch(TEMPLATE_ENDPOINT),
+          cachedFetch(TEMPLATE_ENDPOINT),
           fetchNoInputTypeIds(),
         ])
 
@@ -248,7 +250,7 @@ function useBtSectionReviewCounts(studentId: string | null, refreshKey: number):
       try {
         const [responsesRes, templateRes, noInput] = await Promise.all([
           fetch(`${BT_RESPONSES_ENDPOINT}?students_id=${studentId}`),
-          fetch(BT_TEMPLATE_ENDPOINT),
+          cachedFetch(BT_TEMPLATE_ENDPOINT),
           fetchNoInputTypeIds(),
         ])
 
@@ -336,7 +338,7 @@ function useBtSectionCommentCounts(studentId: string | null, refreshKey: number)
       try {
         const [commentsRes, templateRes] = await Promise.all([
           fetch(`${BT_COMMENTS_ENDPOINT}?students_id=${studentId}`),
-          fetch(BT_TEMPLATE_ENDPOINT),
+          cachedFetch(BT_TEMPLATE_ENDPOINT),
         ])
         if (!commentsRes.ok || cancelled) return
         const data: Comment[] = await commentsRes.json()
@@ -398,7 +400,7 @@ function useSectionCommentCounts(studentId: string | null, refreshKey: number): 
       try {
         const [commentsRes, templateRes] = await Promise.all([
           fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`),
-          fetch(`${XANO_BASE}/lifeplan_template`),
+          cachedFetch(`${XANO_BASE}/lifeplan_template`),
         ])
         if (!commentsRes.ok || cancelled) return
         const data: Comment[] = await commentsRes.json()
@@ -763,7 +765,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { counts: btReviewCounts, loading: btReviewLoading } = useBtSectionReviewCounts(studentId, refreshKey)
   const { counts: btCommentCounts, loading: btCommentLoading } = useBtSectionCommentCounts(!isStaff ? studentId : null, refreshKey)
   const sidebarLoading = sectionsLoading || btSectionsLoading || reviewLoading || commentLoading || btReviewLoading || btCommentLoading
-  const studentList = useStudentList()
+  const studentList = useStudentList(isStaff)
   const navItems = getNavFromPathname(pathname, isStaff, role === "admin", sections, btSections, {
     commentCounts: commentCounts,
     revisionCounts: reviewCounts.revisionNeeded,

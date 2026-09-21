@@ -12,6 +12,7 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { isLineItemsQuestion } from "@/lib/line-items"
 import { ResponseReviewSheet, type ReviewTarget } from "@/components/form/response-review-sheet"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -174,10 +175,15 @@ export function AdminReviewQueue({
     const load = async () => {
       try {
         const [studentsRes, sectionsRes, templateRes, responsesRes] = await Promise.all([
-          fetch(STUDENTS_ENDPOINT),
-          fetch(cfg.sectionsEndpoint),
-          fetch(cfg.templateEndpoint),
-          fetch(cfg.allResponsesEndpoint),
+          cachedFetch(STUDENTS_ENDPOINT),
+          cachedFetch(cfg.sectionsEndpoint),
+          cachedFetch(cfg.templateEndpoint),
+          // Only rows awaiting review or revision — not every response ever written.
+          fetch(
+            onlyStudentId
+              ? `${cfg.reviewQueueEndpoint}?students_id=${onlyStudentId}`
+              : cfg.reviewQueueEndpoint
+          ),
         ])
         const students: Student[] = studentsRes.ok ? await studentsRes.json() : []
         const sections: SectionInfo[] = sectionsRes.ok ? await sectionsRes.json() : []

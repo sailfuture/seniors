@@ -1,3 +1,5 @@
+import { cachedFetch, invalidateCachedFetch } from "@/lib/cached-fetch"
+
 const BUSINESSTHESIS_BASE =
   process.env.NEXT_PUBLIC_XANO_BT_API_BASE ??
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:45yS7ICi"
@@ -33,27 +35,22 @@ export function btSlugToTitle(slug: string): string {
     .join(" ")
 }
 
-let btSectionsCache: BusinessThesisSection[] | null = null
-let btCacheTimestamp = 0
-const BT_CACHE_TTL = 30_000
+// Last good result, served if a refetch fails.
+let lastBtSections: BusinessThesisSection[] | null = null
 
 export function invalidateBtSectionsCache() {
-  btSectionsCache = null
-  btCacheTimestamp = 0
+  invalidateCachedFetch(BT_SECTIONS_ENDPOINT)
 }
 
 export async function fetchBtSections(): Promise<BusinessThesisSection[]> {
-  if (btSectionsCache && Date.now() - btCacheTimestamp < BT_CACHE_TTL) {
-    return btSectionsCache
-  }
-
-  const res = await fetch(BT_SECTIONS_ENDPOINT)
-  if (!res.ok) return btSectionsCache ?? []
+  // Shared with every other reader of the sections table, including requests
+  // already in flight.
+  const res = await cachedFetch(BT_SECTIONS_ENDPOINT)
+  if (!res.ok) return lastBtSections ?? []
 
   const data: BusinessThesisSection[] = await res.json()
-  btSectionsCache = data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-  btCacheTimestamp = Date.now()
-  return btSectionsCache
+  lastBtSections = data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  return lastBtSections
 }
 
 export function findBtSectionBySlug(

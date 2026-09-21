@@ -80,8 +80,9 @@ export function useInlineComments({
         const res = await fetch(`${commentsEndpoint}?students_id=${studentId}`)
         const data: Comment[] = res.ok ? await res.json() : []
         if (cancelled) return
-        // Xano ignores students_id — re-filter. Keep only this field's inline
-        // threads (thread_id present, matching field_name).
+        // Xano scopes to students_id; the re-filter just guards that. Keep
+        // only this field's inline threads (thread_id present, matching
+        // field_name).
         setComments(
           data.filter(
             (c) =>

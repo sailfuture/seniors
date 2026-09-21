@@ -25,7 +25,10 @@ export interface ProjectLock {
   created_at?: number | string | null
 }
 
-function lockTime(l: ProjectLock): number {
+/** A lock row without its snapshot — all a badge or view-only check needs. */
+export type ProjectLockStatus = Omit<ProjectLock, "snapshot">
+
+function lockTime(l: ProjectLockStatus): number {
   const t = l.locked_time ?? l.created_at
   if (typeof t === "number") return t
   const p = Date.parse(String(t ?? ""))
@@ -49,11 +52,12 @@ export async function fetchProjectLock(
   studentId: string
 ): Promise<ProjectLock | null> {
   try {
-    const res = await fetch(locksEndpoint)
+    // Snapshots are large (hundreds of KB each), so only ask for this
+    // student's rows; the filter below still guards the result.
+    const res = await fetch(`${locksEndpoint}?students_id=${studentId}`)
     if (!res.ok) return null
     const rows = (await res.json()) as ProjectLock[]
     if (!Array.isArray(rows)) return null
-    // Xano ignores query filters on these endpoints — filter client-side.
     const mine = rows.filter(
       (l) => String(l.students_id ?? "") === String(studentId) && isValidSnapshot(l.snapshot)
     )
@@ -64,16 +68,18 @@ export async function fetchProjectLock(
   }
 }
 
-/** All locks, keyed by student — for the roster's badges. */
-export async function fetchAllProjectLocks(locksEndpoint: string): Promise<Map<string, ProjectLock>> {
-  const map = new Map<string, ProjectLock>()
+/** All locks, keyed by student — for the roster's badges. Reads the
+    snapshot-free status endpoint, which only lists rows that have one. */
+export async function fetchAllProjectLocks(
+  lockStatusEndpoint: string
+): Promise<Map<string, ProjectLockStatus>> {
+  const map = new Map<string, ProjectLockStatus>()
   try {
-    const res = await fetch(locksEndpoint)
+    const res = await fetch(lockStatusEndpoint)
     if (!res.ok) return map
-    const rows = (await res.json()) as ProjectLock[]
+    const rows = (await res.json()) as ProjectLockStatus[]
     if (!Array.isArray(rows)) return map
     for (const l of rows) {
-      if (!isValidSnapshot(l.snapshot)) continue
       const sid = String(l.students_id ?? "")
       const prev = map.get(sid)
       if (!prev || lockTime(l) > lockTime(prev) || (lockTime(l) === lockTime(prev) && l.id > prev.id)) {
@@ -139,23 +145,42 @@ export async function unlockProject(locksEndpoint: string, lockId: number): Prom
   return res.ok
 }
 
+/** The student's newest lock row, without its snapshot. */
+async function fetchProjectLockStatus(
+  lockStatusEndpoint: string,
+  studentId: string
+): Promise<ProjectLockStatus | null> {
+  try {
+    const res = await fetch(`${lockStatusEndpoint}?students_id=${studentId}`)
+    if (!res.ok) return null
+    const rows = (await res.json()) as ProjectLockStatus[]
+    if (!Array.isArray(rows)) return null
+    const mine = rows.filter((l) => String(l.students_id ?? "") === String(studentId))
+    if (mine.length === 0) return null
+    return mine.sort((a, b) => lockTime(b) - lockTime(a) || b.id - a.id)[0]
+  } catch {
+    return null
+  }
+}
+
 /** The student's active lock, for client surfaces that must go view-only
     while the project is frozen. Null while loading or when unlocked. */
 export function useProjectLock(
-  locksEndpoint: string | undefined,
+  lockStatusEndpoint: string | undefined,
   studentId: string | null | undefined
-): ProjectLock | null {
-  const [lock, setLock] = useState<ProjectLock | null>(null)
+): ProjectLockStatus | null {
+  const [lock, setLock] = useState<ProjectLockStatus | null>(null)
   useEffect(() => {
     let cancelled = false
     const run = async () => {
-      const l = locksEndpoint && studentId ? await fetchProjectLock(locksEndpoint, studentId) : null
+      const l =
+        lockStatusEndpoint && studentId ? await fetchProjectLockStatus(lockStatusEndpoint, studentId) : null
       if (!cancelled) setLock(l)
     }
     run()
     return () => {
       cancelled = true
     }
-  }, [locksEndpoint, studentId])
+  }, [lockStatusEndpoint, studentId])
   return lock
 }

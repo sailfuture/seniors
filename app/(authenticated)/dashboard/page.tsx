@@ -15,6 +15,7 @@ import { fetchSections, titleToSlug } from "@/lib/lifemap-sections"
 import { btTitleToSlug } from "@/lib/businessthesis-sections"
 import { LIFEMAP_API_CONFIG, BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 import { useProjectLock } from "@/lib/project-lock"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 function StudentDashboard() {
   const { data: session, status: sessionStatus } = useSession()
@@ -32,8 +33,8 @@ function StudentDashboard() {
   // sections · 0 questions" during the (concurrency-throttled) fetches.
   const [countsLoading, setCountsLoading] = useState(true)
 
-  const lmLock = useProjectLock(LIFEMAP_API_CONFIG.locksEndpoint, studentId ?? undefined)
-  const btLock = useProjectLock(BUSINESSTHESIS_API_CONFIG.locksEndpoint, studentId ?? undefined)
+  const lmLock = useProjectLock(LIFEMAP_API_CONFIG.lockStatusEndpoint, studentId ?? undefined)
+  const btLock = useProjectLock(BUSINESSTHESIS_API_CONFIG.lockStatusEndpoint, studentId ?? undefined)
 
   useEffect(() => {
     fetchSections().then((sections) => {
@@ -43,9 +44,9 @@ function StudentDashboard() {
       }
     })
     Promise.all([
-      fetch(LIFEMAP_API_CONFIG.templateEndpoint).then((r) => r.ok ? r.json() : []),
-      fetch(BUSINESSTHESIS_API_CONFIG.sectionsEndpoint).then((r) => r.ok ? r.json() : []),
-      fetch(BUSINESSTHESIS_API_CONFIG.templateEndpoint).then((r) => r.ok ? r.json() : []),
+      cachedFetch(LIFEMAP_API_CONFIG.templateEndpoint).then((r) => r.ok ? r.json() : []),
+      cachedFetch(BUSINESSTHESIS_API_CONFIG.sectionsEndpoint).then((r) => r.ok ? r.json() : []),
+      cachedFetch(BUSINESSTHESIS_API_CONFIG.templateEndpoint).then((r) => r.ok ? r.json() : []),
     ]).then(([lmTpl, btSec, btTpl]) => {
       setLmQuestions((lmTpl as { isArchived?: boolean }[]).filter((q) => !q.isArchived).length)
       setBtSections((btSec as unknown[]).length)

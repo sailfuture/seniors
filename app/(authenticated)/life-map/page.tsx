@@ -48,6 +48,7 @@ import { LIFEMAP_API_CONFIG } from "@/lib/form-api-config"
 import { Linkify } from "@/components/linkify"
 import { GroupActivitySheet } from "@/components/form/group-activity-sheet"
 import { fetchResponseEvents, type ResponseEvent } from "@/lib/response-events"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -120,7 +121,7 @@ export default function StudentLifeMapOverviewPage() {
   const router = useRouter()
   const { data: session } = useSession()
   const studentId = (session?.user as Record<string, unknown>)?.students_id as string | undefined
-  const projectLock = useProjectLock(LIFEMAP_API_CONFIG.locksEndpoint, studentId)
+  const projectLock = useProjectLock(LIFEMAP_API_CONFIG.lockStatusEndpoint, studentId)
 
   const [rows, setRows] = useState<SectionRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -170,10 +171,10 @@ export default function StudentLifeMapOverviewPage() {
     if (!studentId) return
     try {
       const [sectionsRes, groupsRes, qTypesRes, templateRes, responsesRes] = await Promise.all([
-        fetch(SECTIONS_ENDPOINT),
-        fetch(CUSTOM_GROUP_ENDPOINT),
-        fetch(QUESTION_TYPES_ENDPOINT),
-        fetch(TEMPLATE_ENDPOINT),
+        cachedFetch(SECTIONS_ENDPOINT),
+        cachedFetch(CUSTOM_GROUP_ENDPOINT),
+        cachedFetch(QUESTION_TYPES_ENDPOINT),
+        cachedFetch(TEMPLATE_ENDPOINT),
         fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
       ])
 
@@ -230,7 +231,7 @@ export default function StudentLifeMapOverviewPage() {
 
     try {
       const [templateRes, responsesRes] = await Promise.all([
-        fetch(TEMPLATE_ENDPOINT),
+        cachedFetch(TEMPLATE_ENDPOINT),
         fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
       ])
 

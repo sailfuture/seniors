@@ -1,3 +1,5 @@
+import { cachedFetch, invalidateCachedFetch } from "@/lib/cached-fetch"
+
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn"
@@ -47,31 +49,26 @@ export function slugToTitle(slug: string): string {
     .join(" ")
 }
 
-let sectionsCache: LifeMapSection[] | null = null
-let cacheTimestamp = 0
-const CACHE_TTL = 30_000
+// Last good result, served if a refetch fails.
+let lastSections: LifeMapSection[] | null = null
 
 export function invalidateSectionsCache() {
-  sectionsCache = null
-  cacheTimestamp = 0
+  invalidateCachedFetch(SECTIONS_ENDPOINT)
 }
 
 export async function fetchSections(): Promise<LifeMapSection[]> {
-  if (sectionsCache && Date.now() - cacheTimestamp < CACHE_TTL) {
-    return sectionsCache
-  }
-
-  const res = await fetch(SECTIONS_ENDPOINT)
-  if (!res.ok) return sectionsCache ?? []
+  // Shared with every other reader of the sections table, including requests
+  // already in flight.
+  const res = await cachedFetch(SECTIONS_ENDPOINT)
+  if (!res.ok) return lastSections ?? []
 
   const raw: LifeMapSection[] = await res.json()
   const data = raw.map((s) => ({
     ...s,
     section_description: s.section_description || s.description || "",
   }))
-  sectionsCache = data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-  cacheTimestamp = Date.now()
-  return sectionsCache
+  lastSections = data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  return lastSections
 }
 
 export function findSectionBySlug(

@@ -31,6 +31,7 @@ import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import type { SaveStatus } from "@/lib/form-types"
 import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 interface TemplateQuestion {
   id: number
@@ -81,7 +82,7 @@ export function EssayEditorPage({
   const { register: registerSave, unregister: unregisterSave } = useSaveRegister()
   const { register: registerRefresh, unregister: unregisterRefresh } = useRefreshRegister()
   // A locked project makes the essay view-only regardless of its own state.
-  const projectLock = useProjectLock(cfg.locksEndpoint, studentId)
+  const projectLock = useProjectLock(cfg.lockStatusEndpoint, studentId)
   const projectLockRef = useRef(false)
   useEffect(() => {
     projectLockRef.current = !!projectLock
@@ -299,7 +300,7 @@ export function EssayEditorPage({
     const epochAtFetch = saveEpochRef.current
     try {
       const [templateRes, responsesRes] = await Promise.all([
-        fetch(cfg.templateEndpoint),
+        cachedFetch(cfg.templateEndpoint),
         fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
       ])
 

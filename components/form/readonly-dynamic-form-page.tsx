@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { TeacherComment } from "./teacher-comment"
+import { QuestionInstructions } from "./question-instructions"
 import { groupResolvedThreads } from "./field-activity-stream"
 import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
@@ -51,6 +52,7 @@ import { ZoomableImage } from "@/components/zoomable-image"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { eventTypeForAction, postResponseEvent } from "@/lib/response-events"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -311,11 +313,11 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
       if (showLoading) setLoading(true)
       try {
         const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
-          fetch(cfg.templateEndpoint),
+          cachedFetch(cfg.templateEndpoint),
           fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
-          fetch(cfg.customGroupEndpoint),
+          cachedFetch(cfg.customGroupEndpoint),
           fetch(`${cfg.commentsEndpoint}?students_id=${studentId}&${F.sectionId}=${sectionId}`),
-          fetch(cfg.questionTypesEndpoint),
+          cachedFetch(cfg.questionTypesEndpoint),
         ])
 
         const noInputTypeIds = new Set<number>()
@@ -875,6 +877,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 {relativeTime && !showAiFooter && (
                   <span className="text-muted-foreground/60 text-[11px]">{relativeTime}</span>
                 )}
+                <QuestionInstructions question={q} />
                 <TeacherComment
                   fieldName={q.field_name}
                   templateId={q.id}

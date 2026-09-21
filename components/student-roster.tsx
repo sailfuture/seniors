@@ -39,7 +39,8 @@ import {
 } from "@hugeicons/core-free-icons"
 import { formatYearGroup } from "@/lib/year-group"
 import type { FormApiConfig } from "@/lib/form-api-config"
-import { fetchAllProjectLocks, lockProject, unlockProject, type ProjectLock } from "@/lib/project-lock"
+import { fetchAllProjectLocks, lockProject, unlockProject, type ProjectLockStatus } from "@/lib/project-lock"
+import { cachedFetch } from "@/lib/cached-fetch"
 import {
   advisorName,
   assignAdvisor,
@@ -194,7 +195,7 @@ export function StudentRoster({
   const [reviewCounts, setReviewCounts] = useState<Map<string, number>>(new Map())
   const [allComplete, setAllComplete] = useState<Set<string>>(new Set())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-  const [locks, setLocks] = useState<Map<string, ProjectLock>>(new Map())
+  const [locks, setLocks] = useState<Map<string, ProjectLockStatus>>(new Map())
   // The student a Lock/Unlock confirm dialog is open for, and in-flight state.
   const [lockDialog, setLockDialog] = useState<Student | null>(null)
   const [lockActing, setLockActing] = useState(false)
@@ -207,6 +208,10 @@ export function StudentRoster({
   const [advisorBusy, setAdvisorBusy] = useState(false)
 
   const locksEndpoint = apiConfig?.locksEndpoint
+  const lockStatusEndpoint = apiConfig?.lockStatusEndpoint
+  // The roster only reads review flags, never the response text, so it uses
+  // the status-only rows when the product has them.
+  const statusEndpoint = apiConfig?.responseStatusEndpoint ?? responsesEndpoint
   // Advisor assignments are product-scoped; the roster knows which product
   // it's showing, so assignments made here grant access to that one only.
   const advisorProduct = (product === "life-map" ? "life-map" : "business-thesis") as AdvisorProduct
@@ -215,11 +220,13 @@ export function StudentRoster({
     try {
       const [studentsRes, reviewsRes, templateRes, typesRes, lockMap] =
         await Promise.all([
-          fetch(STUDENTS_ENDPOINT),
-          fetch(responsesEndpoint),
-          fetch(templateEndpoint),
-          fetch(QUESTION_TYPES_ENDPOINT),
-          locksEndpoint ? fetchAllProjectLocks(locksEndpoint) : Promise.resolve(new Map<string, ProjectLock>()),
+          cachedFetch(STUDENTS_ENDPOINT),
+          fetch(statusEndpoint),
+          cachedFetch(templateEndpoint),
+          cachedFetch(QUESTION_TYPES_ENDPOINT),
+          lockStatusEndpoint
+            ? fetchAllProjectLocks(lockStatusEndpoint)
+            : Promise.resolve(new Map<string, ProjectLockStatus>()),
         ])
       setLocks(lockMap)
 
@@ -310,7 +317,7 @@ export function StudentRoster({
     } finally {
       setLoading(false)
     }
-  }, [responsesEndpoint, templateEndpoint, templateIdField, sectionIdField, locksEndpoint])
+  }, [statusEndpoint, templateEndpoint, templateIdField, sectionIdField, lockStatusEndpoint])
 
   useEffect(() => {
     fetchData()

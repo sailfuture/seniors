@@ -35,6 +35,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { SidebarLeftIcon, LogoutIcon, UserIcon, Link01Icon, RefreshIcon } from "@hugeicons/core-free-icons"
 import { slugToTitle } from "@/lib/lifemap-sections"
 import { btSlugToTitle } from "@/lib/businessthesis-sections"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 function getRelativeTime(date: Date): string {
   const now = Date.now()
@@ -80,7 +81,7 @@ function useStudentName(studentId: string | null) {
     let cancelled = false
     const fetchName = async () => {
       try {
-        const res = await fetch(STUDENTS_ENDPOINT)
+        const res = await cachedFetch(STUDENTS_ENDPOINT)
         if (!res.ok || cancelled) return
         const students = await res.json()
         for (const s of students as { id: string; firstName: string; lastName: string }[]) {
