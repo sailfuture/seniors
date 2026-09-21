@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import type { FormApiConfig } from "@/lib/form-api-config"
+import { studentFetch } from "@/lib/cached-fetch"
 
 /**
  * Snapshot-on-lock: a finished project is frozen by capturing the exact four
@@ -151,7 +152,7 @@ async function fetchProjectLockStatus(
   studentId: string
 ): Promise<ProjectLockStatus | null> {
   try {
-    const res = await fetch(`${lockStatusEndpoint}?students_id=${studentId}`)
+    const res = await studentFetch(`${lockStatusEndpoint}?students_id=${studentId}`)
     if (!res.ok) return null
     const rows = (await res.json()) as ProjectLockStatus[]
     if (!Array.isArray(rows)) return null

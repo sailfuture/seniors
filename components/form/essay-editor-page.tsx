@@ -31,7 +31,7 @@ import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import type { SaveStatus } from "@/lib/form-types"
 import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 
 interface TemplateQuestion {
   id: number
@@ -301,7 +301,7 @@ export function EssayEditorPage({
     try {
       const [templateRes, responsesRes] = await Promise.all([
         cachedFetch(cfg.templateEndpoint),
-        fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
+        studentFetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
       ])
 
       let q: TemplateQuestion | null = null

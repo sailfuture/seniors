@@ -52,7 +52,7 @@ import { ZoomableImage } from "@/components/zoomable-image"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { eventTypeForAction, postResponseEvent } from "@/lib/response-events"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -314,9 +314,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
       try {
         const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
           cachedFetch(cfg.templateEndpoint),
-          fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
+          studentFetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
           cachedFetch(cfg.customGroupEndpoint),
-          fetch(`${cfg.commentsEndpoint}?students_id=${studentId}&${F.sectionId}=${sectionId}`),
+          studentFetch(`${cfg.commentsEndpoint}?students_id=${studentId}&${F.sectionId}=${sectionId}`),
           cachedFetch(cfg.questionTypesEndpoint),
         ])
 

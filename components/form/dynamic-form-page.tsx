@@ -80,7 +80,7 @@ import { postResponseEvent } from "@/lib/response-events"
 import { postResponseVersion } from "@/lib/response-versions"
 import { checkSubmissionForAi, AI_BLOCK_THRESHOLD, AI_CHECK_MIN_WORDS } from "@/lib/ai-submission-check"
 import { Linkify } from "@/components/linkify"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -217,9 +217,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     try {
       const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
         cachedFetch(cfg.templateEndpoint),
-        fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
+        studentFetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
         cachedFetch(cfg.customGroupEndpoint),
-        fetch(`${cfg.commentsEndpoint}?students_id=${studentId}&${F.sectionId}=${sectionId}`),
+        studentFetch(`${cfg.commentsEndpoint}?students_id=${studentId}&${F.sectionId}=${sectionId}`),
         cachedFetch(cfg.questionTypesEndpoint),
       ])
 

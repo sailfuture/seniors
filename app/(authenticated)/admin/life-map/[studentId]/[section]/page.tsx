@@ -16,6 +16,7 @@ import {
 import { fetchSections, findSectionBySlug, slugToTitle, type LifeMapSection } from "@/lib/lifemap-sections"
 import { TeacherComment } from "@/components/form/teacher-comment"
 import type { Comment } from "@/lib/form-types"
+import { studentFetch } from "@/lib/cached-fetch"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -52,7 +53,7 @@ export default function AdminLifeMapSectionPage({
           setSectionLocked(match.isLocked ?? false)
 
           try {
-            const commentsRes = await fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${match.id}`)
+            const commentsRes = await studentFetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}&lifemap_sections_id=${match.id}`)
             if (commentsRes.ok) {
               const data = await commentsRes.json()
               if (Array.isArray(data)) {

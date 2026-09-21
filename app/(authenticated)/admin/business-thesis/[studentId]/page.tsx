@@ -56,7 +56,7 @@ import { Linkify } from "@/components/linkify"
 import { BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 import { GroupActivitySheet } from "@/components/form/group-activity-sheet"
 import { fetchResponseEvents, type ResponseEvent } from "@/lib/response-events"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 
 const BT_BASE =
   process.env.NEXT_PUBLIC_XANO_BT_API_BASE ??
@@ -196,7 +196,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
 
   const loadComments = useCallback(async () => {
     try {
-      const res = await fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`)
+      const res = await studentFetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`)
       if (res.ok) {
         const data = await res.json()
         if (Array.isArray(data)) setComments(data.filter((c: Comment) => String(c.students_id) === String(studentId)))
@@ -211,7 +211,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
         cachedFetch(CUSTOM_GROUP_ENDPOINT),
         cachedFetch(QUESTION_TYPES_ENDPOINT),
         cachedFetch(TEMPLATE_ENDPOINT),
-        fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
+        studentFetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
       ])
 
       const sections: BusinessThesisSection[] = sectionsRes.ok ? await sectionsRes.json() : []
@@ -271,7 +271,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
     try {
       const [templateRes, responsesRes] = await Promise.all([
         cachedFetch(TEMPLATE_ENDPOINT),
-        fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
+        studentFetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
       ])
 
       if (templateRes.ok) {

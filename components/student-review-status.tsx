@@ -29,7 +29,7 @@ import { checkSubmissionForAi, AI_BLOCK_THRESHOLD } from "@/lib/ai-submission-ch
 import { isLineItemsQuestion, looksLikeLineItems } from "@/lib/line-items"
 import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 
 const QUESTION_TYPE = {
   LONG_RESPONSE: 1,
@@ -220,8 +220,8 @@ export function StudentReviewStatus({
         const [sectionsRes, templateRes, responsesRes, commentsRes] = await Promise.all([
           cachedFetch(cfg.sectionsEndpoint),
           cachedFetch(cfg.templateEndpoint),
-          fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
-          fetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
+          studentFetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
+          studentFetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
         ])
         const sectionsData: SectionInfo[] = sectionsRes.ok ? await sectionsRes.json() : []
         const template: TemplateQuestion[] = templateRes.ok ? await templateRes.json() : []

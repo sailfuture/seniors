@@ -12,6 +12,7 @@ import { fetchBtSections, findBtSectionBySlug, btSlugToTitle, type BusinessThesi
 import { BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 import { TeacherComment } from "@/components/form/teacher-comment"
 import type { Comment } from "@/lib/form-types"
+import { studentFetch } from "@/lib/cached-fetch"
 
 const BT_COMMENTS_ENDPOINT = BUSINESSTHESIS_API_CONFIG.commentsEndpoint
 
@@ -42,7 +43,7 @@ export default function AdminBusinessThesisSectionPage({
           setSectionId(match.id)
 
           try {
-            const commentsRes = await fetch(`${BT_COMMENTS_ENDPOINT}?students_id=${studentId}&businessthesis_sections_id=${match.id}`)
+            const commentsRes = await studentFetch(`${BT_COMMENTS_ENDPOINT}?students_id=${studentId}&businessthesis_sections_id=${match.id}`)
             if (commentsRes.ok) {
               const data = await commentsRes.json()
               if (Array.isArray(data)) {

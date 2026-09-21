@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
+import { studentFetch } from "@/lib/cached-fetch"
 
 /** Opaque id shared by a highlight's `comment` mark and its thread's rows. */
 export function generateThreadId(): string {
@@ -77,7 +78,7 @@ export function useInlineComments({
     let cancelled = false
     const load = async () => {
       try {
-        const res = await fetch(`${commentsEndpoint}?students_id=${studentId}`)
+        const res = await studentFetch(`${commentsEndpoint}?students_id=${studentId}`)
         const data: Comment[] = res.ok ? await res.json() : []
         if (cancelled) return
         // Xano scopes to students_id; the re-filter just guards that. Keep

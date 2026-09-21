@@ -20,7 +20,7 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { isStaffRole } from "@/lib/roles"
 import { AdminReviewQueue } from "@/components/admin-review-queue"
 import { StudentReviewStatus } from "@/components/student-review-status"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 
 interface TemplateQuestion {
   id: number
@@ -163,8 +163,8 @@ export function ProductStatusCard({
         const [sectionsRes, templateRes, responsesRes, commentsRes] = await Promise.all([
           cachedFetch(cfg.sectionsEndpoint),
           cachedFetch(cfg.templateEndpoint),
-          fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
-          fetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
+          studentFetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
+          studentFetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
         ])
         const sections: SectionInfo[] = sectionsRes.ok ? await sectionsRes.json() : []
         const template: TemplateQuestion[] = templateRes.ok ? await templateRes.json() : []

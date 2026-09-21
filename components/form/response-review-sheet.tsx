@@ -32,6 +32,7 @@ import {
   type ResponseEvent,
 } from "@/lib/response-events"
 import { useBumpSidebar } from "@/lib/refresh-context"
+import { studentFetch } from "@/lib/cached-fetch"
 
 const IMAGE_UPLOAD = 4
 
@@ -114,7 +115,7 @@ export function ResponseReviewSheet({
       setLoading(true)
       try {
         const [res, evts] = await Promise.all([
-          fetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
+          studentFetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
           fetchResponseEvents(cfg, studentId ?? ""),
         ])
         const data: Comment[] = res.ok ? await res.json() : []

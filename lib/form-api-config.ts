@@ -42,6 +42,10 @@ export interface FormApiConfig {
   responseStatusEndpoint: string
   /** Responses awaiting teacher action (ready for review or in revision). */
   reviewQueueEndpoint: string
+  /** Sections, template, groups, and question types in one call. */
+  configEndpoint: string
+  /** One student's responses, comments, and lock status in one call. */
+  studentStateEndpoint: string
   /** Admin route base for this product, e.g. `/admin/business-thesis`. */
   adminBasePath: string
   fields: {
@@ -61,6 +65,8 @@ export const LIFEMAP_API_CONFIG: FormApiConfig = {
   lockStatusEndpoint: `${LIFEMAP_BASE}/lifemap_lock_status`,
   responseStatusEndpoint: `${LIFEMAP_BASE}/lifemap_response_status`,
   reviewQueueEndpoint: `${LIFEMAP_BASE}/lifemap_review_queue`,
+  configEndpoint: `${LIFEMAP_BASE}/lifemap_config`,
+  studentStateEndpoint: `${LIFEMAP_BASE}/lifemap_student_state`,
   templateEndpoint: `${LIFEMAP_BASE}/lifeplan_template`,
   responsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses_by_student`,
   allResponsesEndpoint: `${LIFEMAP_BASE}/lifemap_responses`,
@@ -95,6 +101,8 @@ export const BUSINESSTHESIS_API_CONFIG: FormApiConfig = {
   lockStatusEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_lock_status`,
   responseStatusEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_response_status`,
   reviewQueueEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_review_queue`,
+  configEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_config`,
+  studentStateEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_student_state`,
   templateEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_template`,
   responsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses_by_student`,
   allResponsesEndpoint: `${BUSINESSTHESIS_BASE}/businessthesis_responses`,

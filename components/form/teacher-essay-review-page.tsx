@@ -53,7 +53,7 @@ import {
 } from "@/lib/response-events"
 import { useBumpSidebar } from "@/lib/refresh-context"
 import { fetchResponseVersions, postResponseVersion, type ResponseVersion } from "@/lib/response-versions"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -148,8 +148,8 @@ export function TeacherEssayReviewPage({
       try {
         const [templateRes, responsesRes, commentsRes, studentsRes] = await Promise.all([
           cachedFetch(cfg.templateEndpoint),
-          fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
-          fetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
+          studentFetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
+          studentFetch(`${cfg.commentsEndpoint}?students_id=${studentId}`),
           cachedFetch(STUDENTS_ENDPOINT),
         ])
         if (cancelled) return

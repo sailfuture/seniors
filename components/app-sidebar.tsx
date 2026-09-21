@@ -39,7 +39,7 @@ import { isStaffRole } from "@/lib/roles"
 import { useStudents } from "@/lib/queries"
 import { classYearOf, currentClassYear } from "@/lib/students"
 import type { Comment } from "@/lib/form-types"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -160,7 +160,7 @@ function useSectionReviewCounts(studentId: string | null, refreshKey: number): {
     const load = async () => {
       try {
         const [responsesRes, templateRes, noInput] = await Promise.all([
-          fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
+          studentFetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
           cachedFetch(TEMPLATE_ENDPOINT),
           fetchNoInputTypeIds(),
         ])
@@ -249,7 +249,7 @@ function useBtSectionReviewCounts(studentId: string | null, refreshKey: number):
     const load = async () => {
       try {
         const [responsesRes, templateRes, noInput] = await Promise.all([
-          fetch(`${BT_RESPONSES_ENDPOINT}?students_id=${studentId}`),
+          studentFetch(`${BT_RESPONSES_ENDPOINT}?students_id=${studentId}`),
           cachedFetch(BT_TEMPLATE_ENDPOINT),
           fetchNoInputTypeIds(),
         ])
@@ -337,7 +337,7 @@ function useBtSectionCommentCounts(studentId: string | null, refreshKey: number)
     const load = async () => {
       try {
         const [commentsRes, templateRes] = await Promise.all([
-          fetch(`${BT_COMMENTS_ENDPOINT}?students_id=${studentId}`),
+          studentFetch(`${BT_COMMENTS_ENDPOINT}?students_id=${studentId}`),
           cachedFetch(BT_TEMPLATE_ENDPOINT),
         ])
         if (!commentsRes.ok || cancelled) return
@@ -399,7 +399,7 @@ function useSectionCommentCounts(studentId: string | null, refreshKey: number): 
     const load = async () => {
       try {
         const [commentsRes, templateRes] = await Promise.all([
-          fetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`),
+          studentFetch(`${COMMENTS_ENDPOINT}?students_id=${studentId}`),
           cachedFetch(`${XANO_BASE}/lifeplan_template`),
         ])
         if (!commentsRes.ok || cancelled) return
