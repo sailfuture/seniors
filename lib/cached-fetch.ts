@@ -7,9 +7,10 @@
  * helpers answer them from one combined call per product:
  *
  * - `cachedFetch`: the setup tables (sections, questions, groups, question
- *   types) come from `<product>_config`, kept in memory for a minute and
- *   shared by every component that asks, including requests still in flight.
- *   Any other URL is cached on its own.
+ *   types) come from `<product>_config`, read through Vercel's cached copy
+ *   (`/api/config/<product>`) and kept in memory for a minute, shared by
+ *   every component that asks, including requests still in flight. Any other
+ *   URL is cached on its own.
  * - `studentFetch`: one student's responses, comments, and lock status come
  *   from `<product>_student_state`. That data is live, so calls made together
  *   (a page and the sidebar mounting at once) share one request, but a
@@ -40,15 +41,24 @@ export interface CachedResponse {
 const LM = LIFEMAP_API_CONFIG
 const BT = BUSINESSTHESIS_API_CONFIG
 
-/** Setup-table endpoint name → [combined endpoint, key in its response]. */
-const CONFIG_PARTS: Record<string, [string, string]> = {
-  lifemap_sections: [LM.configEndpoint, "sections"],
-  lifeplan_template: [LM.configEndpoint, "template"],
-  lifemap_custom_group: [LM.configEndpoint, "groups"],
-  question_types: [LM.configEndpoint, "question_types"],
-  businessthesis_sections: [BT.configEndpoint, "sections"],
-  businessthesis_template: [BT.configEndpoint, "template"],
-  businessthesis_custom_group: [BT.configEndpoint, "groups"],
+type Product = "lifemap" | "businessthesis"
+
+/** Setup-table endpoint name → [product, key in its combined response]. */
+const CONFIG_PARTS: Record<string, [Product, string]> = {
+  lifemap_sections: ["lifemap", "sections"],
+  lifeplan_template: ["lifemap", "template"],
+  lifemap_custom_group: ["lifemap", "groups"],
+  question_types: ["lifemap", "question_types"],
+  businessthesis_sections: ["businessthesis", "sections"],
+  businessthesis_template: ["businessthesis", "template"],
+  businessthesis_custom_group: ["businessthesis", "groups"],
+}
+
+/** Each product's combined setup data: Vercel's cached copy, and Xano itself
+    as the fallback. */
+const CONFIG_SOURCES: Record<Product, { cached: string; origin: string }> = {
+  lifemap: { cached: "/api/config/lifemap", origin: LM.configEndpoint },
+  businessthesis: { cached: "/api/config/businessthesis", origin: BT.configEndpoint },
 }
 
 /** Per-student endpoint name → [combined endpoint, key in its response]. */
@@ -61,7 +71,12 @@ const STATE_PARTS: Record<string, [string, string]> = {
   businessthesis_lock_status: [BT.studentStateEndpoint, "locks"],
 }
 
-interface Route {
+interface ConfigRoute {
+  product: Product
+  key: string
+}
+
+interface StateRoute {
   bundleUrl: string
   key: string
 }
@@ -77,13 +92,13 @@ function parse(url: string): { name: string; params: URLSearchParams } | null {
   }
 }
 
-function configRoute(url: string): Route | null {
+function configRoute(url: string): ConfigRoute | null {
   const p = parse(url)
   const part = p && p.params.toString() === "" ? CONFIG_PARTS[p.name] : undefined
-  return part ? { bundleUrl: part[0], key: part[1] } : null
+  return part ? { product: part[0], key: part[1] } : null
 }
 
-function stateRoute(url: string): Route | null {
+function stateRoute(url: string): StateRoute | null {
   const p = parse(url)
   const part = p ? STATE_PARTS[p.name] : undefined
   const studentId = p?.params.get("students_id")
@@ -129,11 +144,28 @@ function load(url: string): Promise<Body> {
   return entry.body
 }
 
+/** Until this time, this tab reads setup data from Xano directly. Set after
+    template edits or a refresh, so nobody sees the cached copy of something
+    they just changed while Vercel's copy is rebuilt. */
+let originUntil = 0
+
+async function loadConfig(product: Product): Promise<Body> {
+  const { cached, origin } = CONFIG_SOURCES[product]
+  // The cached copy is a same-origin route, so only the browser can use it.
+  if (typeof window !== "undefined" && Date.now() >= originUntil) {
+    const b = await load(cached).catch(() => null)
+    if (b?.ok) return b
+  }
+  return load(origin)
+}
+
 export function cachedFetch(url: string): Promise<CachedResponse> {
   const route = configRoute(url)
   if (!route) return load(url).then(whole)
   // If the combined endpoint ever goes missing, read the table itself.
-  return load(route.bundleUrl).then((b) => (b.status === 404 ? load(url).then(whole) : part(b, route.key)))
+  return loadConfig(route.product).then((b) =>
+    b.status === 404 ? load(url).then(whole) : part(b, route.key)
+  )
 }
 
 const inflight = new Map<string, { at: number; body: Promise<Body> }>()
@@ -160,11 +192,36 @@ export function studentFetch(url: string): Promise<CachedResponse> {
 /** Drop one cached URL, or every cached table when none is given, so the next
     read refetches — after template edits, or when the user asks to refresh. */
 export function invalidateCachedFetch(url?: string): void {
+  originUntil = Date.now() + TTL_MS
   if (!url) {
     cache.clear()
     return
   }
   cache.delete(url)
   const route = configRoute(url)
-  if (route) cache.delete(route.bundleUrl)
+  if (route) {
+    cache.delete(CONFIG_SOURCES[route.product].cached)
+    cache.delete(CONFIG_SOURCES[route.product].origin)
+  }
+}
+
+let revalidateTimer: ReturnType<typeof setTimeout> | undefined
+
+/** After a template edit: this tab reads fresh setup data right away, and
+    Vercel's cached copy is rebuilt for everyone else — once per burst of
+    edits. */
+export function refreshSetupData(): void {
+  invalidateCachedFetch()
+  clearTimeout(revalidateTimer)
+  revalidateTimer = setTimeout(() => {
+    fetch("/api/config/revalidate", { method: "POST" }).catch(() => {})
+  }, 1_000)
+}
+
+/** `fetch` for the template editors: every successful write refreshes the
+    shared setup data. Reads pass straight through. */
+export async function editorFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init)
+  if (res.ok && (init?.method ?? "GET").toUpperCase() !== "GET") refreshSetupData()
+  return res
 }

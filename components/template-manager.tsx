@@ -69,7 +69,7 @@ import { useStudents } from "@/lib/queries"
 import { currentYearGroupValue } from "@/lib/students"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useBumpSidebar } from "@/lib/refresh-context"
-import { invalidateCachedFetch } from "@/lib/cached-fetch"
+import { editorFetch, invalidateCachedFetch } from "@/lib/cached-fetch"
 
 interface TemplateQuestion {
   id?: number
@@ -247,10 +247,10 @@ export function TemplateManager({
   const loadData = useCallback(async () => {
     try {
       const [templateRes, typesRes, groupsRes, displayTypesRes] = await Promise.all([
-        fetch(cfg.templateEndpoint),
-        fetch(cfg.questionTypesEndpoint),
-        fetch(cfg.customGroupEndpoint),
-        fetch(cfg.groupDisplayTypesEndpoint),
+        editorFetch(cfg.templateEndpoint),
+        editorFetch(cfg.questionTypesEndpoint),
+        editorFetch(cfg.customGroupEndpoint),
+        editorFetch(cfg.groupDisplayTypesEndpoint),
       ])
 
       if (templateRes.ok) {
@@ -342,7 +342,7 @@ export function TemplateManager({
         ...(!isEdit && { isDraft: true, isPublished: false }),
       }
 
-      const res = await fetch(url, {
+      const res = await editorFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -351,7 +351,7 @@ export function TemplateManager({
       if (res.ok) {
         if (isEdit && data.id) {
           try {
-            const respRes = await fetch(cfg.responsePatchBase)
+            const respRes = await editorFetch(cfg.responsePatchBase)
             if (respRes.ok) {
               const allResponses = await respRes.json()
               if (Array.isArray(allResponses)) {
@@ -360,7 +360,7 @@ export function TemplateManager({
                 )
                 await Promise.all(
                   related.map((r: { id: number }) =>
-                    fetch(`${cfg.responsePatchBase}/${r.id}`, {
+                    editorFetch(`${cfg.responsePatchBase}/${r.id}`, {
                       method: "PATCH",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
@@ -392,8 +392,8 @@ export function TemplateManager({
     setDeletingQuestion(true)
     try {
       const [responsesRes, commentsRes] = await Promise.all([
-        fetch(cfg.responsePatchBase),
-        fetch(cfg.commentsEndpoint),
+        editorFetch(cfg.responsePatchBase),
+        editorFetch(cfg.commentsEndpoint),
       ])
 
       if (commentsRes.ok) {
@@ -404,7 +404,7 @@ export function TemplateManager({
           )
           await Promise.all(
             related.map((c: { id: number }) =>
-              fetch(`${cfg.commentsEndpoint}/${c.id}`, { method: "DELETE" })
+              editorFetch(`${cfg.commentsEndpoint}/${c.id}`, { method: "DELETE" })
             )
           )
         }
@@ -418,13 +418,13 @@ export function TemplateManager({
           )
           await Promise.all(
             related.map((r: { id: number }) =>
-              fetch(`${cfg.responsePatchBase}/${r.id}`, { method: "DELETE" })
+              editorFetch(`${cfg.responsePatchBase}/${r.id}`, { method: "DELETE" })
             )
           )
         }
       }
 
-      const res = await fetch(`${cfg.templateEndpoint}/${deleteTarget.id}`, { method: "DELETE" })
+      const res = await editorFetch(`${cfg.templateEndpoint}/${deleteTarget.id}`, { method: "DELETE" })
       if (res.ok) {
         toast("Question deleted", { duration: 2000 })
         setQuestions((prev) => prev.filter((q) => q.id !== deleteTarget.id))
@@ -440,7 +440,7 @@ export function TemplateManager({
   const handleArchive = async () => {
     if (!archiveTarget?.id) return
     try {
-      const res = await fetch(`${cfg.templateEndpoint}/${archiveTarget.id}`, {
+      const res = await editorFetch(`${cfg.templateEndpoint}/${archiveTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isArchived: true, isPublished: false }),
@@ -470,7 +470,7 @@ export function TemplateManager({
         isPublished: false,
         isArchived: false,
       }
-      const res = await fetch(cfg.templateEndpoint, {
+      const res = await editorFetch(cfg.templateEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -489,7 +489,7 @@ export function TemplateManager({
   const handleUnarchive = async (q: TemplateQuestion) => {
     if (!q.id) return
     try {
-      const res = await fetch(`${cfg.templateEndpoint}/${q.id}`, {
+      const res = await editorFetch(`${cfg.templateEndpoint}/${q.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isArchived: false, isDraft: true }),
@@ -530,7 +530,7 @@ export function TemplateManager({
         ...(!isEdit && { order: customGroups.length + 1 }),
       }
 
-      const res = await fetch(url, {
+      const res = await editorFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -547,7 +547,7 @@ export function TemplateManager({
               [F.sectionId]: sectionId.toString(),
               [F.customGroupId]: newGroupId.toString(),
             })
-            await fetch(`${cfg.addGroupDisplayTemplateEndpoint}?${params.toString()}`)
+            await editorFetch(`${cfg.addGroupDisplayTemplateEndpoint}?${params.toString()}`)
           }
         }
         toast(isEdit ? "Group updated" : "Group created", { duration: 2000 })
@@ -568,7 +568,7 @@ export function TemplateManager({
     setGroupSheetOpen(false)
     setDeletingGroupOverlay(true)
     try {
-      const commentsRes = await fetch(cfg.commentsEndpoint)
+      const commentsRes = await editorFetch(cfg.commentsEndpoint)
       if (commentsRes.ok) {
         const allComments = await commentsRes.json()
         if (Array.isArray(allComments)) {
@@ -578,7 +578,7 @@ export function TemplateManager({
           )
           await Promise.all(
             groupComments.map((c: { id: number }) =>
-              fetch(`${cfg.commentsEndpoint}/${c.id}`, { method: "DELETE" })
+              editorFetch(`${cfg.commentsEndpoint}/${c.id}`, { method: "DELETE" })
             )
           )
         }
@@ -590,12 +590,12 @@ export function TemplateManager({
       if (groupQuestions.length > 0) {
         await Promise.all(
           groupQuestions.map((q) =>
-            fetch(`${cfg.templateEndpoint}/${q.id}`, { method: "DELETE" })
+            editorFetch(`${cfg.templateEndpoint}/${q.id}`, { method: "DELETE" })
           )
         )
       }
 
-      const res = await fetch(`${cfg.customGroupEndpoint}/${editingGroup.id}`, {
+      const res = await editorFetch(`${cfg.customGroupEndpoint}/${editingGroup.id}`, {
         method: "DELETE",
       })
       if (res.ok) {
@@ -630,7 +630,7 @@ export function TemplateManager({
     try {
       // NOTE: the endpoint takes no section filter — it publishes every
       // pending draft in the product, not just this section's.
-      const res = await fetch(cfg.publishQuestionsEndpoint, {
+      const res = await editorFetch(cfg.publishQuestionsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ yearGroup }),
@@ -650,7 +650,7 @@ export function TemplateManager({
   const handleSaveSectionSettings = async () => {
     setSavingSection(true)
     try {
-      const res = await fetch(`${cfg.sectionsEndpoint}/${sectionId}`, {
+      const res = await editorFetch(`${cfg.sectionsEndpoint}/${sectionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ section_description: localDescription, description: localDescription, isLocked, photo: localPhoto }),
@@ -675,14 +675,14 @@ export function TemplateManager({
     setDeletingSection(true)
     try {
       const [allTemplateRes, allGroupsRes, allCommentsRes, allResponsesRes] = await Promise.all([
-        fetch(cfg.templateEndpoint),
-        fetch(cfg.customGroupEndpoint),
-        fetch(`${cfg.commentsEndpoint}?${F.sectionId}=${sectionId}`),
-        fetch(cfg.responsePatchBase),
+        editorFetch(cfg.templateEndpoint),
+        editorFetch(cfg.customGroupEndpoint),
+        editorFetch(`${cfg.commentsEndpoint}?${F.sectionId}=${sectionId}`),
+        editorFetch(cfg.responsePatchBase),
       ])
 
       const deleteAll = async (endpoint: string, items: { id: number }[]) => {
-        await Promise.all(items.map((item) => fetch(`${endpoint}/${item.id}`, { method: "DELETE" })))
+        await Promise.all(items.map((item) => editorFetch(`${endpoint}/${item.id}`, { method: "DELETE" })))
       }
 
       if (allCommentsRes.ok) {
@@ -719,7 +719,7 @@ export function TemplateManager({
         }
       }
 
-      await fetch(`${cfg.sectionsEndpoint}/${sectionId}`, { method: "DELETE" })
+      await editorFetch(`${cfg.sectionsEndpoint}/${sectionId}`, { method: "DELETE" })
 
       onSectionsInvalidated()
       bumpSidebar()
@@ -814,7 +814,7 @@ export function TemplateManager({
             })
             .filter((ng) => ng.id)
             .map((ng) =>
-              fetch(`${cfg.customGroupEndpoint}/${ng.id}`, {
+              editorFetch(`${cfg.customGroupEndpoint}/${ng.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ order: ng.order }),
@@ -828,7 +828,7 @@ export function TemplateManager({
             .filter((nq) => nq.id)
             .map(async (nq) => {
               const payload = { sortOrder: nq.sortOrder, [F.customGroupId]: (field(nq, F.customGroupId) as number | null) || null, [F.sectionId]: sectionId }
-              const res = await fetch(`${cfg.templateEndpoint}/${nq.id}`, {
+              const res = await editorFetch(`${cfg.templateEndpoint}/${nq.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
@@ -874,7 +874,7 @@ export function TemplateManager({
         await Promise.all(
           patches.map(async (p) => {
             const payload = { sortOrder: p.sortOrder, [F.customGroupId]: p.cgId, [F.sectionId]: sectionId }
-            const res = await fetch(`${cfg.templateEndpoint}/${p.id}`, {
+            const res = await editorFetch(`${cfg.templateEndpoint}/${p.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(payload),

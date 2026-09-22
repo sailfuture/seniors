@@ -28,6 +28,7 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { aspectRatioCss } from "@/lib/image-ratio"
 import { formatYearGroup } from "@/lib/year-group"
 import { fetchProjectLock } from "@/lib/project-lock"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -611,10 +612,10 @@ export function PrintDocument({
         setGroups(snap.groups as CustomGroup[])
       }
       const [sectionsRes, templateRes, responsesRes, groupsRes, studentsRes] = await Promise.all([
-        lock ? null : fetch(cfg.sectionsEndpoint),
-        lock ? null : fetch(cfg.templateEndpoint),
+        lock ? null : cachedFetch(cfg.sectionsEndpoint),
+        lock ? null : cachedFetch(cfg.templateEndpoint),
         lock ? null : fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
-        lock ? null : fetch(cfg.customGroupEndpoint),
+        lock ? null : cachedFetch(cfg.customGroupEndpoint),
         fetch(STUDENTS_ENDPOINT),
       ])
       if (sectionsRes?.ok) {

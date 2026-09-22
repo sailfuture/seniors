@@ -57,7 +57,7 @@ import {
 import { uploadImageToXano, type XanoImageResponse } from "@/lib/xano"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useBumpSidebar } from "@/lib/refresh-context"
-import { invalidateCachedFetch } from "@/lib/cached-fetch"
+import { editorFetch, invalidateCachedFetch } from "@/lib/cached-fetch"
 
 interface TemplateQuestion {
   id: number
@@ -149,10 +149,10 @@ export function TemplateOverview({
     if (showLoading) setLoading(true)
     try {
       const [sectionsRes, templateRes, groupsRes, typesRes] = await Promise.all([
-        fetch(cfg.sectionsEndpoint),
-        fetch(cfg.templateEndpoint),
-        fetch(cfg.customGroupEndpoint),
-        fetch(cfg.questionTypesEndpoint),
+        editorFetch(cfg.sectionsEndpoint),
+        editorFetch(cfg.templateEndpoint),
+        editorFetch(cfg.customGroupEndpoint),
+        editorFetch(cfg.questionTypesEndpoint),
       ])
 
       const rawSections: LifeMapSection[] = sectionsRes.ok ? await sectionsRes.json() : []
@@ -255,7 +255,7 @@ export function TemplateOverview({
 
     setPublishing(true)
     try {
-      const res = await fetch(cfg.publishQuestionsEndpoint, {
+      const res = await editorFetch(cfg.publishQuestionsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ yearGroup }),
@@ -299,7 +299,7 @@ export function TemplateOverview({
     try {
       await Promise.all(
         newSummaries.map((s, i) =>
-          fetch(`${cfg.sectionsEndpoint}/${s.section.id}`, {
+          editorFetch(`${cfg.sectionsEndpoint}/${s.section.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ order: i + 1 }),
@@ -332,7 +332,7 @@ export function TemplateOverview({
     )
 
     try {
-      const res = await fetch(`${cfg.sectionsEndpoint}/${s.section.id}`, {
+      const res = await editorFetch(`${cfg.sectionsEndpoint}/${s.section.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isLocked: newLocked }),
@@ -356,7 +356,7 @@ export function TemplateOverview({
     if (!sheetSection) return
     setSavingSettings(true)
     try {
-      const res = await fetch(`${cfg.sectionsEndpoint}/${sheetSection.section.id}`, {
+      const res = await editorFetch(`${cfg.sectionsEndpoint}/${sheetSection.section.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ section_description: editDescription, description: editDescription, isLocked: editLocked, photo: editPhoto }),
@@ -407,7 +407,7 @@ export function TemplateOverview({
     setAddingSection(true)
     try {
       const order = summaries.length + 1
-      const res = await fetch(cfg.sectionsEndpoint, {
+      const res = await editorFetch(cfg.sectionsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

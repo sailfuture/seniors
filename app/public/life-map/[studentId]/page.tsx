@@ -36,6 +36,7 @@ import { aspectRatioCss } from "@/lib/image-ratio"
 import { fetchProjectLock } from "@/lib/project-lock"
 import { Printer } from "lucide-react"
 import { DynamicIcon, iconNames } from "lucide-react/dynamic"
+import { cachedFetch } from "@/lib/cached-fetch"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -237,10 +238,10 @@ export default function PublicLifeMapPage({
       }
       const [sectionsRes, templateRes, responsesRes, groupsRes, studentsRes] =
         await Promise.all([
-          lock ? null : fetch(SECTIONS_ENDPOINT),
-          lock ? null : fetch(TEMPLATE_ENDPOINT),
+          lock ? null : cachedFetch(SECTIONS_ENDPOINT),
+          lock ? null : cachedFetch(TEMPLATE_ENDPOINT),
           lock ? null : fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
-          lock ? null : fetch(CUSTOM_GROUP_ENDPOINT),
+          lock ? null : cachedFetch(CUSTOM_GROUP_ENDPOINT),
           fetch(STUDENTS_ENDPOINT),
         ])
 
