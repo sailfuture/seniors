@@ -1,6 +1,34 @@
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
 
+const STUDENT_PROFILE_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_student_profile"
+
+/** What the public pages and print show about a student. */
+export interface StudentProfile {
+  id: string
+  firstName: string
+  lastName: string
+  yearGroup?: string
+  profileImage?: string
+}
+
+/**
+ * One student's name, class and photo, whether they're on the active roster or
+ * archived: graduated students' locked projects stay viewable. Null when the id
+ * matches no student or the lookup fails.
+ */
+export async function fetchStudentProfile(studentId: string): Promise<StudentProfile | null> {
+  try {
+    const res = await fetch(`${STUDENT_PROFILE_ENDPOINT}?students_id=${encodeURIComponent(studentId)}`)
+    if (!res.ok) return null
+    const data = (await res.json()) as StudentProfile | null
+    return data && String(data.id) === String(studentId) ? data : null
+  } catch {
+    return null
+  }
+}
+
 export interface RosterStudent {
   id: string
   firstName: string

@@ -48,6 +48,7 @@ import { StatusBadge, statusOf, groupStatusOf } from "@/components/field-status"
 import { Printer } from "lucide-react"
 import { DynamicIcon, iconNames } from "lucide-react/dynamic"
 import { cachedFetch } from "@/lib/cached-fetch"
+import { fetchStudentProfile } from "@/lib/students"
 
 const BT_BASE =
   process.env.NEXT_PUBLIC_XANO_BT_API_BASE ??
@@ -58,8 +59,6 @@ const TEMPLATE_ENDPOINT = `${BT_BASE}/businessthesis_template`
 const RESPONSES_ENDPOINT = `${BT_BASE}/businessthesis_responses_by_student`
 const CUSTOM_GROUP_ENDPOINT = `${BT_BASE}/businessthesis_custom_group`
 const LOCKS_ENDPOINT = `${BT_BASE}/businessthesis_locks`
-const STUDENTS_ENDPOINT =
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
 
 interface BusinessThesisSection {
   id: number
@@ -274,13 +273,13 @@ export default function PublicBusinessThesisPage({
         )
         setGroups(snap.groups as CustomGroup[])
       }
-      const [sectionsRes, templateRes, responsesRes, groupsRes, studentsRes] =
+      const [sectionsRes, templateRes, responsesRes, groupsRes, profile] =
         await Promise.all([
           lock ? null : cachedFetch(SECTIONS_ENDPOINT),
           lock ? null : cachedFetch(TEMPLATE_ENDPOINT),
           lock ? null : fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
           lock ? null : cachedFetch(CUSTOM_GROUP_ENDPOINT),
-          fetch(STUDENTS_ENDPOINT),
+          fetchStudentProfile(studentId),
         ])
 
       if (sectionsRes?.ok) {
@@ -299,15 +298,10 @@ export default function PublicBusinessThesisPage({
         const data: CustomGroup[] = await groupsRes.json()
         setGroups(data)
       }
-      if (studentsRes?.ok) {
-        const students: { id: string; firstName: string; lastName: string; profileImage?: string; yearGroup?: string }[] =
-          await studentsRes.json()
-        const match = students.find((s) => s.id === studentId)
-        if (match) {
-          setStudentName(`${match.firstName} ${match.lastName}`)
-          if (match.profileImage) setStudentImage(match.profileImage)
-          if (match.yearGroup) setStudentYearGroup(match.yearGroup)
-        }
+      if (profile) {
+        setStudentName(`${profile.firstName} ${profile.lastName}`)
+        if (profile.profileImage) setStudentImage(profile.profileImage)
+        if (profile.yearGroup) setStudentYearGroup(profile.yearGroup)
       }
     } catch {
       /* silently fail */

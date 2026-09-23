@@ -37,6 +37,7 @@ import { fetchProjectLock } from "@/lib/project-lock"
 import { Printer } from "lucide-react"
 import { DynamicIcon, iconNames } from "lucide-react/dynamic"
 import { cachedFetch } from "@/lib/cached-fetch"
+import { fetchStudentProfile } from "@/lib/students"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -47,8 +48,6 @@ const TEMPLATE_ENDPOINT = `${XANO_BASE}/lifeplan_template`
 const RESPONSES_ENDPOINT = `${XANO_BASE}/lifemap_responses_by_student`
 const CUSTOM_GROUP_ENDPOINT = `${XANO_BASE}/lifemap_custom_group`
 const LOCKS_ENDPOINT = `${XANO_BASE}/lifemap_locks`
-const STUDENTS_ENDPOINT =
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
 
 interface LifeMapSection {
   id: number
@@ -236,13 +235,13 @@ export default function PublicLifeMapPage({
         )
         setGroups(snap.groups as CustomGroup[])
       }
-      const [sectionsRes, templateRes, responsesRes, groupsRes, studentsRes] =
+      const [sectionsRes, templateRes, responsesRes, groupsRes, profile] =
         await Promise.all([
           lock ? null : cachedFetch(SECTIONS_ENDPOINT),
           lock ? null : cachedFetch(TEMPLATE_ENDPOINT),
           lock ? null : fetch(`${RESPONSES_ENDPOINT}?students_id=${studentId}`),
           lock ? null : cachedFetch(CUSTOM_GROUP_ENDPOINT),
-          fetch(STUDENTS_ENDPOINT),
+          fetchStudentProfile(studentId),
         ])
 
       if (sectionsRes?.ok) {
@@ -261,14 +260,9 @@ export default function PublicLifeMapPage({
         const data: CustomGroup[] = await groupsRes.json()
         setGroups(data)
       }
-      if (studentsRes?.ok) {
-        const students: { id: string; firstName: string; lastName: string; profileImage?: string }[] =
-          await studentsRes.json()
-        const match = students.find((s) => s.id === studentId)
-        if (match) {
-          setStudentName(`${match.firstName} ${match.lastName}`)
-          if (match.profileImage) setStudentImage(match.profileImage)
-        }
+      if (profile) {
+        setStudentName(`${profile.firstName} ${profile.lastName}`)
+        if (profile.profileImage) setStudentImage(profile.profileImage)
       }
     } catch {
       /* silently fail */

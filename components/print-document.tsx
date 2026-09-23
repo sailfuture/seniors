@@ -29,9 +29,7 @@ import { aspectRatioCss } from "@/lib/image-ratio"
 import { formatYearGroup } from "@/lib/year-group"
 import { fetchProjectLock } from "@/lib/project-lock"
 import { cachedFetch } from "@/lib/cached-fetch"
-
-const STUDENTS_ENDPOINT =
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
+import { fetchStudentProfile } from "@/lib/students"
 
 interface TemplateQuestion {
   id: number
@@ -611,12 +609,12 @@ export function PrintDocument({
         )
         setGroups(snap.groups as CustomGroup[])
       }
-      const [sectionsRes, templateRes, responsesRes, groupsRes, studentsRes] = await Promise.all([
+      const [sectionsRes, templateRes, responsesRes, groupsRes, profile] = await Promise.all([
         lock ? null : cachedFetch(cfg.sectionsEndpoint),
         lock ? null : cachedFetch(cfg.templateEndpoint),
         lock ? null : fetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
         lock ? null : cachedFetch(cfg.customGroupEndpoint),
-        fetch(STUDENTS_ENDPOINT),
+        fetchStudentProfile(studentId),
       ])
       if (sectionsRes?.ok) {
         const data: SectionInfo[] = await sectionsRes.json()
@@ -632,15 +630,10 @@ export function PrintDocument({
         setResponses(data.filter((r) => !r.isArchived && String(r.students_id ?? "") === String(studentId)))
       }
       if (groupsRes?.ok) setGroups(await groupsRes.json())
-      if (studentsRes?.ok) {
-        const students: { id: string; firstName: string; lastName: string; yearGroup?: string; profileImage?: string }[] =
-          await studentsRes.json()
-        const match = students.find((s) => String(s.id) === String(studentId))
-        if (match) {
-          setStudentName(`${match.firstName} ${match.lastName}`)
-          if (match.yearGroup) setYearGroup(match.yearGroup)
-          if (match.profileImage) setStudentImage(match.profileImage)
-        }
+      if (profile) {
+        setStudentName(`${profile.firstName} ${profile.lastName}`)
+        if (profile.yearGroup) setYearGroup(profile.yearGroup)
+        if (profile.profileImage) setStudentImage(profile.profileImage)
       }
     } catch {
       /* leave empty */

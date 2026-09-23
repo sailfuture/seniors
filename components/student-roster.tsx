@@ -18,6 +18,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -50,7 +58,7 @@ import {
 } from "@/lib/advisors"
 import { AdvisorAssignDialog } from "@/components/advisor-assign-dialog"
 import { useAdvisorAssignments, useAdvisorCacheActions, useAdvisors } from "@/lib/queries"
-import { currentClassYear } from "@/lib/students"
+import { classYearOf, currentClassYear } from "@/lib/students"
 
 interface Student {
   id: string
@@ -70,6 +78,11 @@ interface GroupedStudents {
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
+
+// Graduated classes (and students who left) are archived in Xano, so past
+// classes come from their own list.
+const ARCHIVED_STUDENTS_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_archived_students_email"
 
 const LM_RESPONSES_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:o2_UyOKn/lifemap_responses"
@@ -109,8 +122,8 @@ function groupByYearGroup(students: Student[]): GroupedStudents[] {
     .sort((a, b) => a.sortKey - b.sortKey)
 }
 
-/** A class table renders as a flat list of rows, optionally banded into
-    "in progress" and "completed & locked" sections. */
+/** A class table renders as a flat list of rows, optionally split into two
+    labeled bands. */
 interface RosterItem {
   key: string
   header?: { label: string; count: number }
@@ -118,22 +131,26 @@ interface RosterItem {
 }
 
 /**
- * Split one class into students still working and students who are settled
- * (every section approved, or the project locked), with a band above each.
- * When there's nothing to split — all active or all finished — the bands are
- * dropped so the table reads exactly as it did before.
+ * Split one class into two bands with a label above each: by default students
+ * still working, then students who are settled (every section approved, or
+ * the project locked). When there's nothing to split, the bands are dropped so
+ * the table reads exactly as it did before.
  */
-function rosterItems(students: Student[], isSettled: (s: Student) => boolean): RosterItem[] {
-  const active = students.filter((s) => !isSettled(s))
-  const settled = students.filter(isSettled)
-  if (active.length === 0 || settled.length === 0) {
+function rosterItems(
+  students: Student[],
+  inSecondBand: (s: Student) => boolean,
+  labels: [string, string] = ["In progress", "Completed & locked"]
+): RosterItem[] {
+  const first = students.filter((s) => !inSecondBand(s))
+  const second = students.filter(inSecondBand)
+  if (first.length === 0 || second.length === 0) {
     return students.map((s) => ({ key: s.id, student: s }))
   }
   return [
-    { key: "hdr-active", header: { label: "In progress", count: active.length } },
-    ...active.map((s) => ({ key: s.id, student: s })),
-    { key: "hdr-done", header: { label: "Completed & locked", count: settled.length } },
-    ...settled.map((s) => ({ key: s.id, student: s })),
+    { key: "hdr-first", header: { label: labels[0], count: first.length } },
+    ...first.map((s) => ({ key: s.id, student: s })),
+    { key: "hdr-second", header: { label: labels[1], count: second.length } },
+    ...second.map((s) => ({ key: s.id, student: s })),
   ]
 }
 
@@ -190,6 +207,9 @@ export function StudentRoster({
   const router = useRouter()
   const { data: session } = useSession()
   const [students, setStudents] = useState<Student[]>([])
+  const [archivedStudents, setArchivedStudents] = useState<Student[]>([])
+  // "current" shows the active roster; a year shows that graduated class.
+  const [classView, setClassView] = useState<"current" | number>("current")
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [reviewCounts, setReviewCounts] = useState<Map<string, number>>(new Map())
@@ -218,7 +238,7 @@ export function StudentRoster({
 
   const fetchData = useCallback(async () => {
     try {
-      const [studentsRes, reviewsRes, templateRes, typesRes, lockMap] =
+      const [studentsRes, reviewsRes, templateRes, typesRes, lockMap, archivedRes] =
         await Promise.all([
           cachedFetch(STUDENTS_ENDPOINT),
           fetch(statusEndpoint),
@@ -227,8 +247,14 @@ export function StudentRoster({
           lockStatusEndpoint
             ? fetchAllProjectLocks(lockStatusEndpoint)
             : Promise.resolve(new Map<string, ProjectLockStatus>()),
+          cachedFetch(ARCHIVED_STUDENTS_ENDPOINT).catch(() => null),
         ])
       setLocks(lockMap)
+
+      if (archivedRes?.ok) {
+        const data = await archivedRes.json()
+        setArchivedStudents(Array.isArray(data) ? data : [])
+      }
 
       if (studentsRes.ok) {
         const data = await studentsRes.json()
@@ -387,13 +413,22 @@ export function StudentRoster({
     }
   }, [lockDialog, apiConfig, locksEndpoint, locks, session, product])
 
-  const filtered = students.filter((s) => {
+  // Graduated classes are archived students whose class year has passed;
+  // archived students in current classes left the school instead.
+  const thisClassYear = currentClassYear()
+  const pastClassYears = [
+    ...new Set(
+      archivedStudents.map(classYearOf).filter((y): y is number => y != null && y < thisClassYear)
+    ),
+  ].sort((a, b) => b - a)
+  const pastYear = classView === "current" ? null : classView
+  const shown = pastYear == null ? students : archivedStudents.filter((s) => classYearOf(s) === pastYear)
+
+  // Archived rows can be missing an email, so every field is optional here.
+  const filtered = shown.filter((s) => {
     const q = search.toLowerCase()
-    return (
-      s.firstName.toLowerCase().includes(q) ||
-      s.lastName.toLowerCase().includes(q) ||
-      s.studentEmail.toLowerCase().includes(q) ||
-      (s.crewName?.toLowerCase().includes(q) ?? false)
+    return [s.firstName, s.lastName, s.studentEmail, s.crewName].some((v) =>
+      (v ?? "").toLowerCase().includes(q)
     )
   })
 
@@ -410,12 +445,41 @@ export function StudentRoster({
         <TableSkeleton />
       ) : (
         <div className="space-y-8">
-          <Input
-            placeholder="Search by name, email, or crew..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-sm"
-          />
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Input
+                placeholder="Search by name, email, or crew..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="max-w-sm"
+              />
+              {pastClassYears.length > 0 && (
+                <Select
+                  value={String(classView)}
+                  onValueChange={(v) => setClassView(v === "current" ? "current" : Number(v))}
+                >
+                  <SelectTrigger className="w-[220px]" aria-label="Class">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="current">Current students</SelectItem>
+                    <SelectSeparator />
+                    {pastClassYears.map((year) => (
+                      <SelectItem key={year} value={String(year)}>
+                        Class of {year} (graduated)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            {pastYear != null && (
+              <p className="text-muted-foreground text-sm">
+                Open a student to see their project as it was locked. Projects that were
+                never locked show the student&apos;s last saved answers.
+              </p>
+            )}
+          </div>
 
           {groups.length === 0 && (
             <p className="text-muted-foreground py-8 text-center">No students found.</p>
@@ -471,7 +535,8 @@ export function StudentRoster({
           </AlertDialog>
 
           {groups.map((group) => {
-            const isCollapsed = collapsedGroups.has(group.label)
+            // A graduated class is the only group on screen, so it stays open.
+            const isCollapsed = pastYear == null && collapsedGroups.has(group.label)
             const toggleCollapse = () => {
               setCollapsedGroups((prev) => {
                 const next = new Set(prev)
@@ -483,10 +548,14 @@ export function StudentRoster({
             return (
             <div key={group.label} className="space-y-2">
               <h2
-                className="text-muted-foreground flex cursor-pointer select-none items-center gap-1 text-sm font-semibold uppercase tracking-wide"
-                onClick={toggleCollapse}
+                className={`text-muted-foreground flex select-none items-center gap-1 text-sm font-semibold uppercase tracking-wide ${
+                  pastYear == null ? "cursor-pointer" : ""
+                }`}
+                onClick={pastYear == null ? toggleCollapse : undefined}
               >
-                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className={`size-4 transition-transform ${isCollapsed ? "" : "rotate-90"}`} />
+                {pastYear == null && (
+                  <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className={`size-4 transition-transform ${isCollapsed ? "" : "rotate-90"}`} />
+                )}
                 {formatYearGroup(group.label)}
                 <span className="text-muted-foreground/60 ml-1 text-xs font-normal normal-case">
                   ({group.students.length} {group.students.length === 1 ? "student" : "students"})
@@ -500,19 +569,20 @@ export function StudentRoster({
                       <TableHead className="w-[240px]">Student</TableHead>
                       <TableHead className="w-[110px]">Crew</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead className="w-[230px]">Advisor</TableHead>
+                      {pastYear == null && <TableHead className="w-[230px]">Advisor</TableHead>}
                       <TableHead className="w-[160px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rosterItems(
-                      group.students,
-                      (s) => allComplete.has(s.id) || locks.has(s.id)
+                    {(pastYear == null
+                      ? rosterItems(group.students, (s) => allComplete.has(s.id) || locks.has(s.id))
+                      : // Past classes are here to be reviewed, so locked projects come first.
+                        rosterItems(group.students, (s) => !locks.has(s.id), ["Locked", "Not locked"])
                     ).map((item) => {
                       if (item.header) {
                         return (
                           <TableRow key={item.key} className="bg-muted/50 hover:bg-muted/50">
-                            <TableCell colSpan={5} className="py-1.5">
+                            <TableCell colSpan={pastYear == null ? 5 : 4} className="py-1.5">
                               <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
                                 {item.header.label}{" "}
                                 <span className="font-normal">({item.header.count})</span>
@@ -522,7 +592,9 @@ export function StudentRoster({
                         )
                       }
                       const student = item.student!
-                      const settled = allComplete.has(student.id) || locks.has(student.id)
+                      // Past classes don't dim: their locked projects are
+                      // what the view is for.
+                      const settled = pastYear == null && (allComplete.has(student.id) || locks.has(student.id))
                       return (
                       <TableRow
                         key={student.id}
@@ -531,7 +603,15 @@ export function StudentRoster({
                         className={`cursor-pointer hover:bg-muted/50 ${
                           settled ? "opacity-50 transition-opacity hover:opacity-100" : ""
                         }`}
-                        onClick={() => router.push(`${basePath}/${student.id}`)}
+                        onClick={() => {
+                          // A graduated student's project is reviewed as it was
+                          // locked: the public page renders the frozen snapshot.
+                          if (pastYear != null && publicBaseUrl) {
+                            window.open(`${publicBaseUrl}/${student.id}`, "_blank", "noopener,noreferrer")
+                          } else {
+                            router.push(`${basePath}/${student.id}`)
+                          }
+                        }}
                       >
                         <TableCell>
                           <div className="flex items-center gap-3">
@@ -542,7 +622,7 @@ export function StudentRoster({
                                   {getInitials(student.firstName, student.lastName)}
                                 </AvatarFallback>
                               </Avatar>
-                              {(reviewCounts.get(student.id) ?? 0) > 0 && (
+                              {pastYear == null && (reviewCounts.get(student.id) ?? 0) > 0 && (
                                 <span className="absolute -right-1.5 -top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white ring-2 ring-white">
                                   {reviewCounts.get(student.id)}
                                 </span>
@@ -584,8 +664,9 @@ export function StudentRoster({
                           )}
                         </TableCell>
                         <TableCell className="text-muted-foreground max-w-0 truncate">
-                          {student.studentEmail}
+                          {student.studentEmail || "—"}
                         </TableCell>
+                        {pastYear == null && (
                         <TableCell>
                           {(() => {
                             const mine = assignmentsFor(assignments, student.id, advisorProduct)
@@ -619,6 +700,7 @@ export function StudentRoster({
                             )
                           })()}
                         </TableCell>
+                        )}
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             {locksEndpoint && (
