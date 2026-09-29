@@ -228,6 +228,7 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class: `prose prose-neutral dark:prose-invert max-w-none ${minHeightClass} ${bodyClassName} focus:outline-none`,
+        spellcheck: "true",
       },
       // Annotate-only (teacher): permit selection + our comment command, but
       // block every content mutation so the student's prose is never edited.

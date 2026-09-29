@@ -451,6 +451,7 @@ export function StudentRoster({
                 placeholder="Search by name, email, or crew..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                spellCheck={false}
                 className="max-w-sm"
               />
               {pastClassYears.length > 0 && (

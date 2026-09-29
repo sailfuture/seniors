@@ -1883,6 +1883,7 @@ function QuestionSheet({
                 <Input
                   placeholder="Add a URL..."
                   value={resourceInput}
+                  spellCheck={false}
                   onChange={(e) => setResourceInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -1937,6 +1938,7 @@ function QuestionSheet({
             <Input
               placeholder="Auto-generated from label if empty"
               value={form.field_name}
+              spellCheck={false}
               onChange={(e) => updateField("field_name", e.target.value)}
               aria-invalid={!!duplicateOf}
             />
@@ -2125,6 +2127,7 @@ function GroupSheet({
               <Input
                 placeholder="Add a URL..."
                 value={groupResourceInput}
+                spellCheck={false}
                 onChange={(e) => setGroupResourceInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {

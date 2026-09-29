@@ -117,6 +117,7 @@ export function GoogleFontPicker({
           style={exactMatch ? { fontFamily: `"${exactMatch}", sans-serif` } : undefined}
           placeholder={placeholder || "Search Google Fonts or type a font name..."}
           value={value}
+          spellCheck={false}
           disabled={disabled}
           onChange={(e) => {
             onChange(e.target.value)

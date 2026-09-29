@@ -1547,7 +1547,6 @@ function DynamicField({
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
             disabled={isDimmed}
-            spellCheck
           />
         </InputGroup>
         )
@@ -1563,7 +1562,6 @@ function DynamicField({
             onBlur={onBlur}
             disabled={isDimmed}
             rows={4}
-            spellCheck
           />
           {(question.min_words > 0 || plagiarism) && (
             <InputGroupAddon align="block-end">

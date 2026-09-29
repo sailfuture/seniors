@@ -421,6 +421,7 @@ export function AdvisorManager() {
                   id="adv-first"
                   value={form.firstName}
                   onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                  spellCheck={false}
                 />
               </div>
               <div className="grid gap-1.5">
@@ -429,6 +430,7 @@ export function AdvisorManager() {
                   id="adv-last"
                   value={form.lastName}
                   onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                  spellCheck={false}
                 />
               </div>
             </div>
