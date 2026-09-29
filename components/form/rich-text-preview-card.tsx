@@ -1,5 +1,6 @@
 "use client"
 
+import { AI_BLOCK_THRESHOLD, normalizeAiPercent } from "@/lib/ai-submission-check"
 import { extractPlainText, richTextWordCount } from "@/lib/rich-text"
 
 const SNIPPET_WORDS = 50
@@ -25,7 +26,8 @@ function AiScoreReport({ data }: { data: PlagiarismData }) {
   const mixed = toPercent(data.mixed ?? 0)
   const max = Math.max(ai, human, mixed)
   const aiIsMax = ai === max && ai > 0
-  const rejected = ai > 50
+  // Same unrounded comparison as the submission gate, so the card agrees.
+  const rejected = normalizeAiPercent(data.class_probability_ai) > AI_BLOCK_THRESHOLD
 
   return (
     <div

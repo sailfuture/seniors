@@ -5,7 +5,7 @@ import type { FormApiConfig } from "@/lib/form-api-config"
  * percent AI (GPTZero `class_probability_ai`) is blocked from submitting or
  * resubmitting, on every product and every path.
  */
-export const AI_BLOCK_THRESHOLD = 50
+export const AI_BLOCK_THRESHOLD = 40
 
 /** Below this many words the check is skipped — too short to score reliably. */
 export const AI_CHECK_MIN_WORDS = 20
