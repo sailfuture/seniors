@@ -85,8 +85,10 @@ function kindOf(m: LanguageToolMatch, flagged: string): WritingIssueKind | null 
   const { id, issueType = "" } = m.rule
   const category = m.rule.category.id
 
-  // Spacing and typographic niceties (curly quotes, dashes) aren't worth a
-  // student's time.
+  // Spacing around punctuation ("happy,we", "apples ,", "it.The") is sloppy
+  // punctuation; other typographic niceties (curly quotes, dashes, double
+  // spaces) aren't worth a student's time.
+  if (/COMMA_PARENTHESIS_WHITESPACE|SENTENCE_WHITESPACE/.test(id)) return "punctuation"
   if (issueType === "whitespace" || category === "TYPOGRAPHY") return null
 
   // Rule ids name the grammar problem more precisely than the categories do

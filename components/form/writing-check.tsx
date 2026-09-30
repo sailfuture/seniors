@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import {
+  MUST_FIX_LABEL,
   WRITING_CATEGORIES,
   WRITING_CHECK_MAX_CHARS,
   WRITING_ISSUES,
@@ -85,14 +86,15 @@ function saveConfirmed(key: string, correct: boolean): Set<string> {
   return keys
 }
 
-/** The spelling and grammar flags still standing between the text and submitting. */
+/** The must-fix flags (spelling, capitalization, punctuation) still standing
+ *  between the text and submitting. */
 function unresolvedBlocking(run: WritingCheckRun, confirmed: Set<string>): WritingIssue[] {
   return run.issues.filter((i) => blocksSubmission(i.kind) && !confirmed.has(flagKey(run.text, i)))
 }
 
 /**
- * The submission gate: `ok` unless spelling or grammar flags remain that the
- * student hasn't marked correct. Fails open — if the checker can't run, the
+ * The submission gate: `ok` unless must-fix flags remain that the student
+ * hasn't marked correct. Fails open — if the checker can't run, the
  * submission goes ahead; this is a writing step, not an integrity check.
  */
 export async function runWritingGate(
@@ -176,8 +178,8 @@ export function useWritingCheck() {
 
 export type WritingCheckState = ReturnType<typeof useWritingCheck>
 
-/** Check Writing button. A red count shows the spelling and grammar items
- *  still to fix from the latest check. */
+/** Check Writing button. A red count shows the must-fix items still open from
+ *  the latest check. */
 export function WritingCheckButton({
   writing,
   text,
@@ -336,13 +338,13 @@ function Checklist({
       {heldBack &&
         (toFix > 0 ? (
           <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
-            Not submitted yet. Fix the {toFix} spelling and grammar{" "}
-            {toFix === 1 ? "item" : "items"} below first. If one is correct as written, like a
-            name, choose &ldquo;It&rsquo;s correct.&rdquo;
+            Not submitted yet. Fix the {toFix} {MUST_FIX_LABEL}{" "}
+            {toFix === 1 ? "item" : "items"} marked &ldquo;Must fix&rdquo; first. If one is
+            correct as written, like a name, choose &ldquo;It&rsquo;s correct.&rdquo;
           </p>
         ) : (
           <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-400">
-            Spelling and grammar are taken care of. You can submit now.
+            Nothing is holding up your submission now. You can submit.
           </p>
         ))}
       {stale && (
@@ -350,9 +352,16 @@ function Checklist({
           You&rsquo;ve edited since this check. Check again to update the list.
         </p>
       )}
-      <p className="text-sm font-medium">
-        {left === 0 ? "Everything is checked off." : `${left} of ${items.length} left to review`}
-      </p>
+      <div className="space-y-0.5">
+        <p className="text-sm font-medium">
+          {left === 0 ? "Everything is checked off." : `${left} of ${items.length} left to review`}
+        </p>
+        {!heldBack && toFix > 0 && (
+          <p className="text-xs text-red-600 dark:text-red-400">
+            {toFix} marked &ldquo;Must fix&rdquo; will hold up your submission until fixed.
+          </p>
+        )}
+      </div>
       {groups.map(({ category, items: groupItems }) => (
         <section key={category} className="space-y-2">
           <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
@@ -412,7 +421,14 @@ function ChecklistItem({
         aria-label={`Done: ${def.label}`}
       />
       <div className="min-w-0 flex-1 space-y-1">
-        {def.label !== def.category && <p className="text-xs font-semibold">{def.label}</p>}
+        {(def.label !== def.category || (def.blocks && !correct)) && (
+          <p className="flex items-center gap-2 text-xs">
+            {def.label !== def.category && <span className="font-semibold">{def.label}</span>}
+            {def.blocks && !correct && (
+              <span className="font-medium text-red-600 dark:text-red-400">Must fix</span>
+            )}
+          </p>
+        )}
         <p className="text-sm leading-relaxed break-words">
           {before}
           <mark className="text-foreground rounded-sm bg-amber-200/80 px-0.5 dark:bg-amber-400/30">

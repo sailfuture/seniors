@@ -4,77 +4,95 @@
  * lib/languagetool.ts sorts it into one of these kinds. Every sentence the
  * student reads comes from here — never LanguageTool's suggested replacement —
  * so the student makes each fix themselves.
+ *
+ * `blocks`: the kind must be fixed (or marked correct) before submitting. Only
+ * sloppy mechanics block — typos, capitals, basic punctuation. Grammar, word
+ * usage, clarity, style, and comma placement are advice.
  */
 export const WRITING_ISSUES = {
   spelling: {
     category: "Spelling",
     label: "Possible misspelling",
     message: "Check the spelling of the highlighted word.",
-  },
-  subject_verb: {
-    category: "Grammar",
-    label: "Subject/verb agreement",
-    message: "Check that the subject and verb agree in this sentence.",
-  },
-  verb_tense: {
-    category: "Grammar",
-    label: "Verb tense",
-    message: "Review the verb tense in this sentence.",
-  },
-  article: {
-    category: "Grammar",
-    label: "Article usage",
-    message: "Check whether a, an, or the belongs here.",
-  },
-  grammar: {
-    category: "Grammar",
-    label: "Grammar",
-    message: "Review the grammar in this sentence.",
-  },
-  comma: {
-    category: "Punctuation",
-    label: "Comma placement",
-    message: "Review comma placement in this sentence.",
-  },
-  punctuation: {
-    category: "Punctuation",
-    label: "Punctuation",
-    message: "Review the punctuation in this sentence.",
+    blocks: true,
   },
   capitalization: {
     category: "Capitalization",
     label: "Capitalization",
     message: "Check capitalization here.",
+    blocks: true,
+  },
+  punctuation: {
+    category: "Punctuation",
+    label: "Punctuation",
+    message: "Review the punctuation in this sentence.",
+    blocks: true,
+  },
+  comma: {
+    category: "Punctuation",
+    label: "Comma placement",
+    message: "Review comma placement in this sentence.",
+    blocks: false,
+  },
+  subject_verb: {
+    category: "Grammar",
+    label: "Subject/verb agreement",
+    message: "Check that the subject and verb agree in this sentence.",
+    blocks: false,
+  },
+  verb_tense: {
+    category: "Grammar",
+    label: "Verb tense",
+    message: "Review the verb tense in this sentence.",
+    blocks: false,
+  },
+  article: {
+    category: "Grammar",
+    label: "Article usage",
+    message: "Check whether a, an, or the belongs here.",
+    blocks: false,
+  },
+  grammar: {
+    category: "Grammar",
+    label: "Grammar",
+    message: "Review the grammar in this sentence.",
+    blocks: false,
   },
   word_usage: {
     category: "Word usage",
     label: "Word usage",
     message: "Check whether this is the correct form of the word.",
+    blocks: false,
   },
   hard_to_read: {
     category: "Clarity",
     label: "Hard to read",
     message: "This sentence may be difficult to read. Revise it for clarity.",
+    blocks: false,
   },
   wordy: {
     category: "Style",
     label: "Wordy phrase",
     message: "Review this phrase for unnecessary or overly complex wording.",
+    blocks: false,
   },
 } as const
 
 export type WritingIssueKind = keyof typeof WRITING_ISSUES
 
-/** Sheet order, top to bottom. */
+/** Sheet order, top to bottom: what blocks submitting comes first. */
 export const WRITING_CATEGORIES = [
   "Spelling",
-  "Grammar",
-  "Punctuation",
   "Capitalization",
+  "Punctuation",
+  "Grammar",
   "Word usage",
   "Clarity",
   "Style",
 ] as const
+
+/** What the blocking kinds are called in student-facing messages. */
+export const MUST_FIX_LABEL = "spelling, capitalization, and punctuation"
 
 /** One flagged passage: [start, end) character offsets into the checked text. */
 export interface WritingIssue {
@@ -86,11 +104,8 @@ export interface WritingIssue {
 /** Longest text one check accepts (roughly 5,000 words). */
 export const WRITING_CHECK_MAX_CHARS = 30_000
 
-/** Spelling and grammar must be fixed (or marked correct) before submitting;
- *  everything else on the checklist is advice. */
 export function blocksSubmission(kind: WritingIssueKind): boolean {
-  const category = WRITING_ISSUES[kind].category
-  return category === "Spelling" || category === "Grammar"
+  return WRITING_ISSUES[kind].blocks
 }
 
 /**
@@ -111,7 +126,12 @@ const SENTENCE_BREAK = /[.!?]["'”’)\]]*(?=\s|$)|\n/g
 const ABBREVIATION = /\b(?:Mr|Mrs|Ms|Dr|Prof|St|Jr|Sr|vs|etc|e\.g|i\.e)$/i
 
 function endsSentence(text: string, at: number, mark: string): boolean {
-  return mark === "\n" || !(mark[0] === "." && ABBREVIATION.test(text.slice(Math.max(0, at - 8), at)))
+  if (mark === "\n") return true
+  // Judged against the whole text, not the excerpt window: "year.i" is two
+  // sentences run together — show them together.
+  const next = text[at + mark.length]
+  if (next !== undefined && !/\s/.test(next)) return false
+  return !(mark[0] === "." && ABBREVIATION.test(text.slice(Math.max(0, at - 8), at)))
 }
 
 /**

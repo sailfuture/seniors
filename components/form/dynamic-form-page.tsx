@@ -74,6 +74,7 @@ import {
   WritingCheckSheet,
   type WritingCheckRun,
 } from "./writing-check"
+import { MUST_FIX_LABEL } from "@/lib/writing-check"
 import {
   extractParagraphText,
   extractPlainText,
@@ -660,15 +661,16 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         const text = isEssay ? extractPlainText(rawText) : rawText
         const textWordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-        // Spelling and grammar come first for written answers: the same text
-        // the question's Check Writing button checks, so marks carry over.
+        // The writing check comes first for written answers (typos, capitals,
+        // basic punctuation block): the same text the question's Check
+        // Writing button checks, so "It's correct" marks carry over.
         if ((isEssay || question?.question_types_id === QUESTION_TYPE.LONG_RESPONSE) && text.trim()) {
           setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
           try {
             const writing = await runWritingGate(isEssay ? extractParagraphText(rawText) : rawText)
             if (!writing.ok && writing.run) {
               if (!silent) {
-                toast.error("Fix the spelling and grammar items first. They're listed beside your answer.", {
+                toast.error(`Fix the ${MUST_FIX_LABEL} items first. They're listed beside your answer.`, {
                   duration: 6000,
                 })
               }
@@ -995,7 +997,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             }
             if (heldForWriting > 0) {
               toast.error(
-                `${heldForWriting} ${heldForWriting > 1 ? "answers have" : "answer has"} spelling or grammar to fix first. Use Check Writing on ${heldForWriting > 1 ? "each one" : "it"} to see what.`,
+                `${heldForWriting} ${heldForWriting > 1 ? "answers have" : "answer has"} ${MUST_FIX_LABEL} items to fix first. Use Check Writing on ${heldForWriting > 1 ? "each one" : "it"} to see them.`,
                 { duration: 6000 }
               )
             }
@@ -1564,7 +1566,7 @@ function DynamicField({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => {
               if (confirmAction === "send") {
-                // A submission held back for spelling/grammar opens its checklist.
+                // A submission held back by the writing check opens its checklist.
                 void onSendForReview?.().then((outcome) => {
                   if (outcome.writingHold) writing.show(outcome.writingHold, { heldBack: true })
                 })

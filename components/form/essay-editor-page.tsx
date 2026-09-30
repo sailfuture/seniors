@@ -23,6 +23,7 @@ import {
 import { RichTextEditor } from "./rich-text-editor"
 import { SaveIndicator } from "./save-indicator"
 import { useWritingCheck, WritingCheckButton, WritingCheckSheet } from "./writing-check"
+import { MUST_FIX_LABEL } from "@/lib/writing-check"
 import {
   isRichTextQuestion,
   richTextWordCount,
@@ -105,7 +106,7 @@ export function EssayEditorPage({
   // Submit / withdraw without leaving the editor.
   const [confirmSubmit, setConfirmSubmit] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  // Spelling/grammar checklist, which is also the first gate on submitting.
+  // Writing checklist, which is also the first gate on submitting.
   const writing = useWritingCheck()
 
   const patchReviewState = async (
@@ -154,10 +155,10 @@ export function EssayEditorPage({
     try {
       // Flush any pending edits so the checked text is the saved text.
       if (dirtyRef.current) await saveRef.current()
-      // Spelling and grammar come first; a held-back essay opens its checklist.
+      // The writing check comes first; a held-back essay opens its checklist.
       if (!(await writing.gate(extractParagraphText(valueRef.current)))) {
         setConfirmSubmit(false)
-        toast.error("Fix the spelling and grammar items first. They're listed beside your essay.", {
+        toast.error(`Fix the ${MUST_FIX_LABEL} items first. They're listed beside your essay.`, {
           duration: 6000,
         })
         return
@@ -729,8 +730,7 @@ export function EssayEditorPage({
             <DialogDescription>
               This will notify your teacher that this essay is ready for review,
               and pause editing until it&rsquo;s reviewed or withdrawn. A
-              spelling and grammar check and an AI check run as part of
-              submitting.
+              writing check and an AI check run as part of submitting.
             </DialogDescription>
           </DialogHeader>
           {submitting && (

@@ -22,6 +22,7 @@ import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import { FieldActivityStream, groupResolvedThreads, type ResolvedThreadEntry } from "@/components/form/field-activity-stream"
 import { useWritingCheck, WritingCheckButton, WritingCheckPanel } from "@/components/form/writing-check"
+import { MUST_FIX_LABEL } from "@/lib/writing-check"
 import { LazyRichTextDisplay } from "@/components/form/rich-text-display-lazy"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
@@ -924,7 +925,7 @@ function RevisionEditor({
   const [value, setValue] = useState(response.student_response ?? "")
   const [savingDraft, setSavingDraft] = useState(false)
   const [resubmitting, setResubmitting] = useState(false)
-  // Long answers get the spelling/grammar checklist, shown inline here since
+  // Long answers get the writing checklist, shown inline here since
   // this editor already sits in a sheet.
   const writing = useWritingCheck()
   const checksWriting = editable && typeId === QUESTION_TYPE.LONG_RESPONSE
@@ -944,12 +945,12 @@ function RevisionEditor({
 
   const resubmit = async () => {
     setResubmitting(true)
-    // Spelling and grammar first, the same gate as the section form. Keep the
+    // The writing check first, the same gate as the section form. Keep the
     // edit either way.
     if (checksWriting && !(await writing.gate(value))) {
       await onSaveDraft(value)
       setResubmitting(false)
-      toast.error("Fix the spelling and grammar items first. They're listed under your response.", {
+      toast.error(`Fix the ${MUST_FIX_LABEL} items first. They're listed under your response.`, {
         duration: 6000,
       })
       return
