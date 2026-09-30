@@ -9,6 +9,8 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+# pnpm only (pnpm-lock.yaml): an npm lockfile can make tools pick npm
+/package-lock.json
 
 # testing
 /coverage
