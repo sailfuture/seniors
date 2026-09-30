@@ -807,7 +807,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
 
   if (loading) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-4 md:p-6">
         <Skeleton className="h-8 w-48" />
         <Card>
           <CardHeader><Skeleton className="h-5 w-40" /></CardHeader>
@@ -893,7 +893,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const unreadSectionCount = allSectionComments.filter((c) => !c.isOld).length
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-4 md:p-6">
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold">{title}</h1>
@@ -1102,25 +1102,25 @@ function GroupSection({
           {completedCount > 0 && (
             <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
               <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-              <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-green-600 text-[9px] font-bold text-white">{completedCount}</span>
+              <span className="absolute -right-1.5 -top-1.5 flex size-[18px] items-center justify-center rounded-full bg-green-700 text-[10px] font-bold text-white">{completedCount}</span>
             </div>
           )}
           {readyCount > 0 && (
             <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${readyCount} ready for review`}>
               <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
-              <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{readyCount}</span>
+              <span className="absolute -right-1.5 -top-1.5 flex size-[18px] items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">{readyCount}</span>
             </div>
           )}
           {revisionCount > 0 && (
             <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${revisionCount} need revision`}>
               <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-              <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{revisionCount}</span>
+              <span className="absolute -right-1.5 -top-1.5 flex size-[18px] items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">{revisionCount}</span>
             </div>
           )}
           {blankCount > 0 && (
             <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${blankCount} not started`}>
               <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-              <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
+              <span className="absolute -right-1.5 -top-1.5 flex size-[18px] items-center justify-center rounded-full bg-gray-600 text-[10px] font-bold text-white">{blankCount}</span>
             </div>
           )}
           {groupComments.length > 0 && (() => {
@@ -1447,11 +1447,11 @@ function DynamicField({
             <HugeiconsIcon
               icon={ArrowDown01Icon}
               strokeWidth={2}
-              className={`size-2.5 shrink-0 transition-transform duration-200 ${isComplete ? "text-muted-foreground/60" : "text-muted-foreground/25"} ${questionCollapsed ? "-rotate-90" : ""}`}
+              className={`size-2.5 shrink-0 transition-transform duration-200 text-muted-foreground ${questionCollapsed ? "-rotate-90" : ""}`}
             />
           </div>
           <span className={isDimmed ? "opacity-50" : ""}>
-            <Label className={`text-muted-foreground text-xs font-medium ${isComplete ? "cursor-pointer" : ""}`}>{question.field_label}</Label>
+            <Label className={`text-foreground text-sm leading-snug font-medium ${isComplete ? "cursor-pointer" : ""}`}>{question.field_label}</Label>
           </span>
           {hasComments && (
             <CommentBadge
@@ -1486,7 +1486,7 @@ function DynamicField({
             <Button
               variant="outline"
               size="sm"
-              className="h-6 gap-1 px-2 text-[10px]"
+              className="h-7 gap-1 px-2.5 text-xs"
               asChild
               onClick={(e) => e.stopPropagation()}
             >
@@ -1510,7 +1510,7 @@ function DynamicField({
               <Button
                 variant="outline"
                 size="sm"
-                className={`h-6 px-2 text-[10px] ${!canSubmitForReview || submittingForReview || updatingStatus ? "pointer-events-none" : ""}`}
+                className={`h-7 px-2.5 text-xs ${!canSubmitForReview || submittingForReview || updatingStatus ? "pointer-events-none" : ""}`}
                 onClick={() => setConfirmAction("send")}
                 disabled={!canSubmitForReview || submittingForReview || updatingStatus}
                 title={!canSubmitForReview ? (!hasContent ? (isImageType ? "No image uploaded" : "Response is empty") : `Minimum ${question.min_words} words required`) : undefined}
@@ -1523,7 +1523,7 @@ function DynamicField({
             <Button
               variant="outline"
               size="sm"
-              className="h-6 px-2 text-[10px]"
+              className="h-7 px-2.5 text-xs"
               onClick={() => setConfirmAction("edit")}
               disabled={updatingStatus}
             >
@@ -1534,7 +1534,7 @@ function DynamicField({
             <Button
               variant="outline"
               size="sm"
-              className="h-6 px-2 text-[10px]"
+              className="h-7 px-2.5 text-xs"
               onClick={() => setConfirmAction("reopen")}
               disabled={updatingStatus}
             >
@@ -1543,12 +1543,12 @@ function DynamicField({
           )}
         </div>
         {relativeTime && (
-          <span className={`text-muted-foreground/60 shrink-0 text-[11px] ${isDimmed ? "opacity-50" : ""}`}>{relativeTime}</span>
+          <span className="text-muted-foreground shrink-0 text-xs">{relativeTime}</span>
         )}
       </div>
 
       <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${questionCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}>
-      <div className={`overflow-hidden ${isDimmed ? "opacity-50" : ""}`}>
+      <div className="overflow-hidden">
       <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1614,7 +1614,7 @@ function DynamicField({
         ) : (
         <InputGroup>
           <InputGroupInput
-            className={isDimmed ? "" : "font-semibold"}
+            className="md:text-base"
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -1632,7 +1632,7 @@ function DynamicField({
           <HighlightedTextarea
             writing={writing}
             field={InputGroupTextarea}
-            className={isDimmed ? "" : "font-semibold"}
+            className="min-h-32 px-3.5 py-3 leading-relaxed md:text-base"
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => {
@@ -1644,7 +1644,7 @@ function DynamicField({
             rows={4}
           />
           {(question.min_words > 0 || plagiarism || !isDimmed) && (
-            <InputGroupAddon align="block-end">
+            <InputGroupAddon align="block-end" className="px-3.5">
               <InputGroupText className="flex w-full items-center justify-between text-xs">
                 <span>{question.min_words > 0 ? <WordCount value={value} minWords={question.min_words} /> : ""}</span>
                 <span className="flex items-center gap-2">
@@ -1680,7 +1680,7 @@ function DynamicField({
 
       {typeId === QUESTION_TYPE.DROPDOWN && (
         <Select value={value} onValueChange={onChange} disabled={isDimmed}>
-          <SelectTrigger className={`w-full ${isDimmed ? "" : "font-semibold"}`}>
+          <SelectTrigger className="w-full">
             <SelectValue placeholder={question.placeholder || "Select..."} />
           </SelectTrigger>
           <SelectContent>
@@ -1696,7 +1696,7 @@ function DynamicField({
       {typeId === QUESTION_TYPE.URL && (
         <InputGroup>
           <InputGroupInput
-            className={isDimmed ? "" : "font-semibold"}
+            className="md:text-base"
             type="url"
             placeholder={question.placeholder || "https://..."}
             value={value}
@@ -1710,7 +1710,7 @@ function DynamicField({
       {typeId === QUESTION_TYPE.DATE && (
         <InputGroup>
           <InputGroupInput
-            className={isDimmed ? "" : "font-semibold"}
+            className="md:text-base"
             type="date"
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -1723,10 +1723,10 @@ function DynamicField({
       {typeId === QUESTION_TYPE.SOURCE && (
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label className="text-muted-foreground text-[11px]">Source Link</Label>
+            <Label className="text-muted-foreground text-xs font-medium">Source Link</Label>
             <InputGroup>
               <InputGroupInput
-                className={isDimmed ? "" : "font-semibold"}
+                className="md:text-base"
                 type="url"
                 placeholder="https://..."
                 value={sourceValues?.source_link ?? ""}
@@ -1737,10 +1737,10 @@ function DynamicField({
             </InputGroup>
           </div>
           <div className="space-y-1">
-            <Label className="text-muted-foreground text-[11px]">Title of Source</Label>
+            <Label className="text-muted-foreground text-xs font-medium">Title of Source</Label>
             <InputGroup>
               <InputGroupInput
-                className={isDimmed ? "" : "font-semibold"}
+                className="md:text-base"
                 placeholder="Enter title..."
                 value={sourceValues?.title_of_source ?? ""}
                 onChange={(e) => onSourceChange?.("title_of_source", e.target.value)}
@@ -1750,10 +1750,10 @@ function DynamicField({
             </InputGroup>
           </div>
           <div className="space-y-1">
-            <Label className="text-muted-foreground text-[11px]">Author / Publisher</Label>
+            <Label className="text-muted-foreground text-xs font-medium">Author / Publisher</Label>
             <InputGroup>
               <InputGroupInput
-                className={isDimmed ? "" : "font-semibold"}
+                className="md:text-base"
                 placeholder="Enter author or publisher..."
                 value={sourceValues?.author_name_or_publisher ?? ""}
                 onChange={(e) => onSourceChange?.("author_name_or_publisher", e.target.value)}
@@ -1763,10 +1763,10 @@ function DynamicField({
             </InputGroup>
           </div>
           <div className="space-y-1">
-            <Label className="text-muted-foreground text-[11px]">Date of Publication</Label>
+            <Label className="text-muted-foreground text-xs font-medium">Date of Publication</Label>
             <InputGroup>
               <InputGroupInput
-                className={isDimmed ? "" : "font-semibold"}
+                className="md:text-base"
                 type="date"
                 value={sourceValues?.date_of_publication ?? ""}
                 onChange={(e) => onSourceChange?.("date_of_publication", e.target.value)}
@@ -1804,7 +1804,7 @@ function PlagiarismScores({ data }: { data: GptZeroResult }) {
   const mixedIsMax = mixed === max && !aiIsMax && !humanIsMax
 
   return (
-    <span className="flex items-center gap-1.5 text-[11px]">
+    <span className="flex items-center gap-1.5 text-xs">
       <span className={aiIsMax ? "font-bold text-red-600" : "text-muted-foreground"}>
         AI: {ai}%
       </span>
@@ -1819,7 +1819,7 @@ function PlagiarismScores({ data }: { data: GptZeroResult }) {
       {relTime && (
         <>
           <span className="text-muted-foreground/40">&mdash;</span>
-          <span className="text-muted-foreground/60">{relTime}</span>
+          <span className="text-muted-foreground">{relTime}</span>
         </>
       )}
     </span>
@@ -1849,7 +1849,7 @@ function CurrencyInput({ value, onChange, onBlur, disabled }: { value: string; o
         <InputGroupText>$</InputGroupText>
       </InputGroupAddon>
       <InputGroupInput
-        className="font-semibold"
+        className="md:text-base"
         type="text"
         inputMode="numeric"
         placeholder="0"

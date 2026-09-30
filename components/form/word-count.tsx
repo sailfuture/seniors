@@ -11,7 +11,7 @@ export function WordCount({ value, minWords }: { value: string; minWords: number
     <span
       className={cn(
         "text-xs font-normal",
-        met ? "text-muted-foreground/60" : "text-muted-foreground/50"
+        met ? "text-green-700 dark:text-green-400" : "text-muted-foreground"
       )}
     >
       {count} / {minWords} min words

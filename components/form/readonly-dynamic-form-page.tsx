@@ -758,21 +758,21 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           displayValue = hasAny ? (
             <div className="grid gap-2 sm:grid-cols-2">
               <div>
-                <p className="text-muted-foreground text-[11px]">Source Link</p>
+                <p className="text-muted-foreground text-xs font-medium">Source Link</p>
                 {sl ? (
                   <a href={sl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-blue-600 underline break-all hover:text-blue-800 dark:text-blue-400">{sl}</a>
                 ) : <p className="text-muted-foreground text-sm">—</p>}
               </div>
               <div>
-                <p className="text-muted-foreground text-[11px]">Title of Source</p>
+                <p className="text-muted-foreground text-xs font-medium">Title of Source</p>
                 <p className="text-sm font-semibold">{ts || "—"}</p>
               </div>
               <div>
-                <p className="text-muted-foreground text-[11px]">Author / Publisher</p>
+                <p className="text-muted-foreground text-xs font-medium">Author / Publisher</p>
                 <p className="text-sm font-semibold">{ap || "—"}</p>
               </div>
               <div>
-                <p className="text-muted-foreground text-[11px]">Date of Publication</p>
+                <p className="text-muted-foreground text-xs font-medium">Date of Publication</p>
                 <p className="text-sm font-semibold">{dp || "—"}</p>
               </div>
             </div>
@@ -802,7 +802,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 </div>
               </div>
               {(q.min_words > 0 || showAiFooter) && (
-                <div className="text-muted-foreground/60 mt-1 flex items-center justify-between gap-2 text-xs">
+                <div className="text-muted-foreground mt-1 flex items-center justify-between gap-2 text-xs">
                   <span>
                     {q.min_words > 0 ? `${richTextWordCount(value)} / ${q.min_words} words` : ""}
                   </span>
@@ -824,11 +824,11 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         } else {
           displayValue = (
             <div>
-              <p className={`whitespace-pre-wrap text-sm ${qIsDimmed ? "" : "font-semibold"}`}>
+              <p className="max-w-prose whitespace-pre-wrap text-base leading-relaxed">
                 {value || "—"}
               </p>
               {isLong && (q.min_words > 0 || showAiFooter) && (
-                <div className="text-muted-foreground/60 mt-1 flex items-center justify-between gap-2 text-xs">
+                <div className="text-muted-foreground mt-1 flex items-center justify-between gap-2 text-xs">
                   <span>
                     {isLong && q.min_words > 0 ? `${getWordCount(value)} / ${q.min_words} words` : ""}
                   </span>
@@ -863,7 +863,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   asChild
                   size="sm"
                   variant="outline"
-                  className="h-6 bg-white px-2 text-[10px] dark:bg-transparent"
+                  className="h-7 bg-white px-2.5 text-xs dark:bg-transparent"
                 >
                   <Link href={`${cfg.adminBasePath}/${studentId}/essay/${q.id}`}>
                     Open document
@@ -875,7 +875,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           >
               <div className="flex items-center gap-2">
                 {relativeTime && !showAiFooter && (
-                  <span className="text-muted-foreground/60 text-[11px]">{relativeTime}</span>
+                  <span className="text-muted-foreground text-xs">{relativeTime}</span>
                 )}
                 <QuestionInstructions question={q} />
                 <TeacherComment
@@ -947,7 +947,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-6 bg-white px-2 text-[10px] dark:bg-transparent"
+                          className="h-7 bg-white px-2.5 text-xs dark:bg-transparent"
                           title="Undo — return to review"
                           onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
                         >
@@ -966,7 +966,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-6 bg-white px-2 text-[10px] dark:bg-transparent"
+                            className="h-7 bg-white px-2.5 text-xs dark:bg-transparent"
                             title="Undo — return to review"
                             onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
                           >
@@ -1228,7 +1228,7 @@ function PlagiarismScoresInline({ data }: { data: GptZeroResult }) {
   const mixedIsMax = mixed === max && !aiIsMax && !humanIsMax
 
   return (
-    <span className="flex items-center gap-1.5 text-[11px]">
+    <span className="flex items-center gap-1.5 text-xs">
       <span className={aiIsMax ? "font-bold text-red-600" : "text-muted-foreground"}>
         AI: {ai}%
       </span>
@@ -1243,7 +1243,7 @@ function PlagiarismScoresInline({ data }: { data: GptZeroResult }) {
       {relTime && (
         <>
           <span className="text-muted-foreground/40">&mdash;</span>
-          <span className="text-muted-foreground/60">{relTime}</span>
+          <span className="text-muted-foreground">{relTime}</span>
         </>
       )}
     </span>
@@ -1289,7 +1289,7 @@ function CollapsibleQuestionCard({
   return (
     <div
       data-field-name={fieldName}
-      className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan} ${isDimmed ? "opacity-50" : ""}`}
+      className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan} ${isDimmed ? "opacity-75" : ""}`}
     >
       <div
         className={`mb-1.5 flex items-center justify-between ${isComplete ? "cursor-pointer select-none" : ""}`}
@@ -1300,10 +1300,10 @@ function CollapsibleQuestionCard({
             <HugeiconsIcon
               icon={ArrowDown01Icon}
               strokeWidth={2}
-              className={`size-2.5 shrink-0 transition-transform duration-200 ${isComplete ? "text-muted-foreground/60" : "text-muted-foreground/25"} ${collapsed ? "-rotate-90" : ""}`}
+              className={`size-2.5 shrink-0 transition-transform duration-200 text-muted-foreground ${collapsed ? "-rotate-90" : ""}`}
             />
           </div>
-          <Label className={`text-muted-foreground text-xs font-medium ${isComplete ? "cursor-pointer" : ""}`}>
+          <Label className={`text-foreground text-sm leading-snug font-medium ${isComplete ? "cursor-pointer" : ""}`}>
             {label}
           </Label>
           {labelAction && <div onClick={(e) => e.stopPropagation()}>{labelAction}</div>}

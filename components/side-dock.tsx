@@ -37,7 +37,7 @@ export function SideDockColumn() {
       className={cn(
         "bg-background flex-col border-l print:hidden",
         dock?.owner ? "flex" : "hidden",
-        "fixed inset-x-0 top-(--header-height) bottom-0 z-40 md:static md:z-auto md:w-[380px] md:shrink-0 xl:w-[420px]"
+        "fixed inset-x-0 top-(--header-height) bottom-0 z-40 md:static md:z-auto md:w-[380px] md:shrink-0 2xl:w-[420px]"
       )}
     />
   )

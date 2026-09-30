@@ -528,7 +528,7 @@ export function EssayEditorPage({
       </button>
       <span className="text-muted-foreground whitespace-nowrap text-xs tabular-nums">
         {minWords ? (
-          <span className={wordCount >= minWords ? "text-green-600" : undefined}>
+          <span className={wordCount >= minWords ? "text-green-700 dark:text-green-400" : undefined}>
             {wordCount} / {minWords} min words
           </span>
         ) : (
@@ -613,7 +613,7 @@ export function EssayEditorPage({
           flex-1 chain stretches it to the bottom of the container. */}
       <div className="mt-4 flex flex-1 flex-col rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20">
         <RichTextEditor
-          className="flex-1 rounded-lg border bg-white shadow-sm dark:bg-card"
+          className="mx-auto w-full max-w-3xl flex-1 rounded-lg border bg-white shadow-sm dark:bg-card"
           value={value}
           onChange={handleChange}
           onBlur={handleBlur}
