@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { RichTextEditor } from "./rich-text-editor"
 import { SaveIndicator } from "./save-indicator"
-import { useWritingCheck, WritingCheckButton, WritingCheckSheet } from "./writing-check"
+import { useWritingCheck, WritingCheckButton, WritingCheckDock } from "./writing-check"
 import { MUST_FIX_LABEL } from "@/lib/writing-check"
 import {
   isRichTextQuestion,
@@ -620,6 +620,7 @@ export function EssayEditorPage({
           disabled={isLocked}
           placeholder={question.placeholder}
           showThreadList
+          writing={writing}
           toolbarLeft={toolbarActions}
           toolbarRight={toolbarExtras}
           comments={
@@ -640,7 +641,7 @@ export function EssayEditorPage({
         />
       </div>
 
-      <WritingCheckSheet writing={writing} text={paragraphText} />
+      <WritingCheckDock writing={writing} text={paragraphText} title={question.field_label} />
 
       <Dialog open={aiOpen} onOpenChange={(o) => { if (!aiLoading) setAiOpen(o) }}>
         <DialogContent

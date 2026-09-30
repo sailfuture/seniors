@@ -21,7 +21,12 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import { FieldActivityStream, groupResolvedThreads, type ResolvedThreadEntry } from "@/components/form/field-activity-stream"
-import { useWritingCheck, WritingCheckButton, WritingCheckPanel } from "@/components/form/writing-check"
+import {
+  HighlightedTextarea,
+  useWritingCheck,
+  WritingCheckButton,
+  WritingCheckPanel,
+} from "@/components/form/writing-check"
 import { MUST_FIX_LABEL } from "@/lib/writing-check"
 import { LazyRichTextDisplay } from "@/components/form/rich-text-display-lazy"
 import { ZoomableImage } from "@/components/zoomable-image"
@@ -927,7 +932,7 @@ function RevisionEditor({
   const [resubmitting, setResubmitting] = useState(false)
   // Long answers get the writing checklist, shown inline here since
   // this editor already sits in a sheet.
-  const writing = useWritingCheck()
+  const writing = useWritingCheck({ inline: true })
   const checksWriting = editable && typeId === QUESTION_TYPE.LONG_RESPONSE
 
   const wordCount = value.trim().split(/\s+/).filter(Boolean).length
@@ -976,9 +981,13 @@ function RevisionEditor({
         <p className="text-muted-foreground mb-2 mt-6 text-xs font-medium uppercase tracking-wide">Your response</p>
         {editable ? (
           <>
-            <Textarea
+            <HighlightedTextarea
+              writing={writing}
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => {
+                writing.track(e.target.value)
+                setValue(e.target.value)
+              }}
               rows={typeId === QUESTION_TYPE.LONG_RESPONSE ? 8 : 3}
               className="resize-y"
               placeholder="Edit your response..."

@@ -19,9 +19,9 @@ const isAdvisorDirectoryRoute = createRouteMatcher(["/admin/advisors(.*)"])
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
-    // Send signed-out visitors to our branded login, not Clerk's hosted page.
+    // Send signed-out visitors to the home page's sign-in, not Clerk's hosted page.
     await auth.protect({
-      unauthenticatedUrl: new URL("/login", req.url).toString(),
+      unauthenticatedUrl: new URL("/", req.url).toString(),
     })
   }
 
@@ -31,7 +31,7 @@ export default clerkMiddleware(async (auth, req) => {
   // through rather than lock staff out.
   if (isAdminRoute(req)) {
     const { sessionClaims } = await auth.protect({
-      unauthenticatedUrl: new URL("/login", req.url).toString(),
+      unauthenticatedUrl: new URL("/", req.url).toString(),
     })
     const metadata = (sessionClaims as Record<string, unknown> | null)?.metadata
     const role =

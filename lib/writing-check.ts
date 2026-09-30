@@ -7,7 +7,7 @@
  *
  * `blocks`: the kind must be fixed (or marked correct) before submitting. Only
  * sloppy mechanics block — typos, capitals, basic punctuation. Grammar, word
- * usage, clarity, style, and comma placement are advice.
+ * usage, and comma placement are advice. Style and clarity aren't checked.
  */
 export const WRITING_ISSUES = {
   spelling: {
@@ -64,18 +64,6 @@ export const WRITING_ISSUES = {
     message: "Check whether this is the correct form of the word.",
     blocks: false,
   },
-  hard_to_read: {
-    category: "Clarity",
-    label: "Hard to read",
-    message: "This sentence may be difficult to read. Revise it for clarity.",
-    blocks: false,
-  },
-  wordy: {
-    category: "Style",
-    label: "Wordy phrase",
-    message: "Review this phrase for unnecessary or overly complex wording.",
-    blocks: false,
-  },
 } as const
 
 export type WritingIssueKind = keyof typeof WRITING_ISSUES
@@ -87,8 +75,6 @@ export const WRITING_CATEGORIES = [
   "Punctuation",
   "Grammar",
   "Word usage",
-  "Clarity",
-  "Style",
 ] as const
 
 /** What the blocking kinds are called in student-facing messages. */

@@ -61,7 +61,9 @@ export function issuesFromMatches(text: string, matches: LanguageToolMatch[]): W
     // Some matches start at the space before a word (" and"); highlight the word.
     while (start < end && /\s/.test(text[start])) start++
     while (end > start && /\s/.test(text[end - 1])) end--
-    if (start === end) continue
+    // A match across a line break reads a heading and the paragraph under it
+    // as one sentence ("My Business / my business will…") — not a real error.
+    if (start === end || text.slice(start, end).includes("\n")) continue
 
     const kind = kindOf(m, text.slice(start, end))
     if (!kind || seen.has(`${start}:${end}`)) continue
@@ -90,6 +92,17 @@ function kindOf(m: LanguageToolMatch, flagged: string): WritingIssueKind | null 
   // spaces) aren't worth a student's time.
   if (/COMMA_PARENTHESIS_WHITESPACE|SENTENCE_WHITESPACE/.test(id)) return "punctuation"
   if (issueType === "whitespace" || category === "TYPOGRAPHY") return null
+  // Style and clarity suggestions (wordiness, long sentences, tone) are left
+  // out: the check sticks to the basics.
+  if (
+    STYLE_CATEGORIES.has(category) ||
+    category.includes("CLARITY") ||
+    /LONG_SENTENCE/.test(id) ||
+    issueType === "style" ||
+    issueType === "register"
+  ) {
+    return null
+  }
 
   // Rule ids name the grammar problem more precisely than the categories do
   // (an a/an rule sits under MISC, a lowercase "i" under TYPOS).
@@ -113,8 +126,6 @@ function kindOf(m: LanguageToolMatch, flagged: string): WritingIssueKind | null 
   }
 
   if (category === "PUNCTUATION" || issueType === "typographical") return "punctuation"
-  if (/LONG_SENTENCE/.test(id) || category.includes("CLARITY")) return "hard_to_read"
-  if (STYLE_CATEGORIES.has(category) || issueType === "style" || issueType === "register") return "wordy"
   // A doubled word ("the the") is a typo.
   if (issueType === "duplication") return "spelling"
   return "grammar"

@@ -1,14 +1,28 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import Link from "next/link"
+import localFont from "next/font/local"
 import { redirect } from "next/navigation"
 import { auth } from "@clerk/nextjs/server"
-import { Button } from "@/components/ui/button"
+import { LoginForm } from "@/components/login-form"
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+
+// Self-hosted so the headline never flashes a fallback face, and declared
+// here so only this page preloads it. Only the Medium (500) cut is loaded —
+// style it with font-medium, never font-bold, or the browser synthesizes a
+// faux bold from this file.
+const switzer = localFont({
+  src: "./fonts/Switzer-Medium.woff2",
+  weight: "500",
+  style: "normal",
+  variable: "--font-switzer",
+  display: "swap",
+})
 
 export const metadata: Metadata = {
   title: { absolute: "SailFuture Academy Senior Dashboard" },
@@ -39,40 +53,60 @@ const FEATURES = [
   },
 ]
 
-export default async function Home() {
+/**
+ * The public home page is also the sign-in page: the sign-in card up top, and
+ * below it the description of the dashboard that Google's OAuth reviewers
+ * require an anonymous visitor to see (purpose, Google data use, privacy
+ * policy). Keep the name identical to the Google consent screen.
+ */
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string | string[] }>
+}) {
   const { userId } = await auth()
+  const { error } = await searchParams
 
-  if (userId) {
+  // Signed-in students and staff go straight to their dashboard — except an
+  // account the roster turned away, which gets the sign-in card again.
+  if (userId && error !== "not_authorized") {
     redirect("/dashboard")
   }
 
   return (
-    <div className="bg-muted min-h-svh px-4 py-10 md:py-16">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-10">
-        <header className="flex flex-col items-center gap-5 text-center">
+    <div className={`${switzer.variable} bg-muted min-h-svh`}>
+      <section className="relative overflow-hidden bg-[#111a2e] px-6 py-12 md:py-16">
+        {/* Soft blue glow falling from the top, fading into the navy base. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,#1d3160_0%,#16223f_40%,transparent_75%)]"
+        />
+        <div className="relative mx-auto flex w-full max-w-md flex-col items-center gap-6 text-center">
           <img
             src="/images/sailfuture-square.webp"
             alt="SailFuture Academy"
-            className="size-20 rounded-full border-[3px] border-white shadow-md"
+            className="size-16 rounded-full border-2 border-gray-300 shadow-lg"
           />
-          <div className="flex flex-col gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-              SailFuture Academy Senior Dashboard
-            </h1>
-            <p className="text-muted-foreground mx-auto max-w-xl text-base">
-              The SailFuture Academy Senior Dashboard is the private academic
-              platform that SailFuture Academy seniors and staff use to plan,
-              submit, and track the senior projects required for graduation.
-            </p>
-          </div>
-          <Button
-            asChild
-            size="lg"
-            className="bg-[#0f1f52] text-white hover:bg-[#152a6b]"
-          >
-            <Link href="/login">Sign in with your school Google account</Link>
-          </Button>
-        </header>
+          <h1 className="text-balance font-[family-name:var(--font-switzer)] text-4xl font-medium tracking-tight text-white md:text-5xl">
+            SailFuture Academy Senior Dashboard
+          </h1>
+          <p className="-mt-2 text-sm text-white/60">
+            Students and teachers continue with Google.
+            <br />
+            Thesis advisors sign in with email or phone.
+          </p>
+          <Suspense>
+            <LoginForm />
+          </Suspense>
+        </div>
+      </section>
+
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10 md:py-14">
+        <p className="text-muted-foreground mx-auto max-w-xl text-center text-base">
+          The SailFuture Academy Senior Dashboard is the private academic
+          platform that SailFuture Academy seniors and staff use to plan,
+          submit, and track the senior projects required for graduation.
+        </p>
 
         <section className="flex flex-col gap-4">
           <h2 className="text-center text-lg font-semibold tracking-tight">

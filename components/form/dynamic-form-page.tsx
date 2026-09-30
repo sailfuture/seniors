@@ -68,10 +68,11 @@ import { LineItemsInput } from "./line-items-input"
 import { isLineItemsQuestion } from "@/lib/line-items"
 import { RichTextPreviewCard } from "./rich-text-preview-card"
 import {
+  HighlightedTextarea,
   runWritingGate,
   useWritingCheck,
   WritingCheckButton,
-  WritingCheckSheet,
+  WritingCheckDock,
   type WritingCheckRun,
 } from "./writing-check"
 import { MUST_FIX_LABEL } from "@/lib/writing-check"
@@ -1625,12 +1626,19 @@ function DynamicField({
       )}
 
       {typeId === QUESTION_TYPE.LONG_RESPONSE && (
-        <InputGroup>
-          <InputGroupTextarea
+        // h-auto: the textarea sits inside the highlight wrapper, so the
+        // group's own "has a textarea child" sizing no longer applies.
+        <InputGroup className="h-auto">
+          <HighlightedTextarea
+            writing={writing}
+            field={InputGroupTextarea}
             className={isDimmed ? "" : "font-semibold"}
             placeholder={question.placeholder}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => {
+              writing.track(e.target.value)
+              onChange(e.target.value)
+            }}
             onBlur={onBlur}
             disabled={isDimmed}
             rows={4}
@@ -1650,7 +1658,11 @@ function DynamicField({
       )}
 
       {(typeId === QUESTION_TYPE.LONG_RESPONSE || isRichTextType) && (
-        <WritingCheckSheet writing={writing} text={isRichTextType ? extractParagraphText(value) : value} />
+        <WritingCheckDock
+          writing={writing}
+          text={isRichTextType ? extractParagraphText(value) : value}
+          title={question.field_label}
+        />
       )}
 
       {typeId === QUESTION_TYPE.CURRENCY && (

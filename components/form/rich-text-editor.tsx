@@ -52,6 +52,16 @@ import { COMMENT_MARK_NAME } from "@/lib/rich-text-comment-mark"
 import { useInlineComments, generateThreadId, type InlineThread } from "@/lib/inline-comments"
 import { Plugin, PluginKey } from "@tiptap/pm/state"
 import { Decoration, DecorationSet } from "@tiptap/pm/view"
+import { blocksSubmission } from "@/lib/writing-check"
+import type { WritingCheckState } from "./writing-check"
+import {
+  WRITING_EDITED_EVENT,
+  WritingHighlights,
+  findHighlight,
+  paragraphTextMap,
+  writingHighlightsKey,
+  type WritingHighlight,
+} from "./writing-highlights"
 
 export interface RichTextCommentConfig {
   commentsEndpoint: string
@@ -145,6 +155,7 @@ export function RichTextEditor({
   onCommentsSheetOpenChange,
   showCommentsButton = true,
   onCommentCounts,
+  writing,
 }: {
   value: string
   onChange: (value: string) => void
@@ -174,6 +185,9 @@ export function RichTextEditor({
   showCommentsButton?: boolean
   /** Reports thread counts so an external button can badge itself. */
   onCommentCounts?: (counts: { open: number; unread: number }) => void
+  /** The page's writing check: its flags are highlighted in the essay while
+   *  the checklist is open, and an item can jump to its words. */
+  writing?: WritingCheckState
 }) {
   const lastEmitted = useRef(value)
   const [loadError, setLoadError] = useState(false)
@@ -222,6 +236,7 @@ export function RichTextEditor({
       Placeholder.configure({
         placeholder: placeholder || "Start writing...",
       }),
+      WritingHighlights,
     ],
     content: parseRichText(value) ?? "",
     editable: !disabled,
@@ -294,6 +309,65 @@ export function RichTextEditor({
   useEffect(() => {
     editor?.setEditable(!disabled && !loadError)
   }, [editor, disabled, loadError])
+
+  // Writing check: highlight each fresh check's flags on their words. The
+  // check ran on this same text, so its offsets map straight onto the doc;
+  // if the essay has changed since, there's nothing reliable to highlight.
+  const writingRun = writing?.run
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    const { tr } = editor.state
+    if (!writingRun) {
+      editor.view.dispatch(tr.setMeta(writingHighlightsKey, { clear: true }))
+      return
+    }
+    const { text, pos } = paragraphTextMap(editor.state.doc)
+    if (text !== writingRun.text) {
+      editor.view.dispatch(tr.setMeta(writingHighlightsKey, { clear: true }))
+      return
+    }
+    const set: WritingHighlight[] = []
+    writingRun.issues.forEach((issue, index) => {
+      // Step in past the line breaks between blocks, which have no position.
+      let first = issue.start
+      let last = issue.end - 1
+      while (first <= last && pos[first] < 0) first++
+      while (last >= first && pos[last] < 0) last--
+      if (first <= last) {
+        set.push({ index, from: pos[first], to: pos[last] + 1, blocks: blocksSubmission(issue.kind) })
+      }
+    })
+    editor.view.dispatch(tr.setMeta(writingHighlightsKey, { set }))
+  }, [editor, writingRun])
+
+  const writingActive = writing?.activeIndex ?? null
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.view.dispatch(editor.state.tr.setMeta(writingHighlightsKey, { active: writingActive }))
+  }, [editor, writingActive])
+
+  const markWritingEdited = writing?.markEdited
+  useEffect(() => {
+    if (!editor || !markWritingEdited) return
+    const dom = editor.view.dom
+    const onEdited = (e: Event) => markWritingEdited((e as CustomEvent<number[]>).detail)
+    dom.addEventListener(WRITING_EDITED_EVENT, onEdited)
+    return () => dom.removeEventListener(WRITING_EDITED_EVENT, onEdited)
+  }, [editor, markWritingEdited])
+
+  const setWritingLocator = writing?.setLocator
+  useEffect(() => {
+    if (!editor || !setWritingLocator) return
+    setWritingLocator((issue) => {
+      const highlight = findHighlight(
+        editor.state.doc,
+        writingHighlightsKey.getState(editor.state),
+        issue.index
+      )
+      if (highlight) editor.chain().focus().setTextSelection(highlight.to).scrollIntoView().run()
+    })
+    return () => setWritingLocator(null)
+  }, [editor, setWritingLocator])
 
   // Follow the selection with a floating comment chip. selectionUpdate fires
   // on every change (including collapse), so the chip hides itself.
@@ -640,6 +714,8 @@ export function RichTextEditor({
       )}
       <EditorContent
         editor={editor}
+        // Writing-check highlights only show while the checklist is open.
+        data-wc-hidden={writing && !writing.open ? "true" : undefined}
         className={cn(
           "flex flex-1 flex-col [&>.tiptap]:flex-1",
           // A disabled document is visibly inert (submitted/complete/locked),

@@ -38,7 +38,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ClerkProvider
-          signInUrl="/login"
+          signInUrl="/"
           signInFallbackRedirectUrl="/dashboard"
           appearance={{
             // Match the SailFuture navy across any Clerk-rendered UI.

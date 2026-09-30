@@ -1,18 +1,14 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { Loader2 } from "lucide-react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { DocumentValidationIcon } from "@hugeicons/core-free-icons"
+import { Cancel01Icon, DocumentValidationIcon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { Textarea } from "@/components/ui/textarea"
+import { useSideDock } from "@/components/side-dock"
 import { cn } from "@/lib/utils"
 import {
   MUST_FIX_LABEL,
@@ -23,6 +19,7 @@ import {
   excerptAround,
   flagKey,
   type WritingIssue,
+  type WritingIssueKind,
 } from "@/lib/writing-check"
 
 const CHECK_FAILED = "The check couldn't be completed. Please try again."
@@ -86,8 +83,8 @@ function saveConfirmed(key: string, correct: boolean): Set<string> {
   return keys
 }
 
-/** The must-fix flags (spelling, capitalization, punctuation) still standing
- *  between the text and submitting. */
+/** The must-fix flags (spelling, capitalization, punctuation) in a fresh
+ *  check that the student hasn't marked correct. */
 function unresolvedBlocking(run: WritingCheckRun, confirmed: Set<string>): WritingIssue[] {
   return run.issues.filter((i) => blocksSubmission(i.kind) && !confirmed.has(flagKey(run.text, i)))
 }
@@ -108,26 +105,90 @@ export async function runWritingGate(
   }
 }
 
-/** State behind one Check Writing button and its checklist. */
-export function useWritingCheck() {
-  const [open, setOpen] = useState(false)
+/**
+ * A flag as it stands now: `at` is where it sat in the checked text (for the
+ * excerpt and the "It's correct" key); `start`/`end` follow it through the
+ * student's edits. Once its own words change, it's `edited` — being fixed.
+ */
+export interface LiveIssue {
+  index: number
+  kind: WritingIssueKind
+  key: string
+  at: { start: number; end: number }
+  start: number
+  end: number
+  edited: boolean
+}
+
+interface LiveText {
+  text: string
+  issues: LiveIssue[]
+}
+
+/** Moves flags through one edit (typing is always one contiguous change). */
+function shiftIssues(prev: string, next: string, issues: LiveIssue[]): LiveIssue[] {
+  const max = Math.min(prev.length, next.length)
+  let head = 0
+  while (head < max && prev[head] === next[head]) head++
+  let tail = 0
+  while (tail < max - head && prev[prev.length - 1 - tail] === next[next.length - 1 - tail]) tail++
+  const editEnd = prev.length - tail
+  const delta = next.length - prev.length
+  return issues.map((issue) => {
+    if (issue.edited || issue.end <= head) return issue
+    if (issue.start >= editEnd) return { ...issue, start: issue.start + delta, end: issue.end + delta }
+    return { ...issue, edited: true }
+  })
+}
+
+/** State behind one Check Writing button, its checklist, and its highlights.
+ *  `inline` keeps the checklist in the page (for use inside another sheet)
+ *  instead of the side dock. */
+export function useWritingCheck({ inline = false }: { inline?: boolean } = {}) {
+  const dock = useSideDock()
+  const docked = !inline && dock.available
+  const [inlineOpen, setInlineOpen] = useState(false)
+  const open = docked ? dock.open : inlineOpen
+  const setOpen = docked ? dock.setOpen : setInlineOpen
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [run, setRun] = useState<WritingCheckRun | null>(null)
+  const [live, setLive] = useState<LiveText | null>(null)
   const [done, setDone] = useState<Set<number>>(() => new Set())
   const [confirmed, setConfirmed] = useState<Set<string>>(() => new Set())
   // The checklist opened because a submission was held back; it says so.
   const [heldBack, setHeldBack] = useState(false)
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  // Set by the text box the flags belong to, so an item can jump to its words.
+  const locatorRef = useRef<((issue: LiveIssue) => void) | null>(null)
 
-  const show = useCallback((next: WritingCheckRun, opts: { heldBack?: boolean } = {}) => {
-    setRun(next)
-    setDone(new Set())
-    setConfirmed(loadConfirmed())
-    setError(null)
-    setHeldBack(!!opts.heldBack)
-    setOpen(true)
-  }, [])
+  const show = useCallback(
+    (next: WritingCheckRun, opts: { heldBack?: boolean } = {}) => {
+      setRun(next)
+      setLive({
+        text: next.text,
+        issues: next.issues.map((issue, index) => ({
+          index,
+          kind: issue.kind,
+          key: flagKey(next.text, issue),
+          at: { start: issue.start, end: issue.end },
+          start: issue.start,
+          end: issue.end,
+          edited: false,
+        })),
+      })
+      setDone(new Set())
+      setConfirmed(loadConfirmed())
+      setError(null)
+      setHeldBack(!!opts.heldBack)
+      setActiveIndex(null)
+      setOpen(true)
+    },
+    [setOpen]
+  )
 
+  /** Runs a fresh check and shows it. */
   const check = useCallback(
     async (text: string) => {
       setOpen(true)
@@ -141,7 +202,16 @@ export function useWritingCheck() {
         setLoading(false)
       }
     },
-    [show]
+    [show, setOpen]
+  )
+
+  /** The button: reopens the last results, or checks if there are none yet. */
+  const openOrCheck = useCallback(
+    (text: string) => {
+      if (run) setOpen(true)
+      else void check(text)
+    },
+    [run, setOpen, check]
   )
 
   /** For submit handlers: true when the text may be submitted; otherwise
@@ -160,6 +230,43 @@ export function useWritingCheck() {
     [show]
   )
 
+  /** Call from a plain text box's onChange so the flags follow the edit. */
+  const track = useCallback((next: string) => {
+    setLive((prev) =>
+      prev && prev.text !== next
+        ? { text: next, issues: shiftIssues(prev.text, next, prev.issues) }
+        : prev
+    )
+  }, [])
+
+  /** For editors that track positions themselves (the essay editor). */
+  const markEdited = useCallback((indexes: number[]) => {
+    setLive((prev) =>
+      // Already marked: keep the same state so React can skip the render.
+      prev && prev.issues.some((issue) => !issue.edited && indexes.includes(issue.index))
+        ? {
+            ...prev,
+            issues: prev.issues.map((issue) =>
+              indexes.includes(issue.index) ? { ...issue, edited: true } : issue
+            ),
+          }
+        : prev
+    )
+  }, [])
+
+  const setLocator = useCallback((locate: ((issue: LiveIssue) => void) | null) => {
+    locatorRef.current = locate
+  }, [])
+
+  const locate = useCallback(
+    (index: number) => {
+      setActiveIndex(index)
+      const issue = live?.issues.find((i) => i.index === index)
+      if (issue && !issue.edited) locatorRef.current?.(issue)
+    },
+    [live]
+  )
+
   const toggleDone = useCallback((index: number) => {
     setDone((prev) => {
       const next = new Set(prev)
@@ -173,13 +280,42 @@ export function useWritingCheck() {
     setConfirmed(saveConfirmed(key, correct))
   }, [])
 
-  return { open, setOpen, loading, error, run, done, confirmed, heldBack, show, check, gate, toggleDone, markCorrect }
+  // Must-fix flags that still stand: not being edited, not marked correct.
+  const toFix = live
+    ? live.issues.filter((i) => blocksSubmission(i.kind) && !i.edited && !confirmed.has(i.key)).length
+    : 0
+
+  return {
+    docked,
+    dockNode: dock.node,
+    open,
+    setOpen,
+    loading,
+    error,
+    run,
+    live,
+    done,
+    confirmed,
+    heldBack,
+    activeIndex,
+    toFix,
+    show,
+    check,
+    openOrCheck,
+    gate,
+    track,
+    markEdited,
+    setLocator,
+    locate,
+    toggleDone,
+    markCorrect,
+  }
 }
 
 export type WritingCheckState = ReturnType<typeof useWritingCheck>
 
-/** Check Writing button. A red count shows the must-fix items still open from
- *  the latest check. */
+/** Check Writing button. Reopens the last results; "Check Again" in the
+ *  checklist runs a fresh check. A red count shows must-fix items left. */
 export function WritingCheckButton({
   writing,
   text,
@@ -194,21 +330,19 @@ export function WritingCheckButton({
   compact?: boolean
 }) {
   const tooLong = text.length > WRITING_CHECK_MAX_CHARS
-  const toFix =
-    writing.run && writing.run.text === text
-      ? unresolvedBlocking(writing.run, writing.confirmed).length
-      : 0
   const iconClass = compact ? "size-3.5" : "size-4"
 
   return (
     <button
       type="button"
-      onClick={() => writing.check(text)}
+      onClick={() => writing.openOrCheck(text)}
       disabled={disabled || writing.loading || !text.trim() || tooLong}
       title={tooLong ? "Too long to check in one go" : "Check spelling, grammar, and punctuation"}
+      aria-pressed={writing.open}
       className={cn(
         "hover:bg-accent text-foreground inline-flex shrink-0 items-center gap-1.5 rounded-md border font-medium transition-colors disabled:opacity-50",
-        compact ? "h-6 px-1.5 text-[11px]" : "h-8 px-2 text-xs"
+        writing.open && "bg-accent",
+        compact ? "h-7 px-2 text-xs" : "h-8 px-2 text-xs"
       )}
     >
       {writing.loading ? (
@@ -217,41 +351,50 @@ export function WritingCheckButton({
         <HugeiconsIcon icon={DocumentValidationIcon} strokeWidth={2} className={iconClass} />
       )}
       Check Writing
-      {toFix > 0 && (
+      {writing.toFix > 0 && (
         <span className="rounded-full bg-red-600 px-1.5 text-[10px] leading-4 font-semibold text-white">
-          {toFix}
+          {writing.toFix}
         </span>
       )}
     </button>
   )
 }
 
-/** The checklist in a side sheet that stays open while the student edits. */
-export function WritingCheckSheet({ writing, text }: { writing: WritingCheckState; text: string }) {
-  return (
-    <Sheet modal={false} open={writing.open} onOpenChange={writing.setOpen}>
-      <SheetContent
-        className="flex flex-col gap-0 p-0 sm:max-w-md"
-        showOverlay={false}
-        // Stays open while the student edits beside it; the X closes it.
-        onInteractOutside={(e) => e.preventDefault()}
-        // React events bubble out of portals; keep sheet clicks away from the
-        // question this sheet belongs to.
-        onClick={(e) => e.stopPropagation()}
-      >
-        <SheetHeader className="shrink-0 border-b px-6 py-4">
-          <SheetTitle className="text-base">Writing Check</SheetTitle>
-          <SheetDescription>
-            Things to check in your writing. Make each fix yourself, then check it off.
-          </SheetDescription>
-        </SheetHeader>
-        <WritingCheckPanel writing={writing} text={text} className="min-h-0 flex-1" />
-      </SheetContent>
-    </Sheet>
+/** The checklist, docked beside the page while open. `title` names what it's
+ *  checking (the question), since the panel sits apart from the text box. */
+export function WritingCheckDock({
+  writing,
+  text,
+  title,
+}: {
+  writing: WritingCheckState
+  text: string
+  title?: string
+}) {
+  if (!writing.open || !writing.docked || !writing.dockNode) return null
+  return createPortal(
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b px-5 py-3.5">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold">Writing Check</h2>
+          {title && <p className="text-muted-foreground mt-0.5 truncate text-sm">{title}</p>}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => writing.setOpen(false)}
+          aria-label="Close Writing Check"
+        >
+          <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+        </Button>
+      </div>
+      <WritingCheckPanel writing={writing} text={text} className="min-h-0 flex-1" />
+    </div>,
+    writing.dockNode
   )
 }
 
-/** The checklist body and footer — in the sheet, or inline where another
+/** The checklist body and footer — in the dock, or inline where another
  *  sheet is already open. */
 export function WritingCheckPanel({
   writing,
@@ -264,8 +407,8 @@ export function WritingCheckPanel({
   inline?: boolean
   className?: string
 }) {
-  const { run, loading, error } = writing
-  const pad = inline ? "px-3" : "px-6"
+  const { run, live, loading, error } = writing
+  const pad = inline ? "px-3" : "px-5"
   return (
     <div className={cn("flex flex-col", className)}>
       <div className={cn("py-4", pad, !inline && "min-h-0 flex-1 overflow-y-auto")}>
@@ -276,8 +419,8 @@ export function WritingCheckPanel({
           </div>
         ) : error ? (
           <p className="text-destructive text-sm">{error}</p>
-        ) : run ? (
-          <Checklist writing={writing} run={run} stale={run.text !== text} />
+        ) : run && live ? (
+          <Checklist writing={writing} run={run} live={live} stale={run.text !== text} />
         ) : null}
       </div>
       <div className={cn("flex shrink-0 items-center justify-between gap-3 border-t py-3", pad)}>
@@ -294,7 +437,7 @@ export function WritingCheckPanel({
           variant="outline"
           size="sm"
           onClick={() => writing.check(text)}
-          disabled={writing.loading || !text.trim() || text.length > WRITING_CHECK_MAX_CHARS}
+          disabled={loading || !text.trim() || text.length > WRITING_CHECK_MAX_CHARS}
         >
           Check Again
         </Button>
@@ -306,15 +449,17 @@ export function WritingCheckPanel({
 function Checklist({
   writing,
   run,
+  live,
   stale,
 }: {
   writing: WritingCheckState
   run: WritingCheckRun
+  live: LiveText
   stale: boolean
 }) {
-  const { done, confirmed, heldBack, toggleDone, markCorrect } = writing
+  const { done, confirmed, heldBack, activeIndex, toFix, toggleDone, markCorrect, locate } = writing
 
-  if (run.issues.length === 0) {
+  if (live.issues.length === 0) {
     return (
       <div className="space-y-1 py-6 text-center">
         <p className="text-sm font-medium">Nothing flagged</p>
@@ -325,13 +470,13 @@ function Checklist({
     )
   }
 
-  const items = run.issues.map((issue, index) => ({ issue, index, key: flagKey(run.text, issue) }))
   const groups = WRITING_CATEGORIES.map((category) => ({
     category,
-    items: items.filter(({ issue }) => WRITING_ISSUES[issue.kind].category === category),
+    items: live.issues.filter((issue) => WRITING_ISSUES[issue.kind].category === category),
   })).filter((group) => group.items.length > 0)
-  const left = items.filter(({ index, key }) => !done.has(index) && !confirmed.has(key)).length
-  const toFix = unresolvedBlocking(run, confirmed).length
+  const left = live.issues.filter(
+    (issue) => !done.has(issue.index) && !confirmed.has(issue.key) && !issue.edited
+  ).length
 
   return (
     <div className="space-y-5">
@@ -344,17 +489,19 @@ function Checklist({
           </p>
         ) : (
           <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-400">
-            Nothing is holding up your submission now. You can submit.
+            Nothing flagged is holding up your submission now. Submit again to re-check.
           </p>
         ))}
       {stale && (
         <p className="bg-muted/50 text-muted-foreground rounded-md px-3 py-2 text-xs">
-          You&rsquo;ve edited since this check. Check again to update the list.
+          You&rsquo;ve edited since this check. Check again for an updated list.
         </p>
       )}
       <div className="space-y-0.5">
         <p className="text-sm font-medium">
-          {left === 0 ? "Everything is checked off." : `${left} of ${items.length} left to review`}
+          {left === 0
+            ? "Everything is checked off."
+            : `${left} of ${live.issues.length} left to review`}
         </p>
         {!heldBack && toFix > 0 && (
           <p className="text-xs text-red-600 dark:text-red-400">
@@ -362,21 +509,23 @@ function Checklist({
           </p>
         )}
       </div>
-      {groups.map(({ category, items: groupItems }) => (
+      {groups.map(({ category, items }) => (
         <section key={category} className="space-y-2">
           <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            {category} · {groupItems.length}
+            {category} · {items.length}
           </h3>
           <ul className="space-y-2">
-            {groupItems.map(({ issue, index, key }) => (
+            {items.map((issue) => (
               <ChecklistItem
-                key={index}
+                key={issue.index}
                 text={run.text}
                 issue={issue}
-                checked={done.has(index)}
-                correct={confirmed.has(key)}
-                onToggle={() => toggleDone(index)}
-                onMarkCorrect={(correct) => markCorrect(key, correct)}
+                active={activeIndex === issue.index}
+                checked={done.has(issue.index)}
+                correct={confirmed.has(issue.key)}
+                onLocate={() => locate(issue.index)}
+                onToggle={() => toggleDone(issue.index)}
+                onMarkCorrect={(correct) => markCorrect(issue.key, correct)}
               />
             ))}
           </ul>
@@ -387,57 +536,77 @@ function Checklist({
 }
 
 /** One flag: the words highlighted in their sentence and what to look at —
- *  never the fix. */
+ *  never the fix. Clicking it jumps to the words in the text box. */
 function ChecklistItem({
   text,
   issue,
+  active,
   checked,
   correct,
+  onLocate,
   onToggle,
   onMarkCorrect,
 }: {
   text: string
-  issue: WritingIssue
+  issue: LiveIssue
+  active: boolean
   checked: boolean
   correct: boolean
+  onLocate: () => void
   onToggle: () => void
   onMarkCorrect: (correct: boolean) => void
 }) {
   const def = WRITING_ISSUES[issue.kind]
-  const { before, match, after } = excerptAround(text, issue.start, issue.end)
+  const { before, match, after } = excerptAround(text, issue.at.start, issue.at.end)
+  const settled = checked || correct || issue.edited
 
   return (
     <li
       className={cn(
-        "flex gap-3 rounded-lg border px-3 py-2.5 transition-opacity",
-        (checked || correct) && "opacity-55"
+        "flex gap-3 rounded-lg border px-3 py-2.5 transition-[opacity,box-shadow]",
+        settled && "opacity-55",
+        active && "ring-ring/40 ring-2"
       )}
     >
       <Checkbox
-        checked={checked || correct}
-        disabled={correct}
+        checked={settled}
+        disabled={correct || issue.edited}
         onCheckedChange={onToggle}
         className="mt-0.5"
         aria-label={`Done: ${def.label}`}
       />
       <div className="min-w-0 flex-1 space-y-1">
-        {(def.label !== def.category || (def.blocks && !correct)) && (
+        {(def.label !== def.category || (def.blocks && !correct && !issue.edited)) && (
           <p className="flex items-center gap-2 text-xs">
             {def.label !== def.category && <span className="font-semibold">{def.label}</span>}
-            {def.blocks && !correct && (
+            {def.blocks && !correct && !issue.edited && (
               <span className="font-medium text-red-600 dark:text-red-400">Must fix</span>
             )}
           </p>
         )}
-        <p className="text-sm leading-relaxed break-words">
+        <button
+          type="button"
+          onClick={onLocate}
+          disabled={issue.edited}
+          title={issue.edited ? undefined : "Show in your writing"}
+          className="block w-full cursor-pointer rounded-sm text-left text-sm leading-relaxed break-words disabled:cursor-default"
+        >
           {before}
-          <mark className="text-foreground rounded-sm bg-amber-200/80 px-0.5 dark:bg-amber-400/30">
+          <mark
+            className={cn(
+              "text-foreground rounded-sm px-0.5",
+              def.blocks ? "bg-red-200/80 dark:bg-red-500/30" : "bg-amber-200/80 dark:bg-amber-400/30"
+            )}
+          >
             {match}
           </mark>
           {after}
+        </button>
+        <p className="text-muted-foreground text-xs">
+          {issue.edited ? "Edited. Check again to confirm it's fixed." : def.message}
         </p>
-        <p className="text-muted-foreground text-xs">{def.message}</p>
-        {blocksSubmission(issue.kind) &&
+        {def.blocks &&
+          !issue.edited &&
           (correct ? (
             <p className="text-xs">
               <span className="text-green-700 dark:text-green-400">Marked correct</span>
@@ -461,5 +630,153 @@ function ChecklistItem({
           ))}
       </div>
     </li>
+  )
+}
+
+/** Tints for a flag in the text itself: must-fix red, advice amber. Hidden
+ *  inside an editor marked data-wc-hidden (its checklist is closed). */
+export function flagTint(blocks: boolean, active: boolean): string {
+  return cn(
+    "rounded-[3px] in-data-[wc-hidden=true]:bg-transparent in-data-[wc-hidden=true]:outline-none",
+    blocks ? "bg-red-300/45 dark:bg-red-500/35" : "bg-amber-300/50 dark:bg-amber-400/30",
+    active && "outline-2 outline-offset-1 outline-red-500/70"
+  )
+}
+
+// Text-layout properties the highlight layer copies from its textarea, so the
+// marks wrap exactly like the text above them.
+const MIRRORED_STYLES = [
+  "boxSizing",
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "fontStyle",
+  "lineHeight",
+  "letterSpacing",
+  "wordSpacing",
+  "textIndent",
+  "textTransform",
+  "tabSize",
+  "paddingTop",
+  "paddingBottom",
+  "paddingLeft",
+  "borderTopWidth",
+  "borderBottomWidth",
+  "borderLeftWidth",
+  "borderRightWidth",
+] as const
+
+/**
+ * A textarea with the writing check's flags highlighted on the words
+ * themselves while the checklist is open. The marks sit on a layer behind
+ * the (transparent) textarea that mirrors its font, padding, and wrapping, and
+ * they follow the student's edits; a flag disappears once its words change.
+ */
+export function HighlightedTextarea({
+  writing,
+  field: Field = Textarea,
+  value,
+  onScroll,
+  className,
+  ...props
+}: Omit<React.ComponentProps<"textarea">, "value"> & {
+  writing: WritingCheckState
+  value: string
+  /** The textarea component to render (e.g. InputGroupTextarea). */
+  field?: React.ComponentType<React.ComponentProps<"textarea">>
+}) {
+  const areaRef = useRef<HTMLTextAreaElement | null>(null)
+  const layerRef = useRef<HTMLDivElement | null>(null)
+  const { setLocator } = writing
+
+  // Mirror the textarea's text layout onto the layer, including the room a
+  // scrollbar takes when the student has resized the box smaller than its text.
+  const sync = useCallback(() => {
+    const area = areaRef.current
+    const layer = layerRef.current
+    if (!area || !layer) return
+    const style = getComputedStyle(area)
+    for (const prop of MIRRORED_STYLES) layer.style[prop] = style[prop]
+    layer.style.borderStyle = "solid"
+    layer.style.borderColor = "transparent"
+    const scrollbar =
+      area.offsetWidth - area.clientWidth - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)
+    layer.style.paddingRight = `${parseFloat(style.paddingRight) + Math.max(0, scrollbar)}px`
+    layer.scrollTop = area.scrollTop
+  }, [])
+
+  useLayoutEffect(() => {
+    sync()
+    const area = areaRef.current
+    if (!area) return
+    const observer = new ResizeObserver(sync)
+    observer.observe(area)
+    return () => observer.disconnect()
+  }, [sync])
+
+  useEffect(() => {
+    sync()
+  }, [value, writing.open, sync])
+
+  useEffect(() => {
+    setLocator((issue) => {
+      const area = areaRef.current
+      if (!area) return
+      layerRef.current
+        ?.querySelector<HTMLElement>(`[data-wc="${issue.index}"]`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" })
+      area.focus({ preventScroll: true })
+      area.setSelectionRange(issue.end, issue.end)
+    })
+    return () => setLocator(null)
+  }, [setLocator])
+
+  const live = writing.live
+  const marks =
+    writing.open && live && live.text === value
+      ? live.issues
+          .filter((issue) => !issue.edited)
+          .sort((a, b) => a.start - b.start)
+          .filter((issue, i, all) => i === 0 || issue.start >= all[i - 1].end)
+      : []
+
+  const pieces: React.ReactNode[] = []
+  let cursor = 0
+  for (const issue of marks) {
+    if (issue.start > cursor) pieces.push(value.slice(cursor, issue.start))
+    pieces.push(
+      <mark
+        key={issue.index}
+        data-wc={issue.index}
+        className={cn("text-transparent", flagTint(blocksSubmission(issue.kind), writing.activeIndex === issue.index))}
+      >
+        {value.slice(issue.start, issue.end)}
+      </mark>
+    )
+    cursor = issue.end
+  }
+  // A trailing newline needs a character after it to take up its line.
+  pieces.push(value.slice(cursor) + "​")
+
+  return (
+    <div className="relative w-full">
+      <div
+        ref={layerRef}
+        aria-hidden
+        className="pointer-events-none absolute inset-0 overflow-hidden break-words whitespace-pre-wrap text-transparent"
+      >
+        {pieces}
+      </div>
+      <Field
+        ref={areaRef}
+        value={value}
+        onScroll={(e) => {
+          if (layerRef.current) layerRef.current.scrollTop = e.currentTarget.scrollTop
+          onScroll?.(e)
+        }}
+        className={cn("relative", className)}
+        {...props}
+      />
+    </div>
   )
 }

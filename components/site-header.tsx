@@ -333,7 +333,7 @@ export function SiteHeader() {
                   </>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut({ redirectUrl: "/login" })}>
+                <DropdownMenuItem onClick={() => signOut({ redirectUrl: "/" })}>
                   <HugeiconsIcon icon={LogoutIcon} strokeWidth={2} />
                   Log out
                 </DropdownMenuItem>
