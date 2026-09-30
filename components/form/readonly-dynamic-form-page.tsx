@@ -53,6 +53,7 @@ import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { eventTypeForAction, postResponseEvent } from "@/lib/response-events"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
+import { formatWhen } from "@/lib/format-time"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -108,22 +109,6 @@ interface StudentResponse {
   author_name_or_publisher?: string
   date_of_publication?: string
   [key: string]: unknown
-}
-
-function formatRelativeTime(ts: string | number | null | undefined): string | null {
-  if (!ts) return null
-  const date = typeof ts === "number" ? new Date(ts) : new Date(ts)
-  if (isNaN(date.getTime())) return null
-  const diff = Math.floor((Date.now() - date.getTime()) / 1000)
-  if (diff < 5) return "just now"
-  if (diff < 60) return `${diff}s ago`
-  const mins = Math.floor(diff / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  if (days < 7) return `${days}d ago`
-  return date.toLocaleDateString()
 }
 
 const QUESTION_TYPE = {
@@ -698,7 +683,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         // submission.
         const hasReviewableContent = hasResponseContent(response)
         const qIsDimmed = qIsComplete || qNeedsRevision
-        const relativeTime = formatRelativeTime(response?.last_edited)
+        const relativeTime = formatWhen(response?.last_edited)
         // The AI/originality report and last-edited time sit together in the
         // field's lower-right; only text answers have a GPTZero report.
         const showAiFooter = !!(gptzero && isSubmitted)
@@ -1218,9 +1203,7 @@ function PlagiarismScoresInline({ data }: { data: GptZeroResult }) {
   const ai = toPercent(data.class_probability_ai ?? 0)
   const human = toPercent(data.class_probability_human ?? 0)
   const mixed = toPercent(data.mixed ?? 0)
-  const relTime = data.created_at ? formatRelativeTime(
-    typeof data.created_at === "number" ? data.created_at : new Date(String(data.created_at)).getTime()
-  ) : null
+  const relTime = formatWhen(data.created_at as string | number | null | undefined)
 
   const max = Math.max(ai, human, mixed)
   const aiIsMax = ai === max
@@ -1293,7 +1276,13 @@ function CollapsibleQuestionCard({
     >
       <div
         className={`mb-1.5 flex items-center justify-between ${isComplete ? "cursor-pointer select-none" : ""}`}
-        onClick={isComplete ? () => setCollapsed((v) => !v) : undefined}
+        onClick={
+          isComplete
+            ? (e) => {
+                if (e.currentTarget.contains(e.target as Node)) setCollapsed((v) => !v)
+              }
+            : undefined
+        }
       >
         <div className="flex items-center gap-1.5">
           <div className={`inline-flex size-4 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
@@ -1374,10 +1363,12 @@ function ReadonlyGroupCard({
   }
 
   return (
-    <Card className="overflow-hidden !pt-0 !gap-0">
+    <Card className="overflow-hidden !gap-0 !py-0">
       <div
-        className="cursor-pointer border-b px-6 py-4 select-none"
-        onClick={toggleCollapsed}
+        className={`cursor-pointer px-6 py-4 select-none ${collapsed ? "" : "border-b"}`}
+        onClick={(e) => {
+          if (e.currentTarget.contains(e.target as Node)) toggleCollapsed()
+        }}
       >
         <div className="flex items-center justify-between">
           <div className="flex min-w-0 flex-1 items-center gap-2">

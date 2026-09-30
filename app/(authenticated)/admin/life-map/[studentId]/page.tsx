@@ -59,6 +59,7 @@ import { Linkify } from "@/components/linkify"
 import { GroupActivitySheet } from "@/components/form/group-activity-sheet"
 import { fetchResponseEvents, type ResponseEvent } from "@/lib/response-events"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
+import { formatWhen } from "@/lib/format-time"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -531,7 +532,7 @@ export default function AdminStudentLifeMapOverviewPage({
               <div>
                 {sectionQuestions.map((q) => {
                   const response = sectionResponses.find((r) => r.lifemap_template_id === q.id)
-                  const relTime = formatRelativeTime(response?.last_edited)
+                  const relTime = formatWhen(response?.last_edited)
                   const typeName = q._question_types?.type ?? (q.question_types_id ? questionTypes.find((t) => t.id === q.question_types_id)?.type : undefined)
 
                   const statusIcon = response?.isComplete
@@ -786,7 +787,7 @@ function SectionTableRows({
                 <ActivityButton onClick={() => onViewActivity(group.id)} />
                 {isGroupComplete ? (
                   <span className="text-muted-foreground/60 text-xs">
-                    {formatRelativeTime(lastCompletedTime)}
+                    {formatWhen(lastCompletedTime)}
                   </span>
                 ) : (() => {
                   const remaining = groupQs.length - groupCompleted

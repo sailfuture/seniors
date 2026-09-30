@@ -21,6 +21,7 @@ import { isStaffRole } from "@/lib/roles"
 import { AdminReviewQueue } from "@/components/admin-review-queue"
 import { StudentReviewStatus } from "@/components/student-review-status"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
+import { formatWhen as formatWhenExact } from "@/lib/format-time"
 
 interface TemplateQuestion {
   id: number
@@ -97,8 +98,7 @@ const VARIANT_GROUPS: Record<"student" | "admin", GroupKey[]> = {
 const ROW_CAP = 5
 
 function formatWhen(ts: number | null): string {
-  if (!ts) return "—"
-  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  return formatWhenExact(ts) ?? "—"
 }
 
 function toTimestamp(v: number | string | null | undefined): number | null {

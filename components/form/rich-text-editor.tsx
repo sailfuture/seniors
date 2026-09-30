@@ -3,24 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useEditor, useEditorState, EditorContent, type Editor } from "@tiptap/react"
 import { Placeholder } from "@tiptap/extensions"
-import {
-  Bold,
-  Italic,
-  Underline as UnderlineIcon,
-  Strikethrough,
-  Heading1,
-  Heading2,
-  Heading3,
-  List,
-  ListOrdered,
-  TextQuote,
-  Minus,
-  Table as TableIcon,
-  MessageSquarePlus,
-  MessageSquareText,
-  Undo2,
-  Redo2,
-} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
@@ -35,7 +17,25 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
+import {
+  CheckmarkCircle02Icon,
+  Comment01Icon,
+  CommentAdd01Icon,
+  Heading01Icon,
+  Heading02Icon,
+  Heading03Icon,
+  LeftToRightListBulletIcon,
+  LeftToRightListNumberIcon,
+  QuoteDownIcon,
+  Redo02Icon,
+  SolidLine01Icon,
+  TableIcon,
+  TextBoldIcon,
+  TextItalicIcon,
+  TextStrikethroughIcon,
+  TextUnderlineIcon,
+  Undo02Icon,
+} from "@hugeicons/core-free-icons"
 import { FieldActivityStream } from "./field-activity-stream"
 import {
   Sheet,
@@ -671,7 +671,7 @@ export function RichTextEditor({
         className="hover:bg-accent relative inline-flex h-8 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors"
         title="Inline comments"
       >
-        <MessageSquareText className="size-4" />
+        <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-4" />
         Comments
         {inlineBadge > 0 && (
           <span
@@ -740,7 +740,7 @@ export function RichTextEditor({
           onMouseDown={(e) => e.preventDefault()}
           onClick={startCommentOnSelection}
         >
-          <MessageSquarePlus className="size-3.5" />
+          <HugeiconsIcon icon={CommentAdd01Icon} strokeWidth={2} className="size-3.5" />
           Comment
         </button>
       )}
@@ -1255,7 +1255,7 @@ function EditorToolbar({
       disabled={state.selectionEmpty}
       onClick={onComment}
     >
-      <MessageSquarePlus />
+      <HugeiconsIcon icon={CommentAdd01Icon} strokeWidth={2} />
     </ToolbarButton>
   ) : null
 
@@ -1286,28 +1286,28 @@ function EditorToolbar({
         active={state.bold}
         onClick={() => chain().toggleBold().run()}
       >
-        <Bold />
+        <HugeiconsIcon icon={TextBoldIcon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label="Italic"
         active={state.italic}
         onClick={() => chain().toggleItalic().run()}
       >
-        <Italic />
+        <HugeiconsIcon icon={TextItalicIcon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label="Underline"
         active={state.underline}
         onClick={() => chain().toggleUnderline().run()}
       >
-        <UnderlineIcon />
+        <HugeiconsIcon icon={TextUnderlineIcon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label="Strikethrough"
         active={state.strike}
         onClick={() => chain().toggleStrike().run()}
       >
-        <Strikethrough />
+        <HugeiconsIcon icon={TextStrikethroughIcon} strokeWidth={2} />
       </ToolbarButton>
 
       <Separator orientation="vertical" className="mx-1 h-6" />
@@ -1317,21 +1317,21 @@ function EditorToolbar({
         active={state.h1}
         onClick={() => chain().toggleHeading({ level: 1 }).run()}
       >
-        <Heading1 />
+        <HugeiconsIcon icon={Heading01Icon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label="Heading 2"
         active={state.h2}
         onClick={() => chain().toggleHeading({ level: 2 }).run()}
       >
-        <Heading2 />
+        <HugeiconsIcon icon={Heading02Icon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label="Heading 3"
         active={state.h3}
         onClick={() => chain().toggleHeading({ level: 3 }).run()}
       >
-        <Heading3 />
+        <HugeiconsIcon icon={Heading03Icon} strokeWidth={2} />
       </ToolbarButton>
 
       <Separator orientation="vertical" className="mx-1 h-6" />
@@ -1341,27 +1341,27 @@ function EditorToolbar({
         active={state.bulletList}
         onClick={() => chain().toggleBulletList().run()}
       >
-        <List />
+        <HugeiconsIcon icon={LeftToRightListBulletIcon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label="Numbered list"
         active={state.orderedList}
         onClick={() => chain().toggleOrderedList().run()}
       >
-        <ListOrdered />
+        <HugeiconsIcon icon={LeftToRightListNumberIcon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label="Quote"
         active={state.blockquote}
         onClick={() => chain().toggleBlockquote().run()}
       >
-        <TextQuote />
+        <HugeiconsIcon icon={QuoteDownIcon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label="Divider"
         onClick={() => chain().setHorizontalRule().run()}
       >
-        <Minus />
+        <HugeiconsIcon icon={SolidLine01Icon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label={state.inTable ? "Delete table" : "Insert table"}
@@ -1372,7 +1372,7 @@ function EditorToolbar({
             : chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
         }
       >
-        <TableIcon />
+        <HugeiconsIcon icon={TableIcon} strokeWidth={2} />
       </ToolbarButton>
 
       <Separator orientation="vertical" className="mx-1 h-6" />
@@ -1382,14 +1382,14 @@ function EditorToolbar({
         disabled={!state.canUndo}
         onClick={() => chain().undo().run()}
       >
-        <Undo2 />
+        <HugeiconsIcon icon={Undo02Icon} strokeWidth={2} />
       </ToolbarButton>
       <ToolbarButton
         label="Redo"
         disabled={!state.canRedo}
         onClick={() => chain().redo().run()}
       >
-        <Redo2 />
+        <HugeiconsIcon icon={Redo02Icon} strokeWidth={2} />
       </ToolbarButton>
 
       {commentButton && (

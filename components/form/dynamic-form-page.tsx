@@ -95,6 +95,7 @@ import { postResponseVersion } from "@/lib/response-versions"
 import { checkSubmissionForAi, AI_BLOCK_THRESHOLD, AI_CHECK_MIN_WORDS } from "@/lib/ai-submission-check"
 import { Linkify } from "@/components/linkify"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
+import { formatWhen } from "@/lib/format-time"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -1074,10 +1075,12 @@ function GroupSection({
   }
 
   return (
-    <Card className="overflow-hidden !pt-0 !gap-0">
+    <Card className="overflow-hidden !gap-0 !py-0">
       <div
-        className="flex cursor-pointer items-center justify-between border-b px-6 py-4 select-none"
-        onClick={toggleCollapsed}
+        className={`flex cursor-pointer items-center justify-between px-6 py-4 select-none ${collapsed ? "" : "border-b"}`}
+        onClick={(e) => {
+          if (e.currentTarget.contains(e.target as Node)) toggleCollapsed()
+        }}
       >
         <div className="flex items-center gap-2">
           <div className="inline-flex size-7 items-center justify-center rounded-md border">
@@ -1092,7 +1095,10 @@ function GroupSection({
             <button
               type="button"
               className="text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setInstructionsOpen(true)}
+              onClick={(e) => {
+                e.stopPropagation()
+                setInstructionsOpen(true)
+              }}
             >
               <HugeiconsIcon icon={HelpCircleIcon} strokeWidth={1.5} className="size-5" />
             </button>
@@ -1407,7 +1413,7 @@ function DynamicField({
     return ai >= human && ai >= mixed && ai > 0
   })() : false
 
-  const relativeTime = formatRelativeTime(lastEdited)
+  const relativeTime = formatWhen(lastEdited)
   const isComplete = responseStatus?.isComplete === true
   const isReadyForReview = responseStatus?.readyReview === true && !isComplete && !responseStatus?.revisionNeeded
   const isDimmed = isComplete || isReadyForReview
@@ -1440,7 +1446,13 @@ function DynamicField({
     <div className="space-y-2" data-field-name={question.field_name}>
       <div
         className={`flex items-center justify-between ${isComplete ? "cursor-pointer select-none" : ""}`}
-        onClick={isComplete ? () => setQuestionCollapsed((v) => !v) : undefined}
+        onClick={
+          isComplete
+            ? (e) => {
+                if (e.currentTarget.contains(e.target as Node)) setQuestionCollapsed((v) => !v)
+              }
+            : undefined
+        }
       >
         <div className="flex items-center gap-1.5">
           <div className={`inline-flex size-4 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
@@ -1680,12 +1692,12 @@ function DynamicField({
 
       {typeId === QUESTION_TYPE.DROPDOWN && (
         <Select value={value} onValueChange={onChange} disabled={isDimmed}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full text-base">
             <SelectValue placeholder={question.placeholder || "Select..."} />
           </SelectTrigger>
           <SelectContent>
             {question.dropdownOptions.map((opt) => (
-              <SelectItem key={opt} value={opt}>
+              <SelectItem key={opt} value={opt} className="text-base">
                 {opt}
               </SelectItem>
             ))}
@@ -1794,9 +1806,7 @@ function PlagiarismScores({ data }: { data: GptZeroResult }) {
   const ai = toPercent(data.class_probability_ai ?? 0)
   const human = toPercent(data.class_probability_human ?? 0)
   const mixed = toPercent(data.mixed ?? 0)
-  const relTime = data.created_at ? formatRelativeTime(
-    typeof data.created_at === "number" ? data.created_at : new Date(String(data.created_at)).getTime()
-  ) : null
+  const relTime = formatWhen(data.created_at as string | number | null | undefined)
 
   const max = Math.max(ai, human, mixed)
   const aiIsMax = ai === max

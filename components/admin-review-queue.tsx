@@ -13,6 +13,7 @@ import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc } from "@/li
 import { isLineItemsQuestion } from "@/lib/line-items"
 import { ResponseReviewSheet, type ReviewTarget } from "@/components/form/response-review-sheet"
 import { cachedFetch } from "@/lib/cached-fetch"
+import { formatWhen as formatWhenExact } from "@/lib/format-time"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -87,17 +88,7 @@ function initials(name: string): string {
 }
 
 function formatWhen(ts: number | null): string {
-  if (!ts) return "—"
-  // Relative down to the minute within the last week; absolute date beyond.
-  const diff = Math.floor((Date.now() - ts) / 1000)
-  if (diff < 45) return "just now"
-  const mins = Math.floor(diff / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  if (days < 7) return `${days}d ago`
-  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  return formatWhenExact(ts) ?? "—"
 }
 
 function toTimestamp(v: number | string | null | undefined): number | null {

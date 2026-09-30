@@ -8,10 +8,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Label } from "@/components/ui/label"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { HelpCircleIcon, Link01Icon } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
+
+const SECTION_LABEL = "text-muted-foreground text-xs font-medium tracking-wide uppercase"
 
 /** The template fields that make up a question's instructions. */
 export interface QuestionInstructionsSource {
@@ -78,54 +79,61 @@ export function QuestionInstructions({
         {/* React events bubble out of portals; keep sheet clicks away from
             the collapsible header this button sits in. */}
         <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-md" onClick={(e) => e.stopPropagation()}>
-          <SheetHeader className="shrink-0 border-b px-6 py-4">
-            <SheetTitle className="text-base">Question Instructions</SheetTitle>
+          {/* The question itself heads the sheet, with the length target
+              beside it, so the reader knows what they're answering first. */}
+          <SheetHeader className="shrink-0 gap-2 border-b px-6 py-5 pr-12">
+            <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              Question
+            </p>
+            <SheetTitle className="text-lg leading-snug font-semibold">{question.field_label}</SheetTitle>
+            {minWords > 0 && (
+              <span className="bg-muted w-fit rounded-full px-2.5 py-0.5 text-xs font-medium">
+                {minWords} words minimum
+              </span>
+            )}
             <SheetDescription className="sr-only">
               What the question asks for and how the answer should be written
             </SheetDescription>
           </SheetHeader>
-          <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          <div className="flex-1 divide-y overflow-y-auto">
             {question.detailed_instructions?.trim() && (
-              <div className="space-y-2">
-                <Label className="text-muted-foreground text-xs uppercase tracking-wide">Instructions</Label>
-                <div className="text-sm whitespace-pre-wrap">{question.detailed_instructions}</div>
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label className="text-muted-foreground text-xs uppercase tracking-wide">Question</Label>
-              <p className="text-sm font-medium">{question.field_label}</p>
-            </div>
-            {starters.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-muted-foreground text-xs uppercase tracking-wide">Sentence Starters</Label>
-                <div className="space-y-1.5">
-                  {starters.map((s, i) => (
-                    <p key={i} className="text-muted-foreground text-sm italic">&ldquo;{s}&rdquo;</p>
-                  ))}
+              <section className="space-y-2 px-6 py-5">
+                <h3 className={SECTION_LABEL}>Instructions</h3>
+                <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {question.detailed_instructions}
                 </div>
-              </div>
+              </section>
             )}
-            {minWords > 0 && (
-              <div className="space-y-1">
-                <Label className="text-muted-foreground text-xs uppercase tracking-wide">Word Count</Label>
-                <p className="text-sm">Minimum {minWords} words required</p>
-              </div>
+            {starters.length > 0 && (
+              <section className="space-y-3 px-6 py-5">
+                <h3 className={SECTION_LABEL}>Sentence starters</h3>
+                <ul className="space-y-1.5">
+                  {starters.map((s, i) => (
+                    <li key={i} className="bg-muted/70 rounded-md px-3 py-2 text-sm">
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
             {examples.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-muted-foreground text-xs uppercase tracking-wide">Examples</Label>
-                <div className="space-y-2">
+              <section className="space-y-3 px-6 py-5">
+                <h3 className={SECTION_LABEL}>{examples.length === 1 ? "Example" : "Examples"}</h3>
+                <div className="space-y-4">
                   {examples.map((ex, i) => (
-                    <div key={i} className="bg-muted/30 rounded-md border border-dashed px-3 py-2.5">
-                      <p className="text-sm">{ex}</p>
-                    </div>
+                    <blockquote
+                      key={i}
+                      className="border-primary/25 text-muted-foreground border-l-2 pl-4 text-sm leading-relaxed whitespace-pre-wrap"
+                    >
+                      {ex}
+                    </blockquote>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
             {resources.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-muted-foreground text-xs uppercase tracking-wide">Resources</Label>
+              <section className="space-y-3 px-6 py-5">
+                <h3 className={SECTION_LABEL}>Resources</h3>
                 <div className="space-y-2">
                   {resources.map((url, i) => (
                     <a
@@ -140,7 +148,7 @@ export function QuestionInstructions({
                     </a>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
           </div>
         </SheetContent>
