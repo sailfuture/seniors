@@ -22,7 +22,13 @@ import {
 } from "@/components/ui/dialog"
 import { RichTextEditor } from "./rich-text-editor"
 import { SaveIndicator } from "./save-indicator"
-import { isRichTextQuestion, richTextWordCount, extractPlainText } from "@/lib/rich-text"
+import { useWritingCheck, WritingCheckButton, WritingCheckSheet } from "./writing-check"
+import {
+  isRichTextQuestion,
+  richTextWordCount,
+  extractPlainText,
+  extractParagraphText,
+} from "@/lib/rich-text"
 import { checkSubmissionForAi, AI_BLOCK_THRESHOLD, type AiGateResult } from "@/lib/ai-submission-check"
 import { postResponseEvent } from "@/lib/response-events"
 import { useSaveRegister } from "@/lib/save-context"
@@ -99,6 +105,8 @@ export function EssayEditorPage({
   // Submit / withdraw without leaving the editor.
   const [confirmSubmit, setConfirmSubmit] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  // Spelling/grammar checklist, which is also the first gate on submitting.
+  const writing = useWritingCheck()
 
   const patchReviewState = async (
     patch: { readyReview: boolean },
@@ -146,6 +154,14 @@ export function EssayEditorPage({
     try {
       // Flush any pending edits so the checked text is the saved text.
       if (dirtyRef.current) await saveRef.current()
+      // Spelling and grammar come first; a held-back essay opens its checklist.
+      if (!(await writing.gate(extractParagraphText(valueRef.current)))) {
+        setConfirmSubmit(false)
+        toast.error("Fix the spelling and grammar items first. They're listed beside your essay.", {
+          duration: 6000,
+        })
+        return
+      }
       const gate = await checkSubmissionForAi(cfg, {
         responseId: resp.id,
         studentId,
@@ -490,9 +506,11 @@ export function EssayEditorPage({
   const isLocked = isComplete || isReadyForReview || !!projectLock
   const wordCount = richTextWordCount(value)
   const minWords = question.min_words > 0 ? question.min_words : null
+  const paragraphText = extractParagraphText(value)
 
   const toolbarExtras = (
     <div className="flex items-center gap-2">
+      <WritingCheckButton writing={writing} text={paragraphText} disabled={isLocked} />
       <button
         type="button"
         onClick={runAiCheck}
@@ -621,6 +639,8 @@ export function EssayEditorPage({
         />
       </div>
 
+      <WritingCheckSheet writing={writing} text={paragraphText} />
+
       <Dialog open={aiOpen} onOpenChange={(o) => { if (!aiLoading) setAiOpen(o) }}>
         <DialogContent
           // The check can't be abandoned mid-flight: outside clicks and
@@ -708,15 +728,16 @@ export function EssayEditorPage({
             <DialogTitle>Send for review?</DialogTitle>
             <DialogDescription>
               This will notify your teacher that this essay is ready for review,
-              and pause editing until it&rsquo;s reviewed or withdrawn. An AI
-              check runs as part of submitting.
+              and pause editing until it&rsquo;s reviewed or withdrawn. A
+              spelling and grammar check and an AI check run as part of
+              submitting.
             </DialogDescription>
           </DialogHeader>
           {submitting && (
             <div className="flex items-center gap-2 py-1">
               <Loader2 className="text-muted-foreground size-4 animate-spin" />
               <p className="text-muted-foreground text-sm">
-                Running the AI check and submitting…
+                Running the checks and submitting…
               </p>
             </div>
           )}

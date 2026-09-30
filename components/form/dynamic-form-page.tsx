@@ -67,7 +67,19 @@ import { BrandColorInput } from "./brand-color-input"
 import { LineItemsInput } from "./line-items-input"
 import { isLineItemsQuestion } from "@/lib/line-items"
 import { RichTextPreviewCard } from "./rich-text-preview-card"
-import { extractPlainText, isRichTextQuestion, richTextWordCount } from "@/lib/rich-text"
+import {
+  runWritingGate,
+  useWritingCheck,
+  WritingCheckButton,
+  WritingCheckSheet,
+  type WritingCheckRun,
+} from "./writing-check"
+import {
+  extractParagraphText,
+  extractPlainText,
+  isRichTextQuestion,
+  richTextWordCount,
+} from "@/lib/rich-text"
 import { useSaveRegister } from "@/lib/save-context"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 import { useProjectLock } from "@/lib/project-lock"
@@ -87,6 +99,13 @@ interface GptZeroResult {
   class_probability_human?: number
   mixed?: number
   [key: string]: unknown
+}
+
+/** Whether a status change went through — and, when the writing check held a
+ *  submission back, the check to show the student. */
+interface StatusChangeOutcome {
+  changed: boolean
+  writingHold?: WritingCheckRun
 }
 
 interface TemplateQuestion {
@@ -618,7 +637,13 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   }
 
   const handleResponseStatusChange = useCallback(
-    async (responseId: number, templateId: number, action: "ready" | "clear", silent = false) => {
+    async (
+      responseId: number,
+      templateId: number,
+      action: "ready" | "clear",
+      silent = false
+    ): Promise<StatusChangeOutcome> => {
+      let changed = false
       if (!silent) setUpdatingStatus((prev) => new Set(prev).add(templateId))
       try {
       if (action === "ready" && studentId) {
@@ -629,10 +654,34 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           question?.question_types_id === QUESTION_TYPE.SOURCE ||
           (question ? isLineItemsQuestion(question) : false)
         const rawText = localValues.get(templateId) ?? response?.student_response ?? ""
+        const isEssay = question ? isRichTextQuestion(question) : false
         // Rich-text essays are prose and DO go through the AI check, but the
         // checker must see the extracted text, not the TipTap JSON document
-        const text = question && isRichTextQuestion(question) ? extractPlainText(rawText) : rawText
+        const text = isEssay ? extractPlainText(rawText) : rawText
         const textWordCount = text.trim().split(/\s+/).filter(Boolean).length
+
+        // Spelling and grammar come first for written answers: the same text
+        // the question's Check Writing button checks, so marks carry over.
+        if ((isEssay || question?.question_types_id === QUESTION_TYPE.LONG_RESPONSE) && text.trim()) {
+          setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
+          try {
+            const writing = await runWritingGate(isEssay ? extractParagraphText(rawText) : rawText)
+            if (!writing.ok && writing.run) {
+              if (!silent) {
+                toast.error("Fix the spelling and grammar items first. They're listed beside your answer.", {
+                  duration: 6000,
+                })
+              }
+              return { changed: false, writingHold: writing.run }
+            }
+          } finally {
+            setCheckingPlagiarism((prev) => {
+              const next = new Set(prev)
+              next.delete(templateId)
+              return next
+            })
+          }
+        }
 
         if (!skipAiCheck && textWordCount >= AI_CHECK_MIN_WORDS && cfg.plagiarismCheckEndpoint) {
           setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
@@ -657,7 +706,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
                 `Submission rejected — this response scored ${Math.round(gate.aiPercent ?? 0)}% likely AI-generated (limit ${AI_BLOCK_THRESHOLD}%). Please revise it in your own words.`,
                 { duration: 6000 }
               )
-              return
+              return { changed: false }
             }
             if (gate.verdict === "unavailable") {
               // Fail closed: no score, no submission — but don't imply AI was found.
@@ -665,7 +714,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
                 "The AI check couldn't run, so this response wasn't submitted. Please try again in a moment.",
                 { duration: 6000 }
               )
-              return
+              return { changed: false }
             }
           } finally {
             setCheckingPlagiarism((prev) => {
@@ -689,6 +738,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           body: JSON.stringify(patch),
         })
         if (res.ok) {
+          changed = true
           // Log the transition so activity timelines show the history.
           {
             const q = questions.find((qq) => qq.id === templateId)
@@ -747,6 +797,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
       } finally {
         if (!silent) setUpdatingStatus((prev) => { const next = new Set(prev); next.delete(templateId); return next })
       }
+      return { changed }
     },
     [studentId, sectionId, responses, localValues, questions, cfg, F, bumpSidebar]
   )
@@ -930,11 +981,24 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
               toast.info("No eligible questions to submit", { duration: 2000 })
               return
             }
+            let submitted = 0
+            let heldForWriting = 0
             for (const q of eligibleForReview) {
               const r = responses.get(q.id)
-              if (r) await handleResponseStatusChange(r.id, q.id, "ready", true)
+              if (!r) continue
+              const outcome = await handleResponseStatusChange(r.id, q.id, "ready", true)
+              if (outcome.changed) submitted++
+              else if (outcome.writingHold) heldForWriting++
             }
-            toast.success(`${eligibleForReview.length} question${eligibleForReview.length > 1 ? "s" : ""} submitted for review`, { duration: 3000 })
+            if (submitted > 0) {
+              toast.success(`${submitted} question${submitted > 1 ? "s" : ""} submitted for review`, { duration: 3000 })
+            }
+            if (heldForWriting > 0) {
+              toast.error(
+                `${heldForWriting} ${heldForWriting > 1 ? "answers have" : "answer has"} spelling or grammar to fix first. Use Check Writing on ${heldForWriting > 1 ? "each one" : "it"} to see what.`,
+                { duration: 6000 }
+              )
+            }
           }}
         >
           {isGroupDisplayType(group[F.displayTypesId] as number | null | undefined) ? (() => {
@@ -1318,12 +1382,13 @@ function DynamicField({
   sourceValues?: SourceFields
   onSourceChange?: (field: keyof SourceFields, value: string) => void
   responseStatus?: { isComplete?: boolean; revisionNeeded?: boolean; readyReview?: boolean }
-  onSendForReview?: () => void
+  onSendForReview?: () => Promise<StatusChangeOutcome>
   onRequestReopen?: () => void
   onEditSubmission?: () => void
 }) {
   const typeId = question.question_types_id
   const [confirmAction, setConfirmAction] = useState<"send" | "reopen" | "edit" | null>(null)
+  const writing = useWritingCheck()
 
   const fieldComments = comments.filter(
     (c) =>
@@ -1498,7 +1563,12 @@ function DynamicField({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => {
-              if (confirmAction === "send") onSendForReview?.()
+              if (confirmAction === "send") {
+                // A submission held back for spelling/grammar opens its checklist.
+                void onSendForReview?.().then((outcome) => {
+                  if (outcome.writingHold) writing.show(outcome.writingHold, { heldBack: true })
+                })
+              }
               else if (confirmAction === "edit") onEditSubmission?.()
               else if (confirmAction === "reopen") onRequestReopen?.()
               setConfirmAction(null)
@@ -1563,15 +1633,22 @@ function DynamicField({
             disabled={isDimmed}
             rows={4}
           />
-          {(question.min_words > 0 || plagiarism) && (
+          {(question.min_words > 0 || plagiarism || !isDimmed) && (
             <InputGroupAddon align="block-end">
               <InputGroupText className="flex w-full items-center justify-between text-xs">
                 <span>{question.min_words > 0 ? <WordCount value={value} minWords={question.min_words} /> : ""}</span>
-                {plagiarism && <PlagiarismScores data={plagiarism} />}
+                <span className="flex items-center gap-2">
+                  {plagiarism && <PlagiarismScores data={plagiarism} />}
+                  {!isDimmed && <WritingCheckButton writing={writing} text={value} compact />}
+                </span>
               </InputGroupText>
             </InputGroupAddon>
           )}
         </InputGroup>
+      )}
+
+      {(typeId === QUESTION_TYPE.LONG_RESPONSE || isRichTextType) && (
+        <WritingCheckSheet writing={writing} text={isRichTextType ? extractParagraphText(value) : value} />
       )}
 
       {typeId === QUESTION_TYPE.CURRENCY && (

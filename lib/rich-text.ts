@@ -134,6 +134,22 @@ export function extractPlainText(raw: string | null | undefined): string {
   return extractPlainTextFromNodes(doc.content).replace(/\s+/g, " ").trim()
 }
 
+/**
+ * Like extractPlainText, but each paragraph, heading, and list item stays on
+ * its own line — for the writing check, which would otherwise read a heading
+ * and the paragraph under it as one run-on sentence.
+ */
+export function extractParagraphText(raw: string | null | undefined): string {
+  if (!raw || !raw.trim()) return ""
+  if (!looksLikeRichTextDoc(raw)) return raw
+  const doc = parseRichText(raw)
+  if (!doc?.content) return ""
+  return extractPlainTextFromNodes(doc.content)
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n\s*/g, "\n")
+    .trim()
+}
+
 export function richTextWordCount(raw: string | null | undefined): number {
   const text = extractPlainText(raw)
   return text ? text.split(/\s+/).filter(Boolean).length : 0

@@ -21,6 +21,7 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { commentMatchesQuestion } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import { FieldActivityStream, groupResolvedThreads, type ResolvedThreadEntry } from "@/components/form/field-activity-stream"
+import { useWritingCheck, WritingCheckButton, WritingCheckPanel } from "@/components/form/writing-check"
 import { LazyRichTextDisplay } from "@/components/form/rich-text-display-lazy"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LineItemsTable } from "@/components/line-items-table"
@@ -923,6 +924,10 @@ function RevisionEditor({
   const [value, setValue] = useState(response.student_response ?? "")
   const [savingDraft, setSavingDraft] = useState(false)
   const [resubmitting, setResubmitting] = useState(false)
+  // Long answers get the spelling/grammar checklist, shown inline here since
+  // this editor already sits in a sheet.
+  const writing = useWritingCheck()
+  const checksWriting = editable && typeId === QUESTION_TYPE.LONG_RESPONSE
 
   const wordCount = value.trim().split(/\s+/).filter(Boolean).length
   const minWords = question.min_words ?? 0
@@ -939,6 +944,16 @@ function RevisionEditor({
 
   const resubmit = async () => {
     setResubmitting(true)
+    // Spelling and grammar first, the same gate as the section form. Keep the
+    // edit either way.
+    if (checksWriting && !(await writing.gate(value))) {
+      await onSaveDraft(value)
+      setResubmitting(false)
+      toast.error("Fix the spelling and grammar items first. They're listed under your response.", {
+        duration: 6000,
+      })
+      return
+    }
     await onResubmit(value)
     setResubmitting(false)
   }
@@ -972,6 +987,17 @@ function RevisionEditor({
                 {wordCount} / {minWords} words
               </p>
             )}
+            {checksWriting && writing.open && (
+              <div className="mt-4 rounded-lg border">
+                <div className="flex items-center justify-between border-b px-3 py-2">
+                  <p className="text-sm font-medium">Writing Check</p>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => writing.setOpen(false)}>
+                    Hide
+                  </Button>
+                </div>
+                <WritingCheckPanel writing={writing} text={value} inline />
+              </div>
+            )}
           </>
         ) : locked ? (
           <div className="rounded-md border bg-muted/30 px-3 py-2">
@@ -1002,6 +1028,11 @@ function RevisionEditor({
 
       {editable && (
         <div className="flex items-center justify-end gap-2 border-t px-6 py-3">
+          {checksWriting && (
+            <span className="mr-auto">
+              <WritingCheckButton writing={writing} text={value} disabled={resubmitting} />
+            </span>
+          )}
           <Button variant="outline" size="sm" onClick={saveDraft} disabled={!dirty || savingDraft || resubmitting}>
             {savingDraft ? "Saving..." : "Save draft"}
           </Button>
