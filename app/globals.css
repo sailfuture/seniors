@@ -67,8 +67,9 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  /* Navy focus ring: the preset's neutral-400 is ~2.5:1, under WCAG's 3:1. */
-  --ring: oklch(0.262 0.096 266.5);
+  /* Blue focus border (blue-600, 4.9:1 on white); the preset's neutral-400
+     ring was ~2.5:1, under WCAG's 3:1. */
+  --ring: oklch(0.546 0.245 262.881);
   --chart-1: oklch(0.809 0.105 251.813);
   --chart-2: oklch(0.623 0.214 259.815);
   --chart-3: oklch(0.546 0.245 262.881);
@@ -82,7 +83,7 @@
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.262 0.096 266.5);
+  --sidebar-ring: oklch(0.546 0.245 262.881);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
 }
