@@ -81,6 +81,18 @@ const WORD_USAGE_CATEGORIES = new Set([
   "COMPOUNDING",
 ])
 const STYLE_CATEGORIES = new Set(["STYLE", "REDUNDANCY", "PLAIN_ENGLISH"])
+// Words that are also real words without their apostrophe, where "its" vs
+// "it's" is a genuine usage question rather than a typo.
+const REAL_WITHOUT_APOSTROPHE = new Set([
+  "its", "were", "well", "ill", "id", "lets", "cant", "wont", "hell", "shell", "wed", "shed",
+])
+
+/** "dont" → "don't", "Im" → "I'm": the only difference is the apostrophe. */
+function missingApostrophe(flagged: string, fix: string | undefined): boolean {
+  if (!fix || !/['’]/.test(fix) || /['’]/.test(flagged)) return false
+  if (fix.replace(/['’]/g, "").toLowerCase() !== flagged.toLowerCase()) return false
+  return !REAL_WITHOUT_APOSTROPHE.has(flagged.toLowerCase())
+}
 
 /** Sorts a match into one of the checklist's kinds, or null to leave it out. */
 function kindOf(m: LanguageToolMatch, flagged: string): WritingIssueKind | null {
@@ -92,6 +104,9 @@ function kindOf(m: LanguageToolMatch, flagged: string): WritingIssueKind | null 
   // spaces) aren't worth a student's time.
   if (/COMMA_PARENTHESIS_WHITESPACE|SENTENCE_WHITESPACE/.test(id)) return "punctuation"
   if (issueType === "whitespace" || category === "TYPOGRAPHY") return null
+  // A contraction missing its apostrophe is a typo, whichever rule or premium
+  // category LanguageTool files it under.
+  if (missingApostrophe(flagged, m.replacements?.[0]?.value)) return "spelling"
   // Style and clarity suggestions (wordiness, long sentences, tone) are left
   // out: the check sticks to the basics.
   if (

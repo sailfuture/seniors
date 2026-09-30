@@ -373,7 +373,8 @@ export function WritingCheckDock({
 }) {
   if (!writing.open || !writing.docked || !writing.dockNode) return null
   return createPortal(
-    <div className="flex h-full min-h-0 flex-col">
+    // Light gray, so the panel reads as apart from the white answer boxes.
+    <div className="bg-muted flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-start justify-between gap-3 border-b px-5 py-3.5">
         <div className="min-w-0">
           <h2 className="text-base font-semibold">Writing Check</h2>
@@ -470,10 +471,21 @@ function Checklist({
     )
   }
 
-  const groups = WRITING_CATEGORIES.map((category) => ({
-    category,
-    items: live.issues.filter((issue) => WRITING_ISSUES[issue.kind].category === category),
-  })).filter((group) => group.items.length > 0)
+  // Must-fix items first, then suggestions — each grouped by category, so
+  // "must fix" is said once as a heading rather than on every item.
+  const sections = [
+    { title: "Must fix before submitting", blocks: true },
+    { title: "Suggestions", blocks: false },
+  ]
+    .map((section) => {
+      const issues = live.issues.filter((issue) => blocksSubmission(issue.kind) === section.blocks)
+      const groups = WRITING_CATEGORIES.map((category) => ({
+        category,
+        items: issues.filter((issue) => WRITING_ISSUES[issue.kind].category === category),
+      })).filter((group) => group.items.length > 0)
+      return { ...section, count: issues.length, groups }
+    })
+    .filter((section) => section.count > 0)
   const left = live.issues.filter(
     (issue) => !done.has(issue.index) && !confirmed.has(issue.key) && !issue.edited
   ).length
@@ -484,8 +496,9 @@ function Checklist({
         (toFix > 0 ? (
           <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
             Not submitted yet. Fix the {toFix} {MUST_FIX_LABEL}{" "}
-            {toFix === 1 ? "item" : "items"} marked &ldquo;Must fix&rdquo; first. If one is
-            correct as written, like a name, choose &ldquo;It&rsquo;s correct.&rdquo;
+            {toFix === 1 ? "item" : "items"} under &ldquo;Must fix before submitting&rdquo;
+            first. If one is correct as written, like a name, choose &ldquo;It&rsquo;s
+            correct.&rdquo;
           </p>
         ) : (
           <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-400">
@@ -503,32 +516,39 @@ function Checklist({
             ? "Everything is checked off."
             : `${left} of ${live.issues.length} left to review`}
         </p>
-        {!heldBack && toFix > 0 && (
-          <p className="text-xs text-red-600 dark:text-red-400">
-            {toFix} marked &ldquo;Must fix&rdquo; will hold up your submission until fixed.
-          </p>
-        )}
       </div>
-      {groups.map(({ category, items }) => (
-        <section key={category} className="space-y-2">
-          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            {category} · {items.length}
+      {sections.map((section) => (
+        <section key={section.title} className="space-y-3">
+          <h3
+            className={cn(
+              "text-sm font-semibold",
+              section.blocks ? "text-red-700 dark:text-red-400" : "text-foreground"
+            )}
+          >
+            {section.title} · {section.count}
           </h3>
-          <ul className="space-y-2">
-            {items.map((issue) => (
-              <ChecklistItem
-                key={issue.index}
-                text={run.text}
-                issue={issue}
-                active={activeIndex === issue.index}
-                checked={done.has(issue.index)}
-                correct={confirmed.has(issue.key)}
-                onLocate={() => locate(issue.index)}
-                onToggle={() => toggleDone(issue.index)}
-                onMarkCorrect={(correct) => markCorrect(issue.key, correct)}
-              />
-            ))}
-          </ul>
+          {section.groups.map(({ category, items }) => (
+            <div key={category} className="space-y-2">
+              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                {category}
+              </p>
+              <ul className="space-y-2">
+                {items.map((issue) => (
+                  <ChecklistItem
+                    key={issue.index}
+                    text={run.text}
+                    issue={issue}
+                    active={activeIndex === issue.index}
+                    checked={done.has(issue.index)}
+                    correct={confirmed.has(issue.key)}
+                    onLocate={() => locate(issue.index)}
+                    onToggle={() => toggleDone(issue.index)}
+                    onMarkCorrect={(correct) => markCorrect(issue.key, correct)}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
         </section>
       ))}
     </div>
@@ -563,7 +583,7 @@ function ChecklistItem({
   return (
     <li
       className={cn(
-        "flex gap-3 rounded-lg border px-3 py-2.5 transition-[opacity,box-shadow]",
+        "bg-background flex gap-3 rounded-lg border px-3 py-2.5 transition-[opacity,box-shadow]",
         settled && "opacity-55",
         active && "ring-ring/40 ring-2"
       )}
@@ -576,14 +596,7 @@ function ChecklistItem({
         aria-label={`Done: ${def.label}`}
       />
       <div className="min-w-0 flex-1 space-y-1">
-        {(def.label !== def.category || (def.blocks && !correct && !issue.edited)) && (
-          <p className="flex items-center gap-2 text-xs">
-            {def.label !== def.category && <span className="font-semibold">{def.label}</span>}
-            {def.blocks && !correct && !issue.edited && (
-              <span className="font-medium text-red-600 dark:text-red-400">Must fix</span>
-            )}
-          </p>
-        )}
+        {def.label !== def.category && <p className="text-xs font-semibold">{def.label}</p>}
         <button
           type="button"
           onClick={onLocate}
