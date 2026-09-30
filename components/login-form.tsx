@@ -52,7 +52,16 @@ export function LoginForm({
               // object (not a class) — Clerk's own CSS outranks Tailwind's
               // layered `hidden` utility.
               header: { display: "none" },
-              cardBox: "w-full shadow-2xl",
+              // Fill the column (Clerk's own card is a fixed 25rem): in Inter
+              // the "Students & Teachers — Continue with Google" label needs
+              // the extra room, and on a phone it wraps instead of truncating.
+              rootBox: { width: "100%" },
+              cardBox: {
+                width: "100%",
+                maxWidth: "28rem",
+                boxShadow: "0 25px 50px -12px rgb(0 0 0 / 0.25)", // shadow-2xl
+              },
+              socialButtonsBlockButtonText: { whiteSpace: "normal", textOverflow: "clip" },
             },
           }}
         />

@@ -5,12 +5,6 @@ import localFont from "next/font/local"
 import { redirect } from "next/navigation"
 import { auth } from "@clerk/nextjs/server"
 import { LoginForm } from "@/components/login-form"
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 
 // Self-hosted so the headline never flashes a fallback face, and declared
 // here so only this page preloads it. Only the Medium (500) cut is loaded —
@@ -54,10 +48,12 @@ const FEATURES = [
 ]
 
 /**
- * The public home page is also the sign-in page: the sign-in card up top, and
- * below it the description of the dashboard that Google's OAuth reviewers
- * require an anonymous visitor to see (purpose, Google data use, privacy
- * policy). Keep the name identical to the Google consent screen.
+ * The public home page is the sign-in page: the navy login screen with the
+ * sign-in card in the middle of the first screen. Below it, in the same navy,
+ * sits what Google's OAuth reviewers require an anonymous visitor to be able
+ * to read (purpose, Google data use, privacy policy, operator) — an earlier
+ * review was rejected when the home page was only a redirect. Keep the name
+ * identical to the Google consent screen.
  */
 export default async function Home({
   searchParams,
@@ -73,24 +69,33 @@ export default async function Home({
     redirect("/dashboard")
   }
 
+  const link = "underline underline-offset-2 hover:text-white"
+
   return (
-    <div className={`${switzer.variable} bg-muted min-h-svh`}>
-      <section className="relative overflow-hidden bg-[#111a2e] px-6 py-12 md:py-16">
-        {/* Soft blue glow falling from the top, fading into the navy base. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,#1d3160_0%,#16223f_40%,transparent_75%)]"
-        />
-        <div className="relative mx-auto flex w-full max-w-md flex-col items-center gap-6 text-center">
+    <div className={`${switzer.variable} relative min-h-svh bg-[#111a2e] text-white`}>
+      {/* Soft blue glow falling from the top, fading into the navy base. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-svh bg-[radial-gradient(120%_80%_at_50%_-10%,#1d3160_0%,#16223f_40%,transparent_75%)]"
+      />
+
+      <main className="relative flex min-h-svh flex-col items-center justify-center p-6 md:p-10">
+        <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
           <img
             src="/images/sailfuture-square.webp"
             alt="SailFuture Academy"
             className="size-16 rounded-full border-2 border-gray-300 shadow-lg"
           />
-          <h1 className="text-balance font-[family-name:var(--font-switzer)] text-4xl font-medium tracking-tight text-white md:text-5xl">
-            SailFuture Academy Senior Dashboard
-          </h1>
-          <p className="-mt-2 text-sm text-white/60">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-balance font-[family-name:var(--font-switzer)] text-4xl font-medium tracking-tight md:text-5xl">
+              SailFuture Academy Senior Dashboard
+            </h1>
+            <p className="text-balance text-sm text-white/70">
+              Where SailFuture Academy seniors plan, submit, and track the
+              senior projects required for graduation.
+            </p>
+          </div>
+          <p className="text-sm text-white/60">
             Students and teachers continue with Google.
             <br />
             Thesis advisors sign in with email or phone.
@@ -99,95 +104,89 @@ export default async function Home({
             <LoginForm />
           </Suspense>
         </div>
-      </section>
+      </main>
 
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10 md:py-14">
-        <p className="text-muted-foreground mx-auto max-w-xl text-center text-base">
+      <section
+        aria-label="About the dashboard"
+        className="relative mx-auto w-full max-w-3xl border-t border-white/10 px-6 pt-10 pb-12 text-sm leading-relaxed text-white/60"
+      >
+        <p className="text-base text-white/75">
           The SailFuture Academy Senior Dashboard is the private academic
           platform that SailFuture Academy seniors and staff use to plan,
           submit, and track the senior projects required for graduation.
         </p>
 
-        <section className="flex flex-col gap-4">
-          <h2 className="text-center text-lg font-semibold tracking-tight">
-            What the dashboard is used for
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            {FEATURES.map((feature) => (
-              <Card key={feature.title} className="border-2 border-gray-50">
-                <CardHeader>
-                  <CardTitle className="text-base">{feature.title}</CardTitle>
-                  <CardDescription>{feature.description}</CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        </section>
+        <h2 className="mt-8 text-xs font-semibold tracking-wide text-white/80 uppercase">
+          What the dashboard is used for
+        </h2>
+        <dl className="mt-3 grid gap-x-8 gap-y-4 sm:grid-cols-2">
+          {FEATURES.map((feature) => (
+            <div key={feature.title}>
+              <dt className="font-medium text-white/85">{feature.title}</dt>
+              <dd className="mt-1">{feature.description}</dd>
+            </div>
+          ))}
+        </dl>
 
-        <section className="bg-card rounded-xl border-2 border-gray-50 p-6 shadow-sm md:p-8">
-          <h2 className="text-lg font-semibold tracking-tight">
-            Who can sign in
-          </h2>
-          <p className="text-muted-foreground mt-2 text-sm">
-            Access is limited to currently enrolled SailFuture Academy students
-            and authorized SailFuture Academy staff. Signing in requires an
-            active SailFuture Google Workspace account, and accounts that are not
-            on the school roster are not granted access. The dashboard is not
-            open to the general public.
-          </p>
+        <h2 className="mt-8 text-xs font-semibold tracking-wide text-white/80 uppercase">
+          Who can sign in
+        </h2>
+        <p className="mt-2">
+          Access is limited to currently enrolled SailFuture Academy students
+          and authorized SailFuture Academy staff. Signing in requires an
+          active SailFuture Google Workspace account, and accounts that are not
+          on the school roster are not granted access. The dashboard is not
+          open to the general public.
+        </p>
 
-          <h2 className="mt-6 text-lg font-semibold tracking-tight">
-            How we use your Google account
-          </h2>
-          <p className="text-muted-foreground mt-2 text-sm">
-            Google sign-in is used only to verify who you are and to connect you
-            to your school records. We receive your name, school email address,
-            Google account identifier, and profile photo. The dashboard does not
-            request or access your Gmail messages, Google Drive files, Google
-            Calendar, or Google Contacts, and it never receives your password.
-          </p>
-          <p className="text-muted-foreground mt-2 text-sm">
-            SailFuture Academy&rsquo;s use and transfer of information received
-            from Google APIs adheres to the{" "}
-            <a
-              href="https://developers.google.com/terms/api-services-user-data-policy"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-foreground"
-            >
-              Google API Services User Data Policy
-            </a>
-            , including its Limited Use requirements. Full details are in our{" "}
-            <Link href="/privacy" className="underline hover:text-foreground">
-              Privacy Policy
-            </Link>
-            .
-          </p>
+        <h2 className="mt-8 text-xs font-semibold tracking-wide text-white/80 uppercase">
+          How we use your Google account
+        </h2>
+        <p className="mt-2">
+          Google sign-in is used only to verify who you are and to connect you
+          to your school records. We receive your name, school email address,
+          Google account identifier, and profile photo. The dashboard does not
+          request or access your Gmail messages, Google Drive files, Google
+          Calendar, or Google Contacts, and it never receives your password.
+        </p>
+        <p className="mt-2">
+          SailFuture Academy&rsquo;s use and transfer of information received
+          from Google APIs adheres to the{" "}
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={link}
+          >
+            Google API Services User Data Policy
+          </a>
+          , including its Limited Use requirements. Full details are in our{" "}
+          <Link href="/privacy" className={link}>
+            Privacy Policy
+          </Link>
+          .
+        </p>
 
-          <h2 className="mt-6 text-lg font-semibold tracking-tight">
-            Who operates this dashboard
-          </h2>
-          <p className="text-muted-foreground mt-2 text-sm">
-            The SailFuture Academy Senior Dashboard is operated by SailFuture,
-            Inc., a nonprofit organization in St. Petersburg, Florida, that runs
-            SailFuture Academy. Questions about the dashboard can be sent to{" "}
-            <a
-              href="mailto:hthompson@sailfuture.org"
-              className="underline hover:text-foreground"
-            >
-              hthompson@sailfuture.org
-            </a>
-            .
-          </p>
-        </section>
+        <h2 className="mt-8 text-xs font-semibold tracking-wide text-white/80 uppercase">
+          Who operates this dashboard
+        </h2>
+        <p className="mt-2">
+          The SailFuture Academy Senior Dashboard is operated by SailFuture,
+          Inc., a nonprofit organization in St. Petersburg, Florida, that runs
+          SailFuture Academy. Questions about the dashboard can be sent to{" "}
+          <a href="mailto:hthompson@sailfuture.org" className={link}>
+            hthompson@sailfuture.org
+          </a>
+          .
+        </p>
 
-        <p className="text-muted-foreground text-center text-xs">
+        <p className="mt-10 text-center text-xs text-white/55">
           &copy; 2025 SailFuture Academy &middot; St. Petersburg, FL &middot;{" "}
-          <Link href="/privacy" className="underline hover:text-foreground">
+          <Link href="/privacy" className={link}>
             Privacy Policy
           </Link>{" "}
           &middot;{" "}
-          <Link href="/terms" className="underline hover:text-foreground">
+          <Link href="/terms" className={link}>
             Terms of Use
           </Link>{" "}
           &middot;{" "}
@@ -195,12 +194,12 @@ export default async function Home({
             href="https://www.sailfutureacademy.org"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-foreground"
+            className={link}
           >
             sailfutureacademy.org
           </a>
         </p>
-      </div>
+      </section>
     </div>
   )
 }
