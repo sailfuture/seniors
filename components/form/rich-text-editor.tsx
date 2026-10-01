@@ -676,8 +676,8 @@ export function RichTextEditor({
         {inlineBadge > 0 && (
           <span
             className={cn(
-              "absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full text-[9px] font-bold text-white",
-              viewer === "student" && unreadInline > 0 ? "bg-blue-500" : "bg-gray-400"
+              "absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full text-[9px] font-bold",
+              viewer === "student" && unreadInline > 0 ? "bg-yellow-400 text-yellow-950" : "bg-gray-400 text-white"
             )}
           >
             {inlineBadge}

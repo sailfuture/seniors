@@ -84,7 +84,7 @@ type GroupKey = "revisions" | "pending" | "unread" | "approved"
 const GROUP_META: Record<GroupKey, { label: string; dot: string; empty: string }> = {
   revisions: { label: "Revisions requested", dot: "bg-red-500", empty: "No revisions requested." },
   pending: { label: "Pending review", dot: "bg-blue-500", empty: "Nothing currently submitted." },
-  unread: { label: "Unread comments", dot: "bg-gray-400", empty: "No unread comments." },
+  unread: { label: "Unread comments", dot: "bg-yellow-400", empty: "No unread comments." },
   approved: { label: "Approved", dot: "bg-green-500", empty: "No approved submissions yet." },
 }
 

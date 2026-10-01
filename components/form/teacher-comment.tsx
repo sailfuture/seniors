@@ -157,7 +157,7 @@ export function TeacherComment({
           className={cn(
             "size-4",
             hasUnseenReplies
-              ? "text-blue-500"
+              ? "text-yellow-500"
               : commentCount > 0
                 ? "text-gray-500"
                 : "text-muted-foreground/40"
@@ -165,8 +165,8 @@ export function TeacherComment({
         />
         {commentCount > 0 && (
           <span className={cn(
-            "absolute flex items-center justify-center rounded-full font-bold text-white",
-            hasUnseenReplies ? "bg-blue-500" : "bg-gray-500",
+            "absolute flex items-center justify-center rounded-full font-bold",
+            hasUnseenReplies ? "bg-yellow-400 text-yellow-950" : "bg-gray-500 text-white",
             square
               ? "-right-1 -top-1 size-4 text-[10px] font-medium"
               : "-right-0.5 -top-0.5 size-3.5 text-[9px] ring-2 ring-white"

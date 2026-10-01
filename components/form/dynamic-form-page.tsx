@@ -736,67 +736,72 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         ? { readyReview: true, isComplete: false, revisionNeeded: false }
         : { readyReview: false, isComplete: false, revisionNeeded: false }
 
+      // The checks above are done, so show the new status at once and let
+      // Xano catch up: its queue can hold a PATCH for seconds. A failed save
+      // rolls the status and the sidebar badges back.
+      const prevResp = responses.get(templateId)
+      const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)
+      const nowReady = patch.readyReview
+      const wasRevision = !!prevResp?.revisionNeeded
+      const eventName = `${cfg.eventPrefix ?? ""}review-update`
+      const announce = (sign: 1 | -1) => {
+        if (nowReady !== wasReady) {
+          window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: sign * (nowReady ? 1 : -1) } }))
+        }
+        if (wasRevision) {
+          window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: -sign, type: "revision" } }))
+        }
+      }
+      const show = (r: StudentResponse | undefined) => {
+        if (!r) return
+        setResponses((prev) => new Map(prev).set(templateId, r))
+      }
+      show(prevResp ? { ...prevResp, ...patch, last_edited: now } : undefined)
+      announce(1)
+
       try {
         const res = await fetch(`${cfg.responsePatchBase}/${responseId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
         })
-        if (res.ok) {
-          changed = true
-          // Log the transition so activity timelines show the history.
-          {
-            const q = questions.find((qq) => qq.id === templateId)
-            if (q && studentId) {
-              postResponseEvent(cfg, {
+        if (!res.ok) throw new Error(`PATCH failed: ${res.status}`)
+        changed = true
+        // Log the transition so activity timelines show the history.
+        {
+          const q = questions.find((qq) => qq.id === templateId)
+          if (q && studentId) {
+            postResponseEvent(cfg, {
+              studentId,
+              templateId,
+              fieldName: q.field_name,
+              sectionId,
+              eventType: action === "ready" ? "submitted" : "reopened",
+              actorName: session?.user?.name ?? "Student",
+            })
+            // Snapshot rich-text essays at submit so edit history is preserved.
+            if (action === "ready" && isRichTextQuestion(q)) {
+              postResponseVersion(cfg, {
                 studentId,
                 templateId,
                 fieldName: q.field_name,
                 sectionId,
-                eventType: action === "ready" ? "submitted" : "reopened",
+                studentResponse: localValues.get(templateId) ?? responses.get(templateId)?.student_response ?? "",
+                reason: "submitted",
                 actorName: session?.user?.name ?? "Student",
               })
-              // Snapshot rich-text essays at submit so edit history is preserved.
-              if (action === "ready" && isRichTextQuestion(q)) {
-                postResponseVersion(cfg, {
-                  studentId,
-                  templateId,
-                  fieldName: q.field_name,
-                  sectionId,
-                  studentResponse: localValues.get(templateId) ?? responses.get(templateId)?.student_response ?? "",
-                  reason: "submitted",
-                  actorName: session?.user?.name ?? "Student",
-                })
-              }
             }
           }
-          // Notify the sidebar badges of the state transition
-          const prevResp = responses.get(templateId)
-          const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)
-          const nowReady = patch.readyReview
-          const wasRevision = !!prevResp?.revisionNeeded
-          const eventName = `${cfg.eventPrefix ?? ""}review-update`
-          if (nowReady !== wasReady) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: nowReady ? 1 : -1 } }))
-          }
-          if (wasRevision) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: -1, type: "revision" } }))
-          }
-          // Reopening a completed answer drops the section out of "fully
-          // complete"; that set only recomputes on a sidebar refetch, so bump it.
-          if (!!prevResp?.isComplete !== !!patch.isComplete) {
-            bumpSidebar()
-          }
-
-          setResponses((prev) => {
-            const next = new Map(prev)
-            const existing = next.get(templateId)
-            if (existing) next.set(templateId, { ...existing, ...patch, last_edited: now })
-            return next
-          })
-          if (!silent) toast.success(action === "ready" ? "Sent for review" : "Reopened for editing")
         }
+        // Reopening a completed answer drops the section out of "fully
+        // complete"; that set only recomputes on a sidebar refetch, so bump it.
+        if (!!prevResp?.isComplete !== !!patch.isComplete) {
+          bumpSidebar()
+        }
+        if (!silent) toast.success(action === "ready" ? "Sent for review" : "Reopened for editing")
       } catch {
+        show(prevResp)
+        announce(-1)
         if (!silent) toast.error("Failed to update status")
       }
       } finally {
@@ -905,9 +910,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
               onClick={() => setSectionCommentsOpen(true)}
               className="relative inline-flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-accent"
             >
-              <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className={`size-4 ${unreadSectionCount > 0 ? "text-blue-500" : "text-muted-foreground/50"}`} />
+              <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className={`size-4 ${unreadSectionCount > 0 ? "text-yellow-500" : "text-muted-foreground/50"}`} />
               {unreadSectionCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
+                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-yellow-400 text-[10px] font-semibold text-yellow-950">
                   {unreadSectionCount}
                 </span>
               )}
@@ -1138,9 +1143,9 @@ function GroupSection({
                 onClick={() => setGroupCommentsOpen(true)}
                 className="relative inline-flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-accent"
               >
-                <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className={`size-4 ${unreadGroupCount > 0 ? "text-blue-500" : "text-muted-foreground/50"}`} />
+                <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className={`size-4 ${unreadGroupCount > 0 ? "text-yellow-500" : "text-muted-foreground/50"}`} />
                 {unreadGroupCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
+                  <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-yellow-400 text-[10px] font-semibold text-yellow-950">
                     {unreadGroupCount}
                   </span>
                 )}
