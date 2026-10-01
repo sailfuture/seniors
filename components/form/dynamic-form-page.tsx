@@ -65,6 +65,7 @@ import { ImageCropDialog } from "./image-crop-dialog"
 import { GoogleFontPicker } from "./google-font-picker"
 import { BrandColorInput } from "./brand-color-input"
 import { LineItemsInput } from "./line-items-input"
+import { WrappingInput } from "./wrapping-input"
 import { isLineItemsQuestion } from "@/lib/line-items"
 import { RichTextPreviewCard } from "./rich-text-preview-card"
 import {
@@ -1079,7 +1080,7 @@ function GroupSection({
       <div
         className={`flex cursor-pointer items-center justify-between px-6 py-4 select-none ${collapsed ? "" : "border-b"}`}
         onClick={(e) => {
-          if (e.currentTarget.contains(e.target as Node)) toggleCollapsed()
+          if (isHeaderClick(e)) toggleCollapsed()
         }}
       >
         <div className="flex items-center gap-2">
@@ -1348,6 +1349,19 @@ function StudentCommentList({
   )
 }
 
+/**
+ * Whether a click on a collapsible header came from the header itself. React
+ * bubbles clicks out of the sheets and dialogs its buttons open (portals), and
+ * the header's own buttons and links (comments, Reopen) do their own thing:
+ * neither should collapse the question or group.
+ */
+function isHeaderClick(e: React.MouseEvent<HTMLElement>): boolean {
+  const target = e.target as Element
+  if (!e.currentTarget.contains(target)) return false
+  const control = target.closest('button, a, input, textarea, select, [role="button"]')
+  return !control || !e.currentTarget.contains(control)
+}
+
 function DynamicField({
   question,
   value,
@@ -1449,7 +1463,7 @@ function DynamicField({
         onClick={
           isComplete
             ? (e) => {
-                if (e.currentTarget.contains(e.target as Node)) setQuestionCollapsed((v) => !v)
+                if (isHeaderClick(e)) setQuestionCollapsed((v) => !v)
               }
             : undefined
         }
@@ -1625,13 +1639,12 @@ function DynamicField({
           />
         ) : (
         <InputGroup>
-          <InputGroupInput
-            className="md:text-base"
+          <WrappingInput
             placeholder={question.placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
-            disabled={isDimmed}
+            readOnly={isDimmed}
           />
         </InputGroup>
         )
@@ -1652,7 +1665,7 @@ function DynamicField({
               onChange(e.target.value)
             }}
             onBlur={onBlur}
-            disabled={isDimmed}
+            readOnly={isDimmed}
             rows={4}
           />
           {(question.min_words > 0 || plagiarism || !isDimmed) && (
@@ -1678,7 +1691,7 @@ function DynamicField({
       )}
 
       {typeId === QUESTION_TYPE.CURRENCY && (
-        <CurrencyInput value={value} onChange={onChange} onBlur={onBlur} disabled={isDimmed} />
+        <CurrencyInput value={value} onChange={onChange} onBlur={onBlur} readOnly={isDimmed} />
       )}
 
       {typeId === QUESTION_TYPE.IMAGE_UPLOAD && (
@@ -1707,14 +1720,14 @@ function DynamicField({
 
       {typeId === QUESTION_TYPE.URL && (
         <InputGroup>
-          <InputGroupInput
-            className="md:text-base"
-            type="url"
+          <WrappingInput
+            inputMode="url"
+            spellCheck={false}
             placeholder={question.placeholder || "https://..."}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
-            disabled={isDimmed}
+            readOnly={isDimmed}
           />
         </InputGroup>
       )}
@@ -1727,7 +1740,7 @@ function DynamicField({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
-            disabled={isDimmed}
+            readOnly={isDimmed}
           />
         </InputGroup>
       )}
@@ -1737,40 +1750,38 @@ function DynamicField({
           <div className="space-y-1">
             <Label className="text-muted-foreground text-xs font-medium">Source Link</Label>
             <InputGroup>
-              <InputGroupInput
-                className="md:text-base"
-                type="url"
+              <WrappingInput
+                inputMode="url"
+                spellCheck={false}
                 placeholder="https://..."
                 value={sourceValues?.source_link ?? ""}
                 onChange={(e) => onSourceChange?.("source_link", e.target.value)}
                 onBlur={onBlur}
-                disabled={isDimmed}
+                readOnly={isDimmed}
               />
             </InputGroup>
           </div>
           <div className="space-y-1">
             <Label className="text-muted-foreground text-xs font-medium">Title of Source</Label>
             <InputGroup>
-              <InputGroupInput
-                className="md:text-base"
+              <WrappingInput
                 placeholder="Enter title..."
                 value={sourceValues?.title_of_source ?? ""}
                 onChange={(e) => onSourceChange?.("title_of_source", e.target.value)}
                 onBlur={onBlur}
-                disabled={isDimmed}
+                readOnly={isDimmed}
               />
             </InputGroup>
           </div>
           <div className="space-y-1">
             <Label className="text-muted-foreground text-xs font-medium">Author / Publisher</Label>
             <InputGroup>
-              <InputGroupInput
-                className="md:text-base"
+              <WrappingInput
                 placeholder="Enter author or publisher..."
                 value={sourceValues?.author_name_or_publisher ?? ""}
                 onChange={(e) => onSourceChange?.("author_name_or_publisher", e.target.value)}
                 onBlur={onBlur}
-                disabled={isDimmed}
+                readOnly={isDimmed}
               />
             </InputGroup>
           </div>
@@ -1783,7 +1794,7 @@ function DynamicField({
                 value={sourceValues?.date_of_publication ?? ""}
                 onChange={(e) => onSourceChange?.("date_of_publication", e.target.value)}
                 onBlur={onBlur}
-                disabled={isDimmed}
+                readOnly={isDimmed}
               />
             </InputGroup>
           </div>
@@ -1836,7 +1847,7 @@ function PlagiarismScores({ data }: { data: GptZeroResult }) {
   )
 }
 
-function CurrencyInput({ value, onChange, onBlur, disabled }: { value: string; onChange: (v: string) => void; onBlur?: () => void; disabled?: boolean }) {
+function CurrencyInput({ value, onChange, onBlur, readOnly }: { value: string; onChange: (v: string) => void; onBlur?: () => void; readOnly?: boolean }) {
   const numValue = parseInt(value.replace(/[^0-9]/g, ""), 10) || 0
   const display = numValue > 0 ? numValue.toLocaleString("en-US") : ""
 
@@ -1847,6 +1858,7 @@ function CurrencyInput({ value, onChange, onBlur, disabled }: { value: string; o
   }
 
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (readOnly) return
     if (numValue === 0) {
       e.target.value = ""
     }
@@ -1864,7 +1876,7 @@ function CurrencyInput({ value, onChange, onBlur, disabled }: { value: string; o
         inputMode="numeric"
         placeholder="0"
         value={display}
-        disabled={disabled}
+        readOnly={readOnly}
         onChange={handleChange}
         onFocus={handleFocus}
         onBlur={onBlur}

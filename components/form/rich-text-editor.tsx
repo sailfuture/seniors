@@ -718,9 +718,10 @@ export function RichTextEditor({
         data-wc-hidden={writing && !writing.open ? "true" : undefined}
         className={cn(
           "flex flex-1 flex-col [&>.tiptap]:flex-1",
-          // A disabled document is visibly inert (submitted/complete/locked),
-          // while the toolbar slots above stay interactive.
-          disabled && "pointer-events-none select-none opacity-60"
+          // A disabled document (submitted/complete/locked) reads lighter but
+          // stays selectable, so it can still be copied; ProseMirror's
+          // non-editable mode keeps it from being changed.
+          disabled && "opacity-80"
         )}
       />
 

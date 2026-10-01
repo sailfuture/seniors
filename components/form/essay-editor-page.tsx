@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useId, useRef, useState } from "react"
 import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { useSession } from "@/components/session-provider"
@@ -20,7 +20,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { cn } from "@/lib/utils"
 import { RichTextEditor } from "./rich-text-editor"
+import { QuestionInstructions } from "./question-instructions"
 import { SaveIndicator } from "./save-indicator"
 import { useWritingCheck, WritingCheckButton, WritingCheckDock } from "./writing-check"
 import { MUST_FIX_LABEL } from "@/lib/writing-check"
@@ -468,12 +470,16 @@ export function EssayEditorPage({
   }
 
   if (loading) {
-    // Mirror the loaded layout: full width, editor frame filling the page.
+    // Mirror the loaded layout: back button, title and instructions, then the
+    // document filling the rest of the column.
     return (
-      <div className="flex w-full flex-1 flex-col gap-6 p-4 md:p-6">
-        <Skeleton className="h-8 w-40" />
-        <Skeleton className="h-10 w-3/4" />
-        <Skeleton className="min-h-96 w-full flex-1" />
+      <div className="flex w-full flex-1 flex-col p-4 md:p-6">
+        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="mt-5 h-8 w-2/3" />
+          <Skeleton className="mt-3 h-16 w-full max-w-prose" />
+          <Skeleton className="mt-6 min-h-96 w-full flex-1" />
+        </div>
       </div>
     )
   }
@@ -579,41 +585,43 @@ export function EssayEditorPage({
 
   return (
     <div className="flex w-full flex-1 flex-col p-4 md:p-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">{question.field_label}</h1>
-        {question.detailed_instructions && (
-          <p className="text-muted-foreground whitespace-pre-wrap text-sm">
-            {question.detailed_instructions}
-          </p>
-        )}
-      </div>
+      {/* One column for the whole page: the title and instructions line up
+          with the document instead of running the width of a wide screen. */}
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
+        <div>
+          <BackButton href={backHref} label={backLabel} />
+        </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <BackButton href={backHref} label={backLabel} />
-      </div>
-
-      {projectLock ? (
-        <ProjectLockedBanner className="mt-4" />
-      ) : (
-        isComplete && (
-          <div className="bg-muted/50 text-muted-foreground mt-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
-            <HugeiconsIcon
-              icon={CheckmarkCircle02Icon}
-              strokeWidth={2}
-              className="size-4 shrink-0 text-green-600"
-            />
-            This essay has been marked complete. Reopen it from the section page
-            to make changes.
+        <header className="mt-5 space-y-2">
+          <div className="flex items-start gap-1.5">
+            <h1 className="text-2xl font-bold tracking-tight text-balance">{question.field_label}</h1>
+            <QuestionInstructions question={question} className="mt-1" />
           </div>
-        )
-      )}
+          {question.detailed_instructions?.trim() && (
+            <EssayInstructions text={question.detailed_instructions} />
+          )}
+        </header>
 
-      {/* Document frame: the editor sits as a white "page" on a light-gray
-          surround, so the writing surface reads like a real document. The
-          flex-1 chain stretches it to the bottom of the container. */}
-      <div className="mt-4 flex flex-1 flex-col rounded-xl bg-muted/40 p-2 sm:p-4 dark:bg-muted/20">
+        {projectLock ? (
+          <ProjectLockedBanner className="mt-5" />
+        ) : (
+          isComplete && (
+            <div className="bg-muted/50 text-muted-foreground mt-5 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
+              <HugeiconsIcon
+                icon={CheckmarkCircle02Icon}
+                strokeWidth={2}
+                className="size-4 shrink-0 text-green-600"
+              />
+              This essay has been marked complete. Reopen it from the section page
+              to make changes.
+            </div>
+          )
+        )}
+
+        {/* The document fills the rest of the column (the flex-1 chain
+            stretches it to the bottom of the page). */}
         <RichTextEditor
-          className="mx-auto w-full max-w-3xl flex-1 rounded-lg border bg-white shadow-sm dark:bg-card"
+          className="mt-6 flex-1 rounded-lg border bg-white shadow-sm dark:bg-card"
           value={value}
           onChange={handleChange}
           onBlur={handleBlur}
@@ -756,6 +764,61 @@ export function EssayEditorPage({
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+/**
+ * The question's instructions under the title, at a comfortable reading
+ * width. Long ones fold to their first few lines so the document stays in
+ * view; the toggle reads the rest. Paragraphs are split on blank lines.
+ */
+function EssayInstructions({ text }: { text: string }) {
+  const bodyId = useId()
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [folds, setFolds] = useState(false)
+
+  // Measured while folded, and again when a width change rewraps the text.
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el || expanded) return
+    const observer = new ResizeObserver(() => setFolds(el.scrollHeight > el.clientHeight + 1))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [expanded])
+
+  return (
+    <div className="max-w-prose">
+      <div
+        ref={bodyRef}
+        id={bodyId}
+        className={cn(
+          "text-muted-foreground space-y-3 text-[15px] leading-relaxed text-pretty",
+          !expanded && "max-h-[5lh] overflow-hidden",
+          !expanded && folds && "[mask-image:linear-gradient(to_bottom,#000_55%,transparent)]"
+        )}
+      >
+        {text
+          .trim()
+          .split(/\n\s*\n/)
+          .map((paragraph, i) => (
+            <p key={i} className="whitespace-pre-line">
+              {paragraph}
+            </p>
+          ))}
+      </div>
+      {folds && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={bodyId}
+          onClick={() => setExpanded((v) => !v)}
+          className="text-primary mt-1 text-sm font-medium underline-offset-4 hover:underline"
+        >
+          {expanded ? "Show less" : "Show all instructions"}
+        </button>
+      )}
     </div>
   )
 }
