@@ -16,11 +16,11 @@ import { RollingAmount } from "./motion-plus"
 import {
   citation,
   formatDate,
-  hasSource,
   hrefOf,
   parseAmount,
   prettyUrl,
   sameTitle,
+  sourcesOf,
   type SourceFields,
 } from "./format"
 import {
@@ -364,12 +364,13 @@ export function SourceFooter({
       <ol className="mt-2.5 space-y-2">
         {sources.map((q) => {
           const r = responseMap.get(q.id)
-          if (r?.isComplete && hasSource(r)) return <CitationItem key={q.id} r={r} />
+          const entries = r?.isComplete ? sourcesOf(r) : []
+          if (entries.length > 0) return entries.map((e, i) => <CitationItem key={`${q.id}-${i}`} r={e} />)
           const title = (q.public_display_title || q.field_label || "Source").trim()
           return (
             <li key={q.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-relaxed text-muted-foreground/60">
               <span>{title}</span>
-              <StatusBadge status={statusOf(r?.isComplete && !hasSource(r) ? undefined : r)} />
+              <StatusBadge status={statusOf(r?.isComplete ? undefined : r)} />
             </li>
           )
         })}

@@ -14,6 +14,7 @@ import { isLineItemsQuestion } from "@/lib/line-items"
 import { ResponseReviewSheet, type ReviewTarget } from "@/components/form/response-review-sheet"
 import { cachedFetch } from "@/lib/cached-fetch"
 import { formatWhen as formatWhenExact } from "@/lib/format-time"
+import { looksLikeSourcesDoc, parseSources, sourceSummary } from "@/lib/sources"
 
 const STUDENTS_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
@@ -102,6 +103,7 @@ function previewOf(q: TemplateQuestion, r: StudentResponse): string {
   if ((q.question_types_id ?? null) === IMAGE_UPLOAD) return "Image submission"
   if (isLineItemsQuestion(q)) return "Cost / product breakdown"
   const raw = r.student_response ?? ""
+  if (looksLikeSourcesDoc(raw)) return sourceSummary(parseSources(r)) || "—"
   const text = isRichTextQuestion(q) || looksLikeRichTextDoc(raw) ? extractPlainText(raw) : raw
   const t = text.trim().replace(/\s+/g, " ")
   if (!t) return "—"

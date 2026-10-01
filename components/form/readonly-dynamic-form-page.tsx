@@ -39,6 +39,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
+import { parseSources, sourceSummary } from "@/lib/sources"
+import { SourceListDisplay } from "@/components/form/source-list-display"
 import { TeacherComment } from "./teacher-comment"
 import { QuestionInstructions } from "./question-instructions"
 import { groupResolvedThreads } from "./field-activity-stream"
@@ -153,7 +155,7 @@ function hasResponseContent(r: StudentResponse | undefined | null): boolean {
   return (
     (r.student_response ?? "").trim().length > 0 ||
     !!(img && (img.path || img.url)) ||
-    !!(r.source_link || r.title_of_source || r.author_name_or_publisher)
+    parseSources(r).length > 0
   )
 }
 
@@ -742,35 +744,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             <p className="text-muted-foreground text-sm">—</p>
           )
         } else if (typeId === QUESTION_TYPE.SOURCE) {
-          const sl = response?.source_link ?? ""
-          const ts = response?.title_of_source ?? ""
-          const ap = response?.author_name_or_publisher ?? ""
-          const dp = response?.date_of_publication ?? ""
-          const hasAny = sl || ts || ap || dp
-          displayValue = hasAny ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Source Link</p>
-                {sl ? (
-                  <a href={sl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-blue-600 underline break-all hover:text-blue-800 dark:text-blue-400">{sl}</a>
-                ) : <p className="text-muted-foreground text-sm">—</p>}
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Title of Source</p>
-                <p className="text-sm font-semibold">{ts || "—"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Author / Publisher</p>
-                <p className="text-sm font-semibold">{ap || "—"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Date of Publication</p>
-                <p className="text-sm font-semibold">{dp || "—"}</p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">—</p>
-          )
+          displayValue = <SourceListDisplay response={response} />
         } else if (isLineItemsQuestion(q) || looksLikeLineItems(value)) {
           displayValue = <LineItemsTable raw={value} />
         } else if (isRichText || looksLikeRichTextDoc(value)) {
@@ -875,7 +849,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   templateId={q.id}
                   templateIdKey={F.templateId}
                   fieldLabel={q.field_label}
-                  fieldValue={(isRichText ? extractPlainText(value) : value) || "—"}
+                  fieldValue={(isSource ? sourceSummary(parseSources(response)) : isRichText ? extractPlainText(value) : value) || "—"}
                   essayHref={
                     isRichText || looksLikeRichTextDoc(value)
                       ? `${cfg.adminBasePath}/${studentId}/essay/${q.id}`

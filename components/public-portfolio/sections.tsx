@@ -14,7 +14,7 @@ import { aspectRatioCss } from "@/lib/image-ratio"
 import { cn } from "@/lib/utils"
 import { Answer, GroupIcon, SourceList } from "./answers"
 import { ChartPattern, SECTION_PATTERNS } from "./patterns"
-import { hasSource, sameTitle } from "./format"
+import { sameTitle, sourcesOf } from "./format"
 import { EASE, GhostNumeral, HeroPhoto, Reveal, WordReveal } from "./motion"
 import { ImageStrip } from "./motion-plus"
 import { heroAngle, heroGradient, heroPhotoWash } from "./theme"
@@ -518,8 +518,10 @@ export function QuestionsBody({
   const answers = questions.filter((q) => typeOf(q) !== QUESTION_TYPE.SOURCE)
   const sources = questions
     .filter((q) => typeOf(q) === QUESTION_TYPE.SOURCE)
-    .map((q) => responseMap.get(q.id))
-    .filter((r): r is NonNullable<typeof r> => !!r?.isComplete && hasSource(r))
+    .flatMap((q) => {
+      const r = responseMap.get(q.id)
+      return r?.isComplete ? sourcesOf(r) : []
+    })
   return (
     <>
       <AnswerGrid

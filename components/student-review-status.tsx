@@ -38,6 +38,8 @@ import { useProjectLock } from "@/lib/project-lock"
 import { ProjectLockedBanner } from "@/components/form/project-locked-banner"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { formatWhen } from "@/lib/format-time"
+import { looksLikeSourcesDoc, parseSources, sourceSummary } from "@/lib/sources"
+import { SourceListDisplay } from "@/components/form/source-list-display"
 
 const QUESTION_TYPE = {
   LONG_RESPONSE: 1,
@@ -101,6 +103,7 @@ function previewOf(q: TemplateQuestion, r: StudentResponse): string {
   if ((q.question_types_id ?? null) === QUESTION_TYPE.IMAGE_UPLOAD) return "Image submission"
   if (isLineItemsQuestion(q)) return "Cost / product breakdown"
   const raw = r.student_response ?? ""
+  if (looksLikeSourcesDoc(raw)) return sourceSummary(parseSources(r)) || "—"
   const text = isRichTextQuestion(q) || looksLikeRichTextDoc(raw) ? extractPlainText(raw) : raw
   const t = text.trim().replace(/\s+/g, " ")
   if (!t) return "—"
@@ -132,6 +135,7 @@ function ResponseView({ q, r }: { q: TemplateQuestion; r: StudentResponse | unde
     )
   }
   if (isLineItemsQuestion(q) || looksLikeLineItems(value)) return <LineItemsTable raw={value} />
+  if (looksLikeSourcesDoc(value)) return <SourceListDisplay response={r} />
   if (isRichTextQuestion(q) || looksLikeRichTextDoc(value)) return <LazyRichTextDisplay raw={value} />
   return <p className="whitespace-pre-wrap text-sm leading-relaxed">{value || "—"}</p>
 }
