@@ -253,3 +253,20 @@ body {
   /* break-inside rules live in PrintDocument's injected <style> — Lightning
      CSS strips them from this stylesheet. */
 }
+
+/* Public portfolio pages animate content in as it scrolls into view. Printed
+   from the browser, anything not yet reached would come out blank (and
+   figures at zero), so print shows every element in its final state. */
+@media print {
+  [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+  [data-count-final] {
+    visibility: visible !important;
+  }
+  [data-count-live] {
+    display: none !important;
+  }
+}
