@@ -662,15 +662,57 @@ export function CompetitorMapPlot({ data, aspect = "3 / 1" }: { data: Competitor
   )
 }
 
+function CompetitorAvatar({ entity, label, size = "sm" }: { entity: MapEntity; label: string; size?: "sm" | "md" }) {
+  const dim = size === "md" ? "size-10" : "size-8"
+  return entity.logoUrl ? (
+    <div className={`${dim} shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white`}>
+      <img src={entity.logoUrl} alt={entity.name || label} className="size-full object-contain" />
+    </div>
+  ) : (
+    <div className={`flex ${dim} shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500`}>
+      {(entity.name || "?").charAt(0).toUpperCase()}
+    </div>
+  )
+}
+
 function CompetitorMapDisplay({
   questions,
   responseMap,
+  mode,
 }: {
   questions: TemplateQuestion[]
   responseMap: Map<number, StudentResponse>
   mode: string
 }) {
   const data = getCompetitorMapData(questions, responseMap)
+  if (mode === "public") {
+    // On the public page each company is a row: who it is on the left, its
+    // positioning in two columns on the right. Four side-by-side cards made
+    // every writeup a narrow tower.
+    return (
+      <div className="space-y-5">
+        <CompetitorMapPlot data={data} />
+        <div className="divide-y divide-gray-200 border-t border-gray-200">
+          {data.cards.map(({ label, entity, positioning }, idx) => (
+            <div key={idx} className="grid gap-x-10 gap-y-3 py-5 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+              <div className="flex items-center gap-3">
+                <CompetitorAvatar entity={entity} label={label} size="md" />
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-semibold">{entity.name || "—"}</p>
+                  <p className="text-muted-foreground text-xs">{label}</p>
+                </div>
+              </div>
+              {positioning && (
+                <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground/85 md:columns-2 md:gap-x-8">
+                  {positioning}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="space-y-5">
       <CompetitorMapPlot data={data} />
@@ -682,15 +724,7 @@ function CompetitorMapDisplay({
             <Card key={idx} className="gap-0 border-gray-200 py-0 shadow-none">
               <CardContent className="p-3">
                 <div className="flex items-center gap-3">
-                  {entity.logoUrl ? (
-                    <div className="size-8 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
-                      <img src={entity.logoUrl} alt={entity.name || label} className="size-full object-contain" />
-                    </div>
-                  ) : (
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500">
-                      {(entity.name || "?").charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <CompetitorAvatar entity={entity} label={label} />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">
                       {entity.name || "—"}

@@ -98,13 +98,13 @@ function NavCollapsibleItem({ item, pathname, loading }: { item: NavItem; pathna
                         <SidebarMenuSubItem>
                           {subItem.isLocked ? (
                             <SidebarMenuSubButton className="cursor-not-allowed opacity-50">
-                              <span className="flex-1">{subItem.title}</span>
+                              <span className="min-w-0 flex-1 truncate" title={subItem.title}>{subItem.title}</span>
                               <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="text-muted-foreground ml-auto size-3.5 shrink-0" />
                             </SidebarMenuSubButton>
                           ) : (
                             <SidebarMenuSubButton asChild className={isActive ? "bg-muted font-semibold" : ""}>
                               <Link href={subItem.url}>
-                                <span className="flex-1">{subItem.title}</span>
+                                <span className="min-w-0 flex-1 truncate" title={subItem.title}>{subItem.title}</span>
                                 {hasBadges ? (
                                   <span className="ml-auto flex shrink-0 items-center gap-1">
                                     {subItem.badgeRed != null && subItem.badgeRed > 0 && (

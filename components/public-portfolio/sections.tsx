@@ -1,6 +1,6 @@
 "use client"
 
-import type { ComponentProps, ReactNode } from "react"
+import { createContext, useContext, type ComponentProps, type ReactNode } from "react"
 import { motion } from "motion/react"
 import {
   DISPLAY_TYPE,
@@ -494,6 +494,12 @@ export function GroupBody({
   )
 }
 
+/**
+ * On a deck slide the sources gather in the slide's footer, so a group's
+ * body leaves them out instead of citing them inline.
+ */
+export const SourcesInFooter = createContext(false)
+
 /** Answers in a grid, then the citations for any sources among them. */
 export function QuestionsBody({
   questions,
@@ -508,6 +514,7 @@ export function QuestionsBody({
   sectionTitle: string
   compactColors: boolean
 }) {
+  const sourcesInFooter = useContext(SourcesInFooter)
   const answers = questions.filter((q) => typeOf(q) !== QUESTION_TYPE.SOURCE)
   const sources = questions
     .filter((q) => typeOf(q) === QUESTION_TYPE.SOURCE)
@@ -522,7 +529,7 @@ export function QuestionsBody({
         sectionTitle={sectionTitle}
         compactColors={compactColors}
       />
-      <SourceList entries={sources} className={answers.length > 0 ? "mt-8" : undefined} />
+      {!sourcesInFooter && <SourceList entries={sources} className={answers.length > 0 ? "mt-8" : undefined} />}
     </>
   )
 }

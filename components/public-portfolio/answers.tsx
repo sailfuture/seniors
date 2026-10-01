@@ -16,6 +16,7 @@ import { RollingAmount } from "./motion-plus"
 import {
   citation,
   formatDate,
+  hasSource,
   hrefOf,
   parseAmount,
   prettyUrl,
@@ -29,6 +30,7 @@ import {
   typeOf,
   type PortfolioQuestion,
   type PortfolioResponse,
+  type ResponseMap,
 } from "./types"
 
 const LABEL = "text-[13px] leading-snug font-medium text-muted-foreground"
@@ -299,32 +301,75 @@ function ImageAnswer({
   )
 }
 
+const SOURCES_LABEL = "text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase"
+
+/** One citation, MLA style, with its link as an anchor. */
+function CitationItem({ r }: { r: SourceFields }) {
+  const { lead, link } = citation(r)
+  return (
+    <li className="text-[13px] leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+      {lead}
+      {lead && link ? " " : ""}
+      {link && (
+        <>
+          <a
+            href={hrefOf(link)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--pf-ink)] underline decoration-[color-mix(in_oklab,var(--pf-ink)_30%,transparent)] underline-offset-2 transition-[text-decoration-color] duration-150 hover:decoration-current"
+          >
+            {prettyUrl(link)}
+          </a>
+          .
+        </>
+      )}
+    </li>
+  )
+}
+
 /** Citations for a group's (or a section's) sources, MLA style. */
 export function SourceList({ entries, className }: { entries: SourceFields[]; className?: string }) {
   if (entries.length === 0) return null
   return (
     <div className={cn("border-t border-[#e6eaf2] pt-4", className)}>
-      <p className="text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">Sources</p>
+      <p className={SOURCES_LABEL}>Sources</p>
       <ol className="mt-2.5 space-y-2">
-        {entries.map((r, i) => {
-          const { lead, link } = citation(r)
+        {entries.map((r, i) => (
+          <CitationItem key={i} r={r} />
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+/**
+ * A slide's sources as a footer strip: every source question the slide
+ * holds, cited once approved and otherwise held by a labeled placeholder, so
+ * a reader can see which sources are still owed.
+ */
+export function SourceFooter({
+  questions,
+  responseMap,
+  className,
+}: {
+  questions: PortfolioQuestion[]
+  responseMap: ResponseMap
+  className?: string
+}) {
+  const sources = questions.filter((q) => typeOf(q) === QUESTION_TYPE.SOURCE)
+  if (sources.length === 0) return null
+  return (
+    <div className={cn("border-t border-[#e6eaf2] pt-4", className)}>
+      <p className={SOURCES_LABEL}>Sources</p>
+      <ol className="mt-2.5 space-y-2">
+        {sources.map((q) => {
+          const r = responseMap.get(q.id)
+          if (r?.isComplete && hasSource(r)) return <CitationItem key={q.id} r={r} />
+          const title = (q.public_display_title || q.field_label || "Source").trim()
           return (
-            <li key={i} className="text-[13px] leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
-              {lead}
-              {lead && link ? " " : ""}
-              {link && (
-                <>
-                  <a
-                    href={hrefOf(link)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[var(--pf-ink)] underline decoration-[color-mix(in_oklab,var(--pf-ink)_30%,transparent)] underline-offset-2 transition-[text-decoration-color] duration-150 hover:decoration-current"
-                  >
-                    {prettyUrl(link)}
-                  </a>
-                  .
-                </>
-              )}
+            <li key={q.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-relaxed text-muted-foreground/60">
+              <span>{title}</span>
+              <StatusBadge status={statusOf(r?.isComplete && !hasSource(r) ? undefined : r)} />
             </li>
           )
         })}
