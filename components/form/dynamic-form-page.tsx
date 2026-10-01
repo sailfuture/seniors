@@ -165,6 +165,9 @@ interface StudentResponse {
 }
 
 
+/** Longest competitor-map axis name the form accepts. */
+const AXIS_LABEL_MAX = 30
+
 const QUESTION_TYPE = {
   LONG_RESPONSE: 1,
   SHORT_RESPONSE: 2,
@@ -1461,6 +1464,7 @@ function DynamicField({
   const pathname = usePathname()
   const isImageType = typeId === QUESTION_TYPE.IMAGE_UPLOAD
   const isSourceType = typeId === QUESTION_TYPE.SOURCE
+  const isAxisLabel = /(^|_)[xy]_axis_label$/.test(question.field_name)
   const isRichTextType = isRichTextQuestion(question)
   const hasImage = !!imageValue && Object.keys(imageValue).length > 0 && !!(imageValue.path || imageValue.url || imageValue.name)
   const wordCount = isRichTextType ? richTextWordCount(value) : value.trim().split(/\s+/).filter(Boolean).length
@@ -1650,6 +1654,25 @@ function DynamicField({
             disabled={isDimmed}
             placeholder={question.placeholder}
           />
+        ) : isAxisLabel ? (
+          // The competitor map's axis names: a word or two, since they're
+          // printed along the map's edges. A sentence here is the most common
+          // way that map goes wrong.
+          <div className="space-y-1.5">
+            <InputGroup>
+              <WrappingInput
+                placeholder={question.placeholder || "One or two words, e.g. Price"}
+                value={value}
+                onChange={(e) => onChange(e.target.value.slice(0, AXIS_LABEL_MAX))}
+                onBlur={onBlur}
+                readOnly={isDimmed}
+                maxLength={AXIS_LABEL_MAX}
+              />
+            </InputGroup>
+            <p className="text-muted-foreground text-xs">
+              Keep it to one or two words. It labels an edge of your competitor map.
+            </p>
+          </div>
         ) : (
         <InputGroup>
           <WrappingInput
