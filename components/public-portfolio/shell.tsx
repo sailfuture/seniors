@@ -40,13 +40,18 @@ export function PortfolioEmpty({ children }: { children: ReactNode }) {
   )
 }
 
-/** Scrolls to a chapter, smoothly unless the reader asked for less motion. */
+/**
+ * Scrolls to a chapter, smoothly unless the reader asked for less motion.
+ * The address stays as it is, so reopening or sharing the page starts at the
+ * cover rather than wherever the reader last clicked.
+ */
 export function goToChapter(id: string) {
-  const el = document.getElementById(id)
-  if (!el) return
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" })
-  history.replaceState(null, "", `#${id}`)
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
+  if (id === "cover") {
+    window.scrollTo({ top: 0, behavior })
+    return
+  }
+  document.getElementById(id)?.scrollIntoView({ behavior, block: "start" })
 }
 
 /** The chapter the reader is in: whichever one crosses the upper third of the screen. */
@@ -72,10 +77,10 @@ function useActiveChapter(ids: string[]): string {
 }
 
 /**
- * The public portfolio page: a slim top bar with reading progress, the course
- * rail beside the content on wide screens, a chapter bar under the top bar on
- * narrower ones, and a footer. Also opens a deep link (#section-12) once the
- * content has rendered.
+ * The public portfolio page: a slim top bar with reading progress, the cover
+ * as a full-screen title page, then the course rail beside the content on
+ * wide screens (a chapter bar under the top bar on narrower ones), and a
+ * footer. Also opens a deep link (#section-12) once the content has rendered.
  */
 export function PortfolioShell({
   kind,
@@ -85,6 +90,7 @@ export function PortfolioShell({
   studentName,
   studentImage,
   printHref,
+  cover,
   children,
 }: {
   /** "Life Map" or "Business Thesis". */
@@ -96,6 +102,8 @@ export function PortfolioShell({
   studentName: string
   studentImage?: string
   printHref: string
+  /** The title page, full width above the rail and content. */
+  cover?: ReactNode
   children: ReactNode
 }) {
   const active = useActiveChapter(chapters.map((c) => c.id))
@@ -129,10 +137,12 @@ export function PortfolioShell({
         style={portfolioThemeStyle(theme)}
       >
         <TopBar kind={kind} detail={detail} studentName={studentName} studentImage={studentImage} printHref={printHref} />
+        {cover}
+        {/* After the cover, so it only sticks once the title page is scrolled past. */}
         <ChapterBar chapters={chapters} active={active} />
         <div className="mx-auto flex w-full max-w-[1440px] gap-10 px-4 md:px-6 lg:px-8">
           <CourseRail kind={kind} chapters={chapters} active={active} printHref={printHref} />
-          <main className="min-w-0 flex-1 pt-4 pb-10 md:pt-6">{children}</main>
+          <main className="min-w-0 flex-1 pt-6 pb-10 md:pt-10">{children}</main>
         </div>
         <footer className="border-t border-[#e3e8f1] bg-white/60">
           <div className="mx-auto flex max-w-[1440px] flex-col gap-3 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between md:px-6 lg:px-8">
@@ -359,17 +369,18 @@ function CourseRail({
     <nav aria-label="Sections" className="hidden w-52 shrink-0 xl:block">
       <div className="sticky top-14 flex max-h-[calc(100svh-3.5rem)] flex-col py-10">
         <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">{kind}</p>
-        <ol ref={listRef} className="relative mt-5 min-h-0 overflow-y-auto pr-2 [scrollbar-width:thin]">
+        {/* -ml/pl: room for the current waypoint's halo, which the scrolling list would clip. */}
+        <ol ref={listRef} className="relative mt-5 -ml-1.5 min-h-0 overflow-y-auto pr-2 pl-1.5 [scrollbar-width:thin]">
           {track && (
             <>
               <span
                 aria-hidden
-                className="absolute left-[5px] w-px bg-[#dfe4ee]"
+                className="absolute left-[11px] w-px bg-[#dfe4ee]"
                 style={{ top: track.top, height: track.height }}
               />
               <motion.span
                 aria-hidden
-                className="absolute left-[5px] w-px origin-top bg-[var(--pf-ink)]"
+                className="absolute left-[11px] w-px origin-top bg-[var(--pf-ink)]"
                 style={{ top: track.top, height: track.height, scaleY: fill }}
               />
             </>

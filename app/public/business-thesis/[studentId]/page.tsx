@@ -6,8 +6,9 @@ import { formatYearGroup } from "@/lib/year-group"
 import { fetchProjectLock } from "@/lib/project-lock"
 import { cachedFetch } from "@/lib/cached-fetch"
 import { fetchStudentProfile } from "@/lib/students"
-import { ThesisCover } from "@/components/public-portfolio/cover"
-import { PortfolioSections, buildPortfolioSections } from "@/components/public-portfolio/sections"
+import { ThesisCover, TitleCover, partsPhrase } from "@/components/public-portfolio/cover"
+import { DeckSections } from "@/components/public-portfolio/deck"
+import { buildPortfolioSections } from "@/components/public-portfolio/sections"
 import {
   PortfolioEmpty,
   PortfolioLoading,
@@ -227,36 +228,48 @@ export default function PublicBusinessThesisPage({
 
   if (loading) return <PortfolioLoading kind="Business Thesis" />
 
-  const hasCover = !!(brand.companyName || brand.logoUrl)
+  const branded = !!(brand.companyName || brand.logoUrl)
   const sectionLinks: ChapterLink[] = model.map((s) => ({ id: s.anchor, title: s.title, number: s.number }))
+  const classLabel = studentYearGroup ? formatYearGroup(studentYearGroup) : undefined
+  const firstName = studentName.split(/\s+/)[0]
 
   return (
     <BrandThemeProvider theme={brand}>
       <PortfolioShell
         kind="Business Thesis"
-        detail={studentYearGroup ? formatYearGroup(studentYearGroup) : undefined}
+        detail={classLabel}
         theme={theme}
-        chapters={[...(hasCover ? [{ id: "cover", title: "Cover" }] : []), ...sectionLinks]}
+        chapters={[{ id: "cover", title: "Cover" }, ...sectionLinks]}
         studentName={studentName}
         studentImage={studentImage}
         printHref={`/public/business-thesis/${studentId}/print`}
+        cover={
+          // Every thesis opens on a title slide: the student's brand once they
+          // have a company name or logo, SailFuture's until then.
+          branded ? (
+            <ThesisCover
+              studentName={studentName}
+              studentImage={studentImage}
+              lastEdited={lastEdited}
+              firstChapter={model[0]?.anchor}
+              seed={studentId}
+            />
+          ) : (
+            <TitleCover
+              kind="Business Thesis"
+              studentName={studentName}
+              studentImage={studentImage}
+              classLabel={classLabel}
+              summary={`${firstName ? `${firstName}’s business plan` : "A business plan"}${
+                model.length > 0 ? `, in ${partsPhrase(model.length)}` : ""
+              }.`}
+              chapters={sectionLinks}
+              seed={studentId}
+            />
+          )
+        }
       >
-        {/* Without a brand there's no cover, but the page still needs its headline. */}
-        {!hasCover && (
-          <h1 className="sr-only">
-            {studentName ? `${studentName}’s Business Thesis` : "Business Thesis"}
-          </h1>
-        )}
-        {hasCover && (
-          <ThesisCover
-            studentName={studentName}
-            studentImage={studentImage}
-            lastEdited={lastEdited}
-            firstChapter={model[0]?.anchor}
-            seed={studentId}
-          />
-        )}
-        <PortfolioSections sections={model} responseMap={responseMap} compactColors />
+        <DeckSections sections={model} responseMap={responseMap} studentName={studentName} />
         {model.length === 0 && (
           <PortfolioEmpty>This Business Thesis doesn&rsquo;t have any sections yet.</PortfolioEmpty>
         )}

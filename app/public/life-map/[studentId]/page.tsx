@@ -5,7 +5,7 @@ import { fetchProjectLock } from "@/lib/project-lock"
 import { cachedFetch } from "@/lib/cached-fetch"
 import { fetchStudentProfile } from "@/lib/students"
 import { formatYearGroup } from "@/lib/year-group"
-import { LifeMapCover } from "@/components/public-portfolio/cover"
+import { TitleCover, partsPhrase } from "@/components/public-portfolio/cover"
 import { PortfolioSections, buildPortfolioSections } from "@/components/public-portfolio/sections"
 import {
   PortfolioEmpty,
@@ -187,6 +187,9 @@ export default function PublicLifeMapPage({
         displayTypeOf: (g) => g.lifemap_group_display_types_id ?? null,
         descriptionOf: (s) => s.section_description || s.description || "",
         isBackdrop: isSectionBackground,
+        // Staff photos are the same for every student; each section gets a
+        // chart pattern instead, unless the student's own photo is approved.
+        templatePhotos: false,
       }),
     [sections, templates, groups, responseMap]
   )
@@ -195,6 +198,7 @@ export default function PublicLifeMapPage({
 
   const sectionLinks: ChapterLink[] = model.map((s) => ({ id: s.anchor, title: s.title, number: s.number }))
   const classLabel = yearGroup ? formatYearGroup(yearGroup) : undefined
+  const firstName = studentName.split(/\s+/)[0]
 
   return (
     <PortfolioShell
@@ -205,14 +209,20 @@ export default function PublicLifeMapPage({
       studentName={studentName}
       studentImage={studentImage}
       printHref={`/public/life-map/${studentId}/print`}
+      cover={
+        <TitleCover
+          kind="Life Map"
+          studentName={studentName}
+          studentImage={studentImage}
+          classLabel={classLabel}
+          summary={`${firstName ? `${firstName}’s plan` : "A plan"} for life after graduation${
+            model.length > 0 ? `, in ${partsPhrase(model.length)}` : ""
+          }.`}
+          chapters={sectionLinks}
+          seed={studentId}
+        />
+      }
     >
-      <LifeMapCover
-        studentName={studentName}
-        studentImage={studentImage}
-        classLabel={classLabel}
-        chapters={sectionLinks}
-        seed={studentId}
-      />
       <PortfolioSections sections={model} responseMap={responseMap} />
       {model.length === 0 && <PortfolioEmpty>This Life Map doesn&rsquo;t have any sections yet.</PortfolioEmpty>}
     </PortfolioShell>

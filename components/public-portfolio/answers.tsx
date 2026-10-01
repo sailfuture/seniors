@@ -1,7 +1,8 @@
 "use client"
 
+import { createContext, useContext } from "react"
 import { DynamicIcon, iconNames } from "lucide-react/dynamic"
-import { ArrowUpRight } from "lucide-react"
+import { ArrowUpRight, Image as ImageIcon } from "lucide-react"
 import { ColorSwatch, FontPreview, parseBrandColor, parseExactHex } from "@/components/brand-display"
 import { StatusBadge, statusOf } from "@/components/field-status"
 import { ZoomableImage } from "@/components/zoomable-image"
@@ -56,6 +57,12 @@ function kindOf(typeId: number | null, text: string, label: string): Kind {
 const FACT_KINDS: Kind[] = ["fact", "link", "date", "figure", "choice"]
 
 /**
+ * On a deck slide every essay sits under the slide's title, so a label-less
+ * essay keeps to the left with it instead of centering like an article.
+ */
+export const AlignEssaysStart = createContext(false)
+
+/**
  * One answer on the public page, laid out by what it is: a fact, a figure, a
  * choice, a link, an essay, a table, an image. Unfinished answers show only
  * their label and review status; an approved answer that's empty shows
@@ -75,6 +82,7 @@ export function Answer({
   /** The answer spans its panel's whole row (in a wide panel, essays set their label beside the text). */
   fullRow?: boolean
 }) {
+  const alignStart = useContext(AlignEssaysStart)
   const typeId = typeOf(question)
   const title = (question.public_display_title || question.field_label || "").trim()
   // "Executive Summary" inside "Executive Summary" inside "Executive Summary"
@@ -139,7 +147,7 @@ export function Answer({
 
   // An essay that needs no label (it's titled by the heading above) and has
   // the full page width is set as a centered column, like an article.
-  const centered = fullRow && !header
+  const centered = fullRow && !header && !alignStart
   const value =
     kind === "prose" ? (
       <Prose text={text} className={centered ? "mx-auto" : undefined} />
@@ -248,12 +256,13 @@ function ImageAnswer({
 }) {
   if (!src) {
     if (!status) return null
+    // A photo that isn't approved yet holds a small placeholder, not a full
+    // photo-sized empty box.
     return (
       <figure>
-        <div
-          className="aspect-[4/3] w-full rounded-xl bg-[#eef1f7]"
-          style={ratio ? { aspectRatio: ratio } : undefined}
-        />
+        <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-[#d9dfe9] bg-[#f7f9fc] text-muted-foreground/50">
+          <ImageIcon aria-hidden strokeWidth={1.5} className="size-5" />
+        </div>
         <figcaption className="mt-2.5 flex items-start justify-between gap-3">
           {title ? <span className={cn(LABEL, "text-muted-foreground/70")}>{title}</span> : <span />}
           <StatusBadge status={status} />

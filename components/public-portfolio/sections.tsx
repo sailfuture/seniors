@@ -13,7 +13,7 @@ import { StatusBadge, groupStatusOf, type FieldStatus } from "@/components/field
 import { aspectRatioCss } from "@/lib/image-ratio"
 import { cn } from "@/lib/utils"
 import { Answer, GroupIcon, SourceList } from "./answers"
-import { ContourField } from "./contours"
+import { ChartPattern, SECTION_PATTERNS } from "./patterns"
 import { hasSource, sameTitle } from "./format"
 import { EASE, GhostNumeral, HeroPhoto, Reveal, WordReveal } from "./motion"
 import { ImageStrip } from "./motion-plus"
@@ -65,6 +65,7 @@ export function buildPortfolioSections<S extends SectionSource, Q extends Portfo
   descriptionOf,
   isBackdrop,
   isHidden,
+  templatePhotos = true,
 }: {
   sections: S[]
   questions: Q[]
@@ -79,6 +80,11 @@ export function buildPortfolioSections<S extends SectionSource, Q extends Portfo
   isBackdrop: (q: Q) => boolean
   /** Questions that feed something else (the cover) and never render. */
   isHidden?: (q: Q) => boolean
+  /**
+   * Whether a section with no student photo falls back to the photo staff set
+   * on the template. Off, it gets a chart pattern instead.
+   */
+  templatePhotos?: boolean
 }): PortfolioSectionModel[] {
   return sections.map((section, i) => {
     const all = questions
@@ -104,7 +110,7 @@ export function buildPortfolioSections<S extends SectionSource, Q extends Portfo
       description: descriptionOf(section),
       photoUrl: studentPhoto
         ? resolveImageUrl(studentPhoto)
-        : section.photo?.path
+        : templatePhotos && section.photo?.path
           ? resolveImageUrl(section.photo.path)
           : null,
       ungrouped: content.filter((q) => !groupOf(q)),
@@ -132,12 +138,6 @@ export function buildPortfolioSections<S extends SectionSource, Q extends Portfo
  */
 const PANEL =
   "@container w-full rounded-2xl bg-white p-6 shadow-[0_1px_2px_rgb(15_23_42/0.04),0_14px_36px_-18px_rgb(15_23_42/0.18)] ring-1 ring-[#e6eaf2] sm:p-8"
-
-function groupColSpan(width: number | null): string {
-  if (width === 1) return "md:col-span-6"
-  if (width === 3) return "md:col-span-2"
-  return "md:col-span-3"
-}
 
 const FULL_SPAN = "@sm:col-span-6"
 
@@ -192,50 +192,34 @@ function PortfolioSection({
   responseMap: ResponseMap
   compactColors: boolean
 }) {
-  const answers = section.ungrouped.filter((q) => typeOf(q) !== QUESTION_TYPE.SOURCE)
-  const sources = section.ungrouped
-    .filter((q) => typeOf(q) === QUESTION_TYPE.SOURCE)
-    .map((q) => responseMap.get(q.id))
-    .filter((r): r is NonNullable<typeof r> => !!r?.isComplete && hasSource(r))
   const empty = section.ungrouped.length === 0 && section.groups.length === 0
 
   return (
     <section id={section.anchor} className="scroll-mt-28 pt-14 first:pt-0 md:pt-20 md:first:pt-0 xl:scroll-mt-20">
       <SectionHero section={section} total={total} />
-      <div className="mt-5 grid gap-5 md:mt-6 md:grid-cols-6 md:gap-6">
-        {(answers.length > 0 || sources.length > 0) && (
+      <div className="mt-5 grid grid-cols-1 gap-5 md:mt-6 md:grid-cols-6 md:gap-6">
+        {section.ungrouped.length > 0 && (
           <Reveal className="flex md:col-span-6">
             <article className={PANEL}>
-              <AnswerGrid
-                questions={answers}
+              <QuestionsBody
+                questions={section.ungrouped}
                 responseMap={responseMap}
                 sectionTitle={section.title}
                 compactColors={compactColors}
               />
-              <SourceList entries={sources} className={answers.length > 0 ? "mt-8" : undefined} />
             </article>
           </Reveal>
         )}
-        {section.groups.map((group, i) =>
-          isGroupDisplayType(group.displayTypeId) ? (
-            <DisplayGroupPanel
-              key={group.id}
-              group={group}
-              sectionTitle={section.title}
-              responseMap={responseMap}
-              index={i}
-            />
-          ) : (
-            <GroupPanel
-              key={group.id}
-              group={group}
-              sectionTitle={section.title}
-              responseMap={responseMap}
-              index={i}
-              compactColors={compactColors}
-            />
-          )
-        )}
+        {section.groups.map((group, i) => (
+          <GroupPanel
+            key={group.id}
+            group={group}
+            sectionTitle={section.title}
+            responseMap={responseMap}
+            index={i}
+            compactColors={compactColors}
+          />
+        ))}
       </div>
       {empty && (
         <p className="py-10 text-center text-sm text-muted-foreground">Nothing in this section yet.</p>
@@ -246,10 +230,22 @@ function PortfolioSection({
 
 /**
  * A section's opening: its photo (drifting slightly against the scroll) or
- * the theme gradient under chart contours, the section number, and the title
- * rising in word by word.
+ * the theme gradient under a chart pattern, the section number, and the title
+ * rising in word by word. In a deck it's the section's divider slide: 16:9,
+ * with the deck's header across the top.
  */
-function SectionHero({ section, total }: { section: PortfolioSectionModel; total: number }) {
+export function SectionHero({
+  section,
+  total,
+  deck = false,
+  chrome,
+}: {
+  section: PortfolioSectionModel
+  total: number
+  deck?: boolean
+  /** The deck's slide header, across the top. */
+  chrome?: ReactNode
+}) {
   const angle = heroAngle(section.number - 1)
   const num = String(section.number).padStart(2, "0")
   const photo = section.photoUrl
@@ -257,7 +253,7 @@ function SectionHero({ section, total }: { section: PortfolioSectionModel; total
     <header
       className={cn(
         "relative isolate flex items-end overflow-hidden rounded-3xl text-white",
-        photo ? "min-h-[320px] sm:min-h-[420px]" : "min-h-[260px] sm:min-h-[340px]"
+        deck ? "min-h-[320px] md:aspect-[16/9] md:min-h-0" : "min-h-[300px] sm:min-h-[400px]"
       )}
       style={photo ? { background: "var(--pf-hero-a)" } : { background: heroGradient(angle) }}
     >
@@ -267,7 +263,10 @@ function SectionHero({ section, total }: { section: PortfolioSectionModel; total
           <div aria-hidden className="absolute inset-0" style={{ background: heroPhotoWash(angle) }} />
         </>
       ) : (
-        <ContourField seed={section.anchor} />
+        <ChartPattern
+          kind={SECTION_PATTERNS[(section.number - 1) % SECTION_PATTERNS.length]}
+          seed={section.anchor}
+        />
       )}
       <div
         aria-hidden
@@ -292,7 +291,8 @@ function SectionHero({ section, total }: { section: PortfolioSectionModel; total
           photo ? "from-black/45 via-black/10" : "from-black/20"
         )}
       />
-      <GhostNumeral style={{ fontFamily: "var(--pf-display)" }}>{num}</GhostNumeral>
+      {!deck && <GhostNumeral style={{ fontFamily: "var(--pf-display)" }}>{num}</GhostNumeral>}
+      {chrome && <div className="absolute inset-x-0 top-0 z-10 px-6 pt-6 sm:px-10 sm:pt-8 lg:px-12">{chrome}</div>}
 
       <div className="relative z-10 w-full px-6 pt-24 pb-8 sm:px-10 sm:pb-10 lg:px-12 lg:pb-12">
         <Eyebrow>
@@ -446,7 +446,9 @@ function AnswerGrid({
   }
   flush()
 
-  return <div className="grid gap-x-8 gap-y-7 @sm:grid-cols-6">{cells}</div>
+  // grid-cols-1, not an implicit auto column: a wide strip would otherwise
+  // stretch a narrow panel past the screen.
+  return <div className="grid grid-cols-1 gap-x-8 gap-y-7 @sm:grid-cols-6">{cells}</div>
 }
 
 /** An approved photo answer's URL, or "" when there's none to show. */
@@ -455,6 +457,102 @@ function approvedImage(q: PortfolioQuestion, r: PortfolioResponse | undefined): 
   const src = r.image_response?.path || r.image_response?.url
   return src ? resolveImageUrl(src) : ""
 }
+
+/**
+ * A group's content without its frame: its answers and sources, or its
+ * purpose-built display (gallery, competitor map, budgets, unit economics).
+ */
+export function GroupBody({
+  group,
+  sectionTitle,
+  responseMap,
+  compactColors,
+}: {
+  group: PortfolioGroupModel
+  sectionTitle: string
+  responseMap: ResponseMap
+  compactColors: boolean
+}) {
+  if (isGroupDisplayType(group.displayTypeId)) {
+    return (
+      <GroupDisplayRenderer
+        displayTypeId={group.displayTypeId!}
+        questions={group.questions as DisplayQuestions}
+        responseMap={responseMap as DisplayResponses}
+        mode="public"
+      />
+    )
+  }
+  return (
+    <QuestionsBody
+      questions={group.questions}
+      responseMap={responseMap}
+      groupTitle={group.name}
+      sectionTitle={sectionTitle}
+      compactColors={compactColors}
+    />
+  )
+}
+
+/** Answers in a grid, then the citations for any sources among them. */
+export function QuestionsBody({
+  questions,
+  responseMap,
+  groupTitle,
+  sectionTitle,
+  compactColors,
+}: {
+  questions: PortfolioQuestion[]
+  responseMap: ResponseMap
+  groupTitle?: string
+  sectionTitle: string
+  compactColors: boolean
+}) {
+  const answers = questions.filter((q) => typeOf(q) !== QUESTION_TYPE.SOURCE)
+  const sources = questions
+    .filter((q) => typeOf(q) === QUESTION_TYPE.SOURCE)
+    .map((q) => responseMap.get(q.id))
+    .filter((r): r is NonNullable<typeof r> => !!r?.isComplete && hasSource(r))
+  return (
+    <>
+      <AnswerGrid
+        questions={answers}
+        responseMap={responseMap}
+        groupTitle={groupTitle}
+        sectionTitle={sectionTitle}
+        compactColors={compactColors}
+      />
+      <SourceList entries={sources} className={answers.length > 0 ? "mt-8" : undefined} />
+    </>
+  )
+}
+
+/** A group's review status, for its heading. */
+export function groupStatus(group: PortfolioGroupModel, responseMap: ResponseMap): FieldStatus | null {
+  return groupStatusOf(group.questions.map((q) => responseMap.get(q.id)))
+}
+
+/** The "Open spreadsheet" link a Google Sheets budget group carries in its heading. */
+export function groupAction(group: PortfolioGroupModel, responseMap: ResponseMap): ReactNode {
+  if (group.displayTypeId !== DISPLAY_TYPE.GOOGLE_BUDGET) return undefined
+  const url = getGoogleSheetUrl(group.questions as DisplayQuestions, responseMap as DisplayResponses)
+  return url ? <GoogleSheetOpenButton url={url} /> : undefined
+}
+
+/**
+ * How many of six columns a group takes, from its template width. Purpose-
+ * built displays default to the full width; the transportation budget, half.
+ */
+export function groupUnits(group: PortfolioGroupModel): number {
+  if (isGroupDisplayType(group.displayTypeId) && !group.width) {
+    return group.displayTypeId === DISPLAY_TYPE.TRANSPORTATION_BUDGET ? 3 : 6
+  }
+  if (group.width === 1) return 6
+  if (group.width === 3) return 2
+  return 3
+}
+
+export const UNIT_SPAN: Record<number, string> = { 2: "md:col-span-2", 3: "md:col-span-3", 6: "md:col-span-6" }
 
 function GroupPanel({
   group,
@@ -469,75 +567,22 @@ function GroupPanel({
   index: number
   compactColors: boolean
 }) {
-  const span = groupColSpan(group.width)
-  const answers = group.questions.filter((q) => typeOf(q) !== QUESTION_TYPE.SOURCE)
-  const sources = group.questions
-    .filter((q) => typeOf(q) === QUESTION_TYPE.SOURCE)
-    .map((q) => responseMap.get(q.id))
-    .filter((r): r is NonNullable<typeof r> => !!r?.isComplete && hasSource(r))
-  const status = groupStatusOf(group.questions.map((q) => responseMap.get(q.id)))
-
   return (
-    <Reveal className={cn(span, "flex")} delay={(index % 3) * 0.08}>
+    <Reveal className={cn(UNIT_SPAN[groupUnits(group)], "flex")} delay={(index % 3) * 0.08}>
       <article className={cn(PANEL, "flex flex-col")}>
         <GroupHeader
           name={sameTitle(group.name, sectionTitle) ? "" : group.name}
           description={group.description}
           icon={group.iconName}
-          status={status}
-        />
-        <AnswerGrid
-          questions={answers}
-          responseMap={responseMap}
-          groupTitle={group.name}
-          sectionTitle={sectionTitle}
-          compactColors={compactColors}
-        />
-        <SourceList entries={sources} className={answers.length > 0 ? "mt-8" : undefined} />
-      </article>
-    </Reveal>
-  )
-}
-
-/** Groups with a purpose-built display: gallery, competitor map, budgets, unit economics. */
-function DisplayGroupPanel({
-  group,
-  sectionTitle,
-  responseMap,
-  index,
-}: {
-  group: PortfolioGroupModel
-  sectionTitle: string
-  responseMap: ResponseMap
-  index: number
-}) {
-  const questions = group.questions as DisplayQuestions
-  const responses = responseMap as DisplayResponses
-  const isGoogleBudget = group.displayTypeId === DISPLAY_TYPE.GOOGLE_BUDGET
-  const isTransportBudget = group.displayTypeId === DISPLAY_TYPE.TRANSPORTATION_BUDGET
-  const sheetUrl = isGoogleBudget ? getGoogleSheetUrl(questions, responses) : ""
-  const span = group.width
-    ? groupColSpan(group.width)
-    : isTransportBudget
-      ? "md:col-span-3"
-      : "md:col-span-6"
-
-  return (
-    <Reveal className={cn(span, "flex")} delay={(index % 3) * 0.08}>
-      <article className={cn(PANEL, "flex flex-col")}>
-        <GroupHeader
-          name={sameTitle(group.name, sectionTitle) ? "" : group.name}
-          description={group.description}
-          icon={group.iconName}
-          status={groupStatusOf(group.questions.map((q) => responseMap.get(q.id)))}
-          action={isGoogleBudget && sheetUrl ? <GoogleSheetOpenButton url={sheetUrl} /> : undefined}
+          status={groupStatus(group, responseMap)}
+          action={groupAction(group, responseMap)}
         />
         <div className="flex-1">
-          <GroupDisplayRenderer
-            displayTypeId={group.displayTypeId!}
-            questions={questions}
-            responseMap={responses}
-            mode="public"
+          <GroupBody
+            group={group}
+            sectionTitle={sectionTitle}
+            responseMap={responseMap}
+            compactColors={compactColors}
           />
         </div>
       </article>
