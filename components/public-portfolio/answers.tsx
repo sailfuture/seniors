@@ -11,10 +11,9 @@ import { LINE_ITEMS_TYPE_ID } from "@/lib/line-items"
 import { RICH_TEXT_TYPE_ID, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { aspectRatioCss } from "@/lib/image-ratio"
 import { cn } from "@/lib/utils"
-import { CountUp } from "./motion"
+import { RollingAmount } from "./motion-plus"
 import {
   citation,
-  formatAmount,
   formatDate,
   hrefOf,
   parseAmount,
@@ -203,11 +202,9 @@ function FactValue({ kind, text, dateValue }: { kind: Kind; text: string; dateVa
     return <p className="text-[17px] leading-snug font-medium">{formatDate(dateValue)}</p>
   }
   if (kind === "figure") {
-    const amount = parseAmount(text)!
-    const cents = !Number.isInteger(amount)
     return (
       <p className="font-(family-name:--pf-heading) text-[2rem] leading-tight font-semibold tracking-[-0.02em] text-[var(--pf-ink)] sm:text-[2.25rem]">
-        <CountUp value={amount} format={(n) => formatAmount(cents ? n : Math.round(n), cents)} />
+        <RollingAmount value={parseAmount(text)!} />
       </p>
     )
   }

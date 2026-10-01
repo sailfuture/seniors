@@ -15,6 +15,7 @@ export function ZoomableImage({
   className = "",
   caption,
   blurredFit = false,
+  draggable,
 }: {
   src: string
   alt: string
@@ -25,6 +26,8 @@ export function ZoomableImage({
   /** Center the image (object-contain) over a blurred, blown-up copy of
    *  itself, so any empty space fills with the picture's own colors. */
   blurredFit?: boolean
+  /** false inside a drag-to-scroll strip, so a drag moves the strip instead of picking up the image. */
+  draggable?: boolean
 }) {
   const [open, setOpen] = useState(false)
 
@@ -61,6 +64,7 @@ export function ZoomableImage({
         <img
           src={src}
           alt={alt}
+          draggable={draggable}
           className={`${blurredFit ? "relative z-[1] mx-auto h-full w-auto max-w-full object-contain" : ""} ${imgClassName} transition-transform duration-500 ease-out motion-safe:group-hover:scale-[1.04]`}
           style={imgStyle}
         />

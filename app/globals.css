@@ -264,6 +264,7 @@ body {
     filter: none !important;
   }
   [data-count-final] {
+    display: inline !important;
     visibility: visible !important;
   }
   [data-count-live] {

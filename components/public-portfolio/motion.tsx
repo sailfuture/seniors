@@ -1,17 +1,7 @@
 "use client"
 
-import { useEffect, useRef, type ReactNode } from "react"
-import {
-  animate,
-  motion,
-  stagger,
-  useInView,
-  useMotionValue,
-  useReducedMotion,
-  useScroll,
-  useTransform,
-} from "motion/react"
-import { cn } from "@/lib/utils"
+import { useRef, type ReactNode } from "react"
+import { motion, stagger, useReducedMotion, useScroll, useTransform } from "motion/react"
 
 /** The portfolio's one easing curve: a quick start that settles softly. */
 export const EASE = [0.2, 0, 0, 1] as const
@@ -101,49 +91,6 @@ export function WordReveal({
         )}
       </span>
     </motion.span>
-  )
-}
-
-/**
- * A figure that counts up from zero the first time it's seen. The final value
- * sizes the box (so nothing shifts while it counts) and is what screen
- * readers hear.
- */
-export function CountUp({
-  value,
-  format,
-  className,
-}: {
-  value: number
-  format: (n: number) => string
-  className?: string
-}) {
-  const ref = useRef<HTMLSpanElement>(null)
-  const inView = useInView(ref, { once: true, amount: 0.6 })
-  const reduce = useReducedMotion()
-  const count = useMotionValue(0)
-  const text = useTransform(() => format(count.get()))
-
-  useEffect(() => {
-    if (!inView) return
-    if (reduce) {
-      count.set(value)
-      return
-    }
-    const controls = animate(count, value, { duration: 1.4, ease: EASE })
-    return () => controls.stop()
-  }, [inView, reduce, value, count])
-
-  return (
-    <span ref={ref} className={cn("relative inline-block tabular-nums", className)}>
-      <span className="sr-only">{format(value)}</span>
-      <span aria-hidden data-count-final className="invisible">
-        {format(value)}
-      </span>
-      <motion.span aria-hidden data-count-live className="absolute inset-y-0 left-0 whitespace-nowrap">
-        {text}
-      </motion.span>
-    </span>
   )
 }
 

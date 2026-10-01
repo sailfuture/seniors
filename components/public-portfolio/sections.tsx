@@ -10,11 +10,13 @@ import {
   isGroupDisplayType,
 } from "@/components/group-display-types"
 import { StatusBadge, groupStatusOf, type FieldStatus } from "@/components/field-status"
+import { aspectRatioCss } from "@/lib/image-ratio"
 import { cn } from "@/lib/utils"
 import { Answer, GroupIcon, SourceList } from "./answers"
 import { ContourField } from "./contours"
 import { hasSource, sameTitle } from "./format"
 import { EASE, GhostNumeral, HeroPhoto, Reveal, WordReveal } from "./motion"
+import { ImageStrip } from "./motion-plus"
 import { heroAngle, heroGradient, heroPhotoWash } from "./theme"
 import {
   QUESTION_TYPE,
@@ -24,6 +26,7 @@ import {
   widthOf,
   type PortfolioGroupModel,
   type PortfolioQuestion,
+  type PortfolioResponse,
   type PortfolioSectionModel,
   type ResponseMap,
 } from "./types"
@@ -386,27 +389,71 @@ function AnswerGrid({
   compactColors: boolean
 }) {
   if (questions.length === 0) return null
-  return (
-    <div className="grid gap-x-8 gap-y-7 @sm:grid-cols-6">
-      {questions.map((q) => {
-        const response = responseMap.get(q.id)
-        const span = questionColSpan(q, (response?.student_response ?? "").trim(), compactColors)
-        return (
-          // An approved answer with nothing in it renders nothing; empty:hidden
-          // drops its cell so it doesn't leave a gap in the grid.
-          <div key={q.id} className={cn(span, "flex flex-col empty:hidden")}>
-            <Answer
-              question={q}
-              response={response}
-              groupTitle={groupTitle}
-              sectionTitle={sectionTitle}
-              fullRow={span === FULL_SPAN}
-            />
-          </div>
-        )
-      })}
-    </div>
-  )
+
+  const cell = (q: PortfolioQuestion) => {
+    const response = responseMap.get(q.id)
+    const span = questionColSpan(q, (response?.student_response ?? "").trim(), compactColors)
+    return (
+      // An approved answer with nothing in it renders nothing; empty:hidden
+      // drops its cell so it doesn't leave a gap in the grid.
+      <div key={q.id} className={cn(span, "flex flex-col empty:hidden")}>
+        <Answer
+          question={q}
+          response={response}
+          groupTitle={groupTitle}
+          sectionTitle={sectionTitle}
+          fullRow={span === FULL_SPAN}
+        />
+      </div>
+    )
+  }
+
+  // Three or more approved photos in a row become one swipeable strip
+  // instead of a wall of images.
+  const cells: ReactNode[] = []
+  let run: PortfolioQuestion[] = []
+  const flush = () => {
+    if (run.length >= 3) {
+      cells.push(
+        <div key={`strip-${run[0].id}`} className={FULL_SPAN}>
+          <ImageStrip
+            images={run.map((q) => {
+              const title = (q.public_display_title || q.field_label || "").trim()
+              const description = q.public_display_description?.trim() ?? ""
+              return {
+                key: q.id,
+                src: approvedImage(q, responseMap.get(q.id)),
+                ratio: aspectRatioCss(q.image_aspect_ratio),
+                title: sameTitle(title, groupTitle) || sameTitle(title, sectionTitle) ? "" : title,
+                description: sameTitle(description, title) ? "" : description,
+              }
+            })}
+          />
+        </div>
+      )
+    } else {
+      for (const q of run) cells.push(cell(q))
+    }
+    run = []
+  }
+  for (const q of questions) {
+    if (approvedImage(q, responseMap.get(q.id))) {
+      run.push(q)
+    } else {
+      flush()
+      cells.push(cell(q))
+    }
+  }
+  flush()
+
+  return <div className="grid gap-x-8 gap-y-7 @sm:grid-cols-6">{cells}</div>
+}
+
+/** An approved photo answer's URL, or "" when there's none to show. */
+function approvedImage(q: PortfolioQuestion, r: PortfolioResponse | undefined): string {
+  if (typeOf(q) !== QUESTION_TYPE.IMAGE_UPLOAD || !r?.isComplete) return ""
+  const src = r.image_response?.path || r.image_response?.url
+  return src ? resolveImageUrl(src) : ""
 }
 
 function GroupPanel({
