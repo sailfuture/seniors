@@ -14,16 +14,31 @@ const CHECK_URL =
     : "https://api.languagetool.org/v2/check"
 
 interface LanguageToolMatch {
+  message?: string
   offset: number
   length: number
   replacements?: { value?: string }[]
-  rule: { id: string; issueType?: string; category: { id: string } }
+  rule: { id: string; description?: string; issueType?: string; category: { id: string } }
+}
+
+/**
+ * A flag plus what LanguageTool said about it. Server-only: the message and
+ * replacements spell out the fix, so they go to the hint writer
+ * (lib/writing-hints.ts) and never to the student.
+ */
+export interface LanguageToolFinding {
+  issue: WritingIssue
+  message: string
+  rule: string
+  replacements: string[]
+  /** A word the dictionary doesn't know: "check the spelling" says it all. */
+  typo: boolean
 }
 
 /** LanguageTool's rate limit was hit; worth retrying in a minute. */
 export class LanguageToolBusyError extends Error {}
 
-export async function checkWithLanguageTool(text: string): Promise<WritingIssue[]> {
+export async function checkWithLanguageTool(text: string): Promise<LanguageToolFinding[]> {
   const body = new URLSearchParams({
     text,
     language: "en-US",
@@ -43,16 +58,17 @@ export async function checkWithLanguageTool(text: string): Promise<WritingIssue[
   if (res.status === 429) throw new LanguageToolBusyError()
   if (!res.ok) throw new Error(`LanguageTool responded ${res.status}`)
   const data = (await res.json()) as { matches?: LanguageToolMatch[] }
-  return issuesFromMatches(text, data.matches ?? [])
+  return findingsFromMatches(text, data.matches ?? [])
 }
 
 /**
- * LanguageTool matches → checklist issues. Keeps only the position and the
- * kind: LanguageTool's messages and replacements often spell out the fix, and
- * the student is meant to find it themselves.
+ * LanguageTool matches → checklist issues, each with LanguageTool's own notes
+ * alongside. The issue carries only the position and the kind: the messages
+ * and replacements often spell out the fix, and the student is meant to find
+ * it themselves.
  */
-export function issuesFromMatches(text: string, matches: LanguageToolMatch[]): WritingIssue[] {
-  const issues: WritingIssue[] = []
+export function findingsFromMatches(text: string, matches: LanguageToolMatch[]): LanguageToolFinding[] {
+  const findings: LanguageToolFinding[] = []
   const seen = new Set<string>()
   for (const m of matches) {
     let start = m.offset
@@ -65,12 +81,23 @@ export function issuesFromMatches(text: string, matches: LanguageToolMatch[]): W
     // as one sentence ("My Business / my business will…") — not a real error.
     if (start === end || text.slice(start, end).includes("\n")) continue
 
-    const kind = kindOf(m, text.slice(start, end))
+    const flagged = text.slice(start, end)
+    const kind = kindOf(m, flagged)
     if (!kind || seen.has(`${start}:${end}`)) continue
     seen.add(`${start}:${end}`)
-    issues.push({ kind, start, end })
+    const replacements = (m.replacements ?? []).flatMap((r) => (r.value ? [r.value] : []))
+    findings.push({
+      issue: { kind, start, end },
+      message: m.message ?? "",
+      rule: m.rule.description ?? "",
+      replacements,
+      typo:
+        kind === "spelling" &&
+        m.rule.issueType === "misspelling" &&
+        !missingApostrophe(flagged, replacements[0]),
+    })
   }
-  return issues.sort((a, b) => a.start - b.start || a.end - b.end)
+  return findings.sort((a, b) => a.issue.start - b.issue.start || a.issue.end - b.issue.end)
 }
 
 const WORD_USAGE_CATEGORIES = new Set([

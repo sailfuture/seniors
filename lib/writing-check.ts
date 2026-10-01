@@ -1,9 +1,11 @@
 /**
  * The writing check's checklist: the kinds of problem it reports, grouped the
  * way the student's sheet shows them. LanguageTool finds each problem and
- * lib/languagetool.ts sorts it into one of these kinds. Every sentence the
- * student reads comes from here — never LanguageTool's suggested replacement —
- * so the student makes each fix themselves.
+ * lib/languagetool.ts sorts it into one of these kinds; a model's proofreading
+ * pass (lib/writing-proofread.ts) adds what LanguageTool misses. What the
+ * student reads about a flag is either the kind's message here or a hint
+ * written for that flag (lib/writing-hints.ts) — never a suggested
+ * replacement — so the student makes each fix themselves.
  *
  * `blocks`: the kind must be fixed (or marked correct) before submitting. Only
  * sloppy mechanics block — typos, capitals, basic punctuation. Grammar, word
@@ -85,6 +87,9 @@ export interface WritingIssue {
   kind: WritingIssueKind
   start: number
   end: number
+  /** What to look at in this particular sentence, shown in place of the
+   *  kind's general message. Never the fix. */
+  hint?: string
 }
 
 /** Longest text one check accepts (roughly 5,000 words). */

@@ -30,14 +30,18 @@ export interface WritingCheckRun {
   issues: WritingIssue[]
 }
 
-/** Runs the writing check. Throws with a student-facing message when it can't. */
-export async function fetchWritingCheck(text: string): Promise<WritingCheckRun> {
+/** Runs the writing check. Throws with a student-facing message when it can't.
+ *  `gate`: a submit-time check, which skips the hints when nothing blocks. */
+export async function fetchWritingCheck(
+  text: string,
+  { gate = false }: { gate?: boolean } = {}
+): Promise<WritingCheckRun> {
   let res: Response
   try {
     res = await fetch("/api/essay/writing-check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, gate }),
     })
   } catch {
     throw new Error(CHECK_FAILED)
@@ -98,7 +102,7 @@ export async function runWritingGate(
   text: string
 ): Promise<{ ok: boolean; run: WritingCheckRun | null }> {
   try {
-    const run = await fetchWritingCheck(text)
+    const run = await fetchWritingCheck(text, { gate: true })
     return { ok: unresolvedBlocking(run, loadConfirmed()).length === 0, run }
   } catch {
     return { ok: true, run: null }
@@ -113,6 +117,7 @@ export async function runWritingGate(
 export interface LiveIssue {
   index: number
   kind: WritingIssueKind
+  hint?: string
   key: string
   at: { start: number; end: number }
   start: number
@@ -171,6 +176,7 @@ export function useWritingCheck({ inline = false }: { inline?: boolean } = {}) {
         issues: next.issues.map((issue, index) => ({
           index,
           kind: issue.kind,
+          hint: issue.hint,
           key: flagKey(next.text, issue),
           at: { start: issue.start, end: issue.end },
           start: issue.start,
@@ -616,7 +622,7 @@ function ChecklistItem({
           {after}
         </button>
         <p className="text-muted-foreground text-xs">
-          {issue.edited ? "Edited. Check again to confirm it's fixed." : def.message}
+          {issue.edited ? "Edited. Check again to confirm it's fixed." : (issue.hint ?? def.message)}
         </p>
         {def.blocks &&
           !issue.edited &&

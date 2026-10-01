@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getApiSession } from "@/lib/api-auth"
 import { WRITING_CHECK_MAX_CHARS } from "@/lib/writing-check"
-import { checkWithLanguageTool, LanguageToolBusyError } from "@/lib/languagetool"
+import { LanguageToolBusyError } from "@/lib/languagetool"
+import { runWritingCheck } from "@/lib/writing-check-run"
 
 export const runtime = "nodejs"
 
@@ -11,7 +12,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 })
   }
 
-  let body: { text?: unknown }
+  let body: { text?: unknown; gate?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    return NextResponse.json({ issues: await checkWithLanguageTool(text) })
+    return NextResponse.json({ issues: await runWritingCheck(text, { gate: body.gate === true }) })
   } catch (err) {
     if (err instanceof LanguageToolBusyError) {
       return NextResponse.json(
