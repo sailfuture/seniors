@@ -334,7 +334,7 @@ export function RichTextEditor({
       while (first <= last && pos[first] < 0) first++
       while (last >= first && pos[last] < 0) last--
       if (first <= last) {
-        set.push({ index, from: pos[first], to: pos[last] + 1, blocks: blocksSubmission(issue.kind) })
+        set.push({ index, from: pos[first], to: pos[last] + 1, blocks: blocksSubmission(issue) })
       }
     })
     editor.view.dispatch(tr.setMeta(writingHighlightsKey, { set }))

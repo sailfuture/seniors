@@ -86,8 +86,12 @@ export function findingsFromMatches(text: string, matches: LanguageToolMatch[]):
     if (!kind || seen.has(`${start}:${end}`)) continue
     seen.add(`${start}:${end}`)
     const replacements = (m.replacements ?? []).flatMap((r) => (r.value ? [r.value] : []))
+    // A capitalized word the dictionary doesn't know is as likely a name or a
+    // brand as a typo. A must-fix flag can't be waived, so on its own this one
+    // is advice; it blocks when the proofreading pass flags the word too.
+    const maybeName = kind === "spelling" && /^\p{Lu}/u.test(flagged)
     findings.push({
-      issue: { kind, start, end },
+      issue: { kind, start, end, ...(maybeName && { mustFix: false }) },
       message: m.message ?? "",
       rule: m.rule.description ?? "",
       replacements,
@@ -167,6 +171,9 @@ function kindOf(m: LanguageToolMatch, flagged: string): WritingIssueKind | null 
     return "spelling"
   }
 
+  // LanguageTool's list of commonly misspelled words ("bussiness", "alot")
+  // sits outside its dictionary rule, under MISC.
+  if (/SIMPLE_REPLACE/.test(id) && !/\s/.test(flagged)) return "spelling"
   if (category === "PUNCTUATION" || issueType === "typographical") return "punctuation"
   // A doubled word ("the the") is a typo.
   if (issueType === "duplication") return "spelling"

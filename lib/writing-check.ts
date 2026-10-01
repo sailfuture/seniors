@@ -7,9 +7,10 @@
  * written for that flag (lib/writing-hints.ts) — never a suggested
  * replacement — so the student makes each fix themselves.
  *
- * `blocks`: the kind must be fixed (or marked correct) before submitting. Only
- * sloppy mechanics block — typos, capitals, basic punctuation. Grammar, word
- * usage, and comma placement are advice. Style and clarity aren't checked.
+ * `blocks`: the kind must be fixed before submitting. Sloppy mechanics block —
+ * typos, capitals, basic punctuation. Grammar, word usage, and comma placement
+ * are advice, except a grammar mistake the proofreading pass calls obvious
+ * (`mustFix` on the flag). Style and clarity aren't checked.
  */
 export const WRITING_ISSUES = {
   spelling: {
@@ -80,7 +81,7 @@ export const WRITING_CATEGORIES = [
 ] as const
 
 /** What the blocking kinds are called in student-facing messages. */
-export const MUST_FIX_LABEL = "spelling, capitalization, and punctuation"
+export const MUST_FIX_LABEL = "spelling, capitalization, punctuation, and basic grammar"
 
 /** One flagged passage: [start, end) character offsets into the checked text. */
 export interface WritingIssue {
@@ -90,25 +91,28 @@ export interface WritingIssue {
   /** What to look at in this particular sentence, shown in place of the
    *  kind's general message. Never the fix. */
   hint?: string
+  /** Overrides the kind's `blocks` for this flag: true for an obvious grammar
+   *  mistake, false for a spelling flag that is probably a name. */
+  mustFix?: boolean
 }
 
 /** Longest text one check accepts (roughly 5,000 words). */
 export const WRITING_CHECK_MAX_CHARS = 30_000
 
-export function blocksSubmission(kind: WritingIssueKind): boolean {
-  return WRITING_ISSUES[kind].blocks
+/** Whether a flag holds a submission back. A must-fix flag can't be waived,
+ *  so only flags the check is sure of should get here. */
+export function blocksSubmission(issue: Pick<WritingIssue, "kind" | "mustFix">): boolean {
+  return issue.mustFix ?? WRITING_ISSUES[issue.kind].blocks
 }
 
-/**
- * Identifies a flag across checks, so "It's correct" survives edits elsewhere
- * in the text: a spelling flag by its word (a name is fine wherever it
- * appears), any other flag by its sentence (rewording the sentence re-raises it).
- */
-export function flagKey(text: string, issue: WritingIssue): string {
-  const { before, match, after } = excerptAround(text, issue.start, issue.end)
-  if (issue.kind === "spelling") return `spelling|${match}`
-  return `${issue.kind}|${(before + match + after).replace(/\s+/g, " ").trim()}`
-}
+/** The grammar kinds: advice, unless the proofreading pass calls one obvious. */
+export const GRAMMAR_KINDS: ReadonlySet<WritingIssueKind> = new Set([
+  "subject_verb",
+  "verb_tense",
+  "article",
+  "grammar",
+  "word_usage",
+])
 
 const EXCERPT_REACH = 80
 // A sentence ends at . ! or ? (plus any closing quote or bracket) — or a line break.

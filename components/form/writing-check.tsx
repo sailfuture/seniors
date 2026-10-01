@@ -17,7 +17,6 @@ import {
   WRITING_ISSUES,
   blocksSubmission,
   excerptAround,
-  flagKey,
   type WritingIssue,
   type WritingIssueKind,
 } from "@/lib/writing-check"
@@ -53,57 +52,17 @@ export async function fetchWritingCheck(
   return { text, issues: data.issues as WritingIssue[] }
 }
 
-// Flags the student marked "It's correct", kept in this browser — and in
-// memory too, so a mark still counts for this visit where storage is blocked.
-const CONFIRMED_KEY = "writing-check:confirmed"
-const confirmedThisVisit = new Set<string>()
-
-function loadConfirmed(): Set<string> {
-  const keys = new Set(confirmedThisVisit)
-  try {
-    const stored: unknown = JSON.parse(localStorage.getItem(CONFIRMED_KEY) ?? "[]")
-    if (Array.isArray(stored)) for (const key of stored) keys.add(String(key))
-  } catch {
-    // Unreadable storage: the in-memory marks still apply.
-  }
-  return keys
-}
-
-function saveConfirmed(key: string, correct: boolean): Set<string> {
-  const keys = loadConfirmed()
-  if (correct) {
-    keys.add(key)
-    confirmedThisVisit.add(key)
-  } else {
-    keys.delete(key)
-    confirmedThisVisit.delete(key)
-  }
-  try {
-    // Newest last; the cap keeps a long-forgotten list from growing forever.
-    localStorage.setItem(CONFIRMED_KEY, JSON.stringify([...keys].slice(-500)))
-  } catch {
-    // Private mode or storage full: the mark lasts for this visit only.
-  }
-  return keys
-}
-
-/** The must-fix flags (spelling, capitalization, punctuation) in a fresh
- *  check that the student hasn't marked correct. */
-function unresolvedBlocking(run: WritingCheckRun, confirmed: Set<string>): WritingIssue[] {
-  return run.issues.filter((i) => blocksSubmission(i.kind) && !confirmed.has(flagKey(run.text, i)))
-}
-
 /**
- * The submission gate: `ok` unless must-fix flags remain that the student
- * hasn't marked correct. Fails open — if the checker can't run, the
- * submission goes ahead; this is a writing step, not an integrity check.
+ * The submission gate: `ok` unless a fresh check has must-fix flags. There is
+ * no waiving one; the student fixes it. Fails open — if the checker can't run,
+ * the submission goes ahead; this is a writing step, not an integrity check.
  */
 export async function runWritingGate(
   text: string
 ): Promise<{ ok: boolean; run: WritingCheckRun | null }> {
   try {
     const run = await fetchWritingCheck(text, { gate: true })
-    return { ok: unresolvedBlocking(run, loadConfirmed()).length === 0, run }
+    return { ok: !run.issues.some(blocksSubmission), run }
   } catch {
     return { ok: true, run: null }
   }
@@ -111,14 +70,14 @@ export async function runWritingGate(
 
 /**
  * A flag as it stands now: `at` is where it sat in the checked text (for the
- * excerpt and the "It's correct" key); `start`/`end` follow it through the
- * student's edits. Once its own words change, it's `edited` — being fixed.
+ * excerpt); `start`/`end` follow it through the student's edits. Once its
+ * own words change, it's `edited` — being fixed.
  */
 export interface LiveIssue {
   index: number
   kind: WritingIssueKind
   hint?: string
-  key: string
+  mustFix?: boolean
   at: { start: number; end: number }
   start: number
   end: number
@@ -161,7 +120,6 @@ export function useWritingCheck({ inline = false }: { inline?: boolean } = {}) {
   const [run, setRun] = useState<WritingCheckRun | null>(null)
   const [live, setLive] = useState<LiveText | null>(null)
   const [done, setDone] = useState<Set<number>>(() => new Set())
-  const [confirmed, setConfirmed] = useState<Set<string>>(() => new Set())
   // The checklist opened because a submission was held back; it says so.
   const [heldBack, setHeldBack] = useState(false)
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
@@ -177,7 +135,7 @@ export function useWritingCheck({ inline = false }: { inline?: boolean } = {}) {
           index,
           kind: issue.kind,
           hint: issue.hint,
-          key: flagKey(next.text, issue),
+          mustFix: issue.mustFix,
           at: { start: issue.start, end: issue.end },
           start: issue.start,
           end: issue.end,
@@ -185,7 +143,6 @@ export function useWritingCheck({ inline = false }: { inline?: boolean } = {}) {
         })),
       })
       setDone(new Set())
-      setConfirmed(loadConfirmed())
       setError(null)
       setHeldBack(!!opts.heldBack)
       setActiveIndex(null)
@@ -282,14 +239,8 @@ export function useWritingCheck({ inline = false }: { inline?: boolean } = {}) {
     })
   }, [])
 
-  const markCorrect = useCallback((key: string, correct: boolean) => {
-    setConfirmed(saveConfirmed(key, correct))
-  }, [])
-
-  // Must-fix flags that still stand: not being edited, not marked correct.
-  const toFix = live
-    ? live.issues.filter((i) => blocksSubmission(i.kind) && !i.edited && !confirmed.has(i.key)).length
-    : 0
+  // Must-fix flags that still stand: not yet being edited.
+  const toFix = live ? live.issues.filter((i) => blocksSubmission(i) && !i.edited).length : 0
 
   return {
     docked,
@@ -301,7 +252,6 @@ export function useWritingCheck({ inline = false }: { inline?: boolean } = {}) {
     run,
     live,
     done,
-    confirmed,
     heldBack,
     activeIndex,
     toFix,
@@ -314,7 +264,6 @@ export function useWritingCheck({ inline = false }: { inline?: boolean } = {}) {
     setLocator,
     locate,
     toggleDone,
-    markCorrect,
   }
 }
 
@@ -464,7 +413,7 @@ function Checklist({
   live: LiveText
   stale: boolean
 }) {
-  const { done, confirmed, heldBack, activeIndex, toFix, toggleDone, markCorrect, locate } = writing
+  const { done, heldBack, activeIndex, toFix, toggleDone, locate } = writing
 
   if (live.issues.length === 0) {
     return (
@@ -484,7 +433,7 @@ function Checklist({
     { title: "Suggestions", blocks: false },
   ]
     .map((section) => {
-      const issues = live.issues.filter((issue) => blocksSubmission(issue.kind) === section.blocks)
+      const issues = live.issues.filter((issue) => blocksSubmission(issue) === section.blocks)
       const groups = WRITING_CATEGORIES.map((category) => ({
         category,
         items: issues.filter((issue) => WRITING_ISSUES[issue.kind].category === category),
@@ -492,9 +441,7 @@ function Checklist({
       return { ...section, count: issues.length, groups }
     })
     .filter((section) => section.count > 0)
-  const left = live.issues.filter(
-    (issue) => !done.has(issue.index) && !confirmed.has(issue.key) && !issue.edited
-  ).length
+  const left = live.issues.filter((issue) => !done.has(issue.index) && !issue.edited).length
 
   return (
     <div className="space-y-5">
@@ -503,8 +450,7 @@ function Checklist({
           <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
             Not submitted yet. Fix the {toFix} {MUST_FIX_LABEL}{" "}
             {toFix === 1 ? "item" : "items"} under &ldquo;Must fix before submitting&rdquo;
-            first. If one is correct as written, like a name, choose &ldquo;It&rsquo;s
-            correct.&rdquo;
+            first.
           </p>
         ) : (
           <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-400">
@@ -546,10 +492,8 @@ function Checklist({
                     issue={issue}
                     active={activeIndex === issue.index}
                     checked={done.has(issue.index)}
-                    correct={confirmed.has(issue.key)}
                     onLocate={() => locate(issue.index)}
                     onToggle={() => toggleDone(issue.index)}
-                    onMarkCorrect={(correct) => markCorrect(issue.key, correct)}
                   />
                 ))}
               </ul>
@@ -568,23 +512,19 @@ function ChecklistItem({
   issue,
   active,
   checked,
-  correct,
   onLocate,
   onToggle,
-  onMarkCorrect,
 }: {
   text: string
   issue: LiveIssue
   active: boolean
   checked: boolean
-  correct: boolean
   onLocate: () => void
   onToggle: () => void
-  onMarkCorrect: (correct: boolean) => void
 }) {
   const def = WRITING_ISSUES[issue.kind]
   const { before, match, after } = excerptAround(text, issue.at.start, issue.at.end)
-  const settled = checked || correct || issue.edited
+  const settled = checked || issue.edited
 
   return (
     <li
@@ -596,7 +536,7 @@ function ChecklistItem({
     >
       <Checkbox
         checked={settled}
-        disabled={correct || issue.edited}
+        disabled={issue.edited}
         onCheckedChange={onToggle}
         className="mt-0.5"
         aria-label={`Done: ${def.label}`}
@@ -614,7 +554,7 @@ function ChecklistItem({
           <mark
             className={cn(
               "text-foreground rounded-sm px-0.5",
-              def.blocks ? "bg-red-200/80 dark:bg-red-500/30" : "bg-amber-200/80 dark:bg-amber-400/30"
+              blocksSubmission(issue) ? "bg-red-200/80 dark:bg-red-500/30" : "bg-amber-200/80 dark:bg-amber-400/30"
             )}
           >
             {match}
@@ -624,29 +564,6 @@ function ChecklistItem({
         <p className="text-muted-foreground text-xs">
           {issue.edited ? "Edited. Check again to confirm it's fixed." : (issue.hint ?? def.message)}
         </p>
-        {def.blocks &&
-          !issue.edited &&
-          (correct ? (
-            <p className="text-xs">
-              <span className="text-green-700 dark:text-green-400">Marked correct</span>
-              {" · "}
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
-                onClick={() => onMarkCorrect(false)}
-              >
-                Undo
-              </button>
-            </p>
-          ) : (
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
-              onClick={() => onMarkCorrect(true)}
-            >
-              It&rsquo;s correct
-            </button>
-          ))}
       </div>
     </li>
   )
@@ -767,7 +684,7 @@ export function HighlightedTextarea({
       <mark
         key={issue.index}
         data-wc={issue.index}
-        className={cn("text-transparent", flagTint(blocksSubmission(issue.kind), writing.activeIndex === issue.index))}
+        className={cn("text-transparent", flagTint(blocksSubmission(issue), writing.activeIndex === issue.index))}
       >
         {value.slice(issue.start, issue.end)}
       </mark>

@@ -1,6 +1,6 @@
 import { generateText, Output } from "ai"
 import { z } from "zod"
-import { WRITING_ISSUES, type WritingIssue, type WritingIssueKind } from "@/lib/writing-check"
+import { GRAMMAR_KINDS, WRITING_ISSUES, type WritingIssue, type WritingIssueKind } from "@/lib/writing-check"
 import { HINT_RULES, WRITING_MODEL, givesAway, tidyHint } from "@/lib/writing-hints"
 
 /**
@@ -8,8 +8,9 @@ import { HINT_RULES, WRITING_MODEL, givesAway, tidyHint } from "@/lib/writing-hi
  * mistakes LanguageTool's rules miss (agreement across a long subject, a wrong
  * tense, their/there, a possessive with no apostrophe). Its flags join
  * LanguageTool's in the checklist under the same kinds, so the same ones block
- * a submission. It reads a paragraph at a time and keeps what it found, so a
- * paragraph the student hasn't touched gets the same flags on the next check.
+ * a submission — plus any grammar mistake it calls obvious. It reads a
+ * paragraph at a time and keeps what it found, so a paragraph the student
+ * hasn't touched gets the same flags on the next check.
  */
 
 // Paragraphs are packed into requests of about this many characters, which
@@ -40,6 +41,7 @@ For each mistake give:
 - quote: the exact characters from the paragraph that hold the mistake, copied with no changes: just the word or the few words involved. For a missing mark, quote the word it belongs after.
 - kind: one of the kinds above.
 - fix: what the quote should say instead. The student never sees this.
+- obvious: true only for a grammar mistake no one could argue with: any teacher would mark it at a glance, and there is exactly one way to read the sentence. Examples: "they was", "he don't", "me and him went", "could of", "more better", "a apple", "I seen it", "alot", a double negative, and there/their/they're, your/you're, its/it's, to/too, or then/than used for one another. The student cannot dismiss an obvious flag, so use false whenever the mistake is subtle, depends on what the writer meant, is a formal-usage point (who/whom, fewer/less), or could be defended. Always false for spelling, capitalization, punctuation, and comma flags.
 - hint: one hint that tells the student what to look at and why, so they can work out the fix on their own. Every hint must follow these rules:
 ${HINT_RULES.replace(/^/gm, "  ")}`
 
@@ -50,6 +52,7 @@ const flagsSchema = z.object({
       quote: z.string(),
       kind: z.enum(KINDS),
       fix: z.string(),
+      obvious: z.boolean(),
       hint: z.string(),
     })
   ),
@@ -123,7 +126,7 @@ export async function proofread(text: string): Promise<WritingIssue[] | null> {
 /**
  * The model's flags for one paragraph → issues with offsets into it. Drops a
  * flag whose quote isn't in the paragraph or whose fix changes nothing, and a
- * hint that gives the fix away.
+ * hint that gives the fix away. An obvious grammar mistake becomes a must-fix.
  */
 export function placeFlags(paragraph: string, raw: RawFlag[]): WritingIssue[] {
   const issues: WritingIssue[] = []
@@ -137,6 +140,7 @@ export function placeFlags(paragraph: string, raw: RawFlag[]): WritingIssue[] {
       kind: flag.kind,
       ...at,
       ...(hint && !givesAway(hint, quote, [flag.fix]) && { hint }),
+      ...(flag.obvious && GRAMMAR_KINDS.has(flag.kind) && { mustFix: true }),
     })
   }
   return issues.sort((a, b) => a.start - b.start)
