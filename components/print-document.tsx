@@ -9,7 +9,7 @@ import {
   deriveBrandTheme,
   parseBrandColor,
   parseExactHex,
-  extractFontFamily,
+  resolveFont,
   useGoogleFont,
   type BrandTheme,
 } from "@/components/brand-display"
@@ -2208,10 +2208,13 @@ function PrintValue({ q, r, brand }: { q: TemplateQuestion; r: StudentResponse; 
     )
   }
   if (/font/i.test(q.field_label)) {
-    const family = extractFontFamily(text) || brand.primaryFont
+    // Name the face the student chose, set in the Google family that serves
+    // it (or its closest stand-in when Google doesn't host it).
+    const font = resolveFont(text)
+    const family = font.family || brand.primaryFont
     return (
       <p className="text-xl" style={family ? { fontFamily: `"${family}", inherit` } : undefined}>
-        {family || text}
+        {font.name || text}
       </p>
     )
   }
