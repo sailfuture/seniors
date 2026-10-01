@@ -14,7 +14,6 @@ import {
   type NodeProps,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { useBrandTheme } from "@/components/brand-display"
 
 export interface UnitComponent {
   name: string
@@ -40,11 +39,11 @@ const hiddenHandle: React.CSSProperties = {
 function ComponentNode({ data }: NodeProps) {
   const d = data as { label: string; cost: number | null }
   return (
-    <div className="w-[200px] rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 shadow-sm">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-red-400">Cost component</p>
+    <div className="w-[200px] rounded-xl border-2 border-red-400 bg-white px-4 py-2.5 shadow-sm">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-gray-500">Cost component</p>
       <div className="mt-0.5 flex items-center justify-between gap-3">
-        <span className="truncate text-sm font-medium text-gray-800">{d.label}</span>
-        <span className="shrink-0 text-sm font-semibold text-gray-900 tabular-nums">{money(d.cost)}</span>
+        <span className="truncate text-sm font-medium text-black">{d.label}</span>
+        <span className="shrink-0 text-sm font-semibold text-black tabular-nums">{money(d.cost)}</span>
       </div>
       <Handle type="source" position={Position.Right} style={hiddenHandle} />
     </div>
@@ -58,25 +57,21 @@ function StatNode({ data }: NodeProps) {
     caption?: string
     captionTone?: "muted" | "warn"
     border: string
-    tint?: string
-    accent?: string
     hasTarget?: boolean
     hasSource?: boolean
   }
   return (
     <div
-      className="w-[210px] rounded-xl border-2 px-4 py-3 shadow-sm"
-      style={{ borderColor: d.border, background: d.tint ?? "#FFFFFF" }}
+      className="w-[210px] rounded-xl border-2 bg-white px-4 py-3 shadow-sm"
+      style={{ borderColor: d.border }}
     >
       {d.hasTarget && <Handle type="target" position={Position.Left} style={hiddenHandle} />}
       <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">{d.label}</p>
-      <p className="mt-0.5 text-2xl font-bold tracking-tight tabular-nums" style={{ color: d.accent ?? "#111827" }}>
-        {d.value}
-      </p>
+      <p className="mt-0.5 text-2xl font-bold tracking-tight text-black tabular-nums">{d.value}</p>
       {d.caption && (
         <p
           className="mt-1 text-[11px] leading-snug"
-          style={{ color: d.captionTone === "warn" ? "#B45309" : "#9CA3AF" }}
+          style={{ color: d.captionTone === "warn" ? "#B45309" : "#6B7280" }}
         >
           {d.caption}
         </p>
@@ -97,7 +92,6 @@ const nodeTypes = { component: ComponentNode, stat: StatNode }
 export function UnitEconomicsFlow({
   components,
   unitCost,
-  unitCostDerived = false,
   salePrice,
   margin,
   marginDerived = false,
@@ -109,11 +103,11 @@ export function UnitEconomicsFlow({
   margin: number | null
   marginDerived?: boolean
 }) {
-  const brand = useBrandTheme()
-
   const { nodes, edges } = useMemo(() => {
-    const primaryInk = brand.hasBrand ? brand.primaryInk : "#111827"
-    const edgeColor = brand.hasBrand ? brand.primaryInk : "#9CA3AF"
+    // The diagram is deliberately unbranded: white cards, black figures, and
+    // neutral gray connectors, with only the outlines carrying meaning
+    // (red = expense, green = revenue and the margin it leaves).
+    const edgeColor = "#9CA3AF"
     // Solid, weighted connectors read as prominent flow lines against the
     // dotted grid behind them.
     const edgeStyle = { stroke: edgeColor, strokeWidth: 2, strokeLinecap: "round" as const, opacity: 0.9 }
@@ -160,7 +154,7 @@ export function UnitEconomicsFlow({
       })
     })
 
-    // Cost = red (expense), Sale Price = green (revenue), Margin = branded.
+    // Cost = red outline (expense); Sale Price and Margin = green outlines.
     nodes.push({
       id: "cost",
       type: "stat",
@@ -168,8 +162,7 @@ export function UnitEconomicsFlow({
       data: {
         label: "Per Unit Cost",
         value: money(costVal),
-        border: "#FECACA",
-        tint: "#FEF2F2",
+        border: "#F87171",
         hasTarget: true,
         hasSource: true,
       },
@@ -182,8 +175,7 @@ export function UnitEconomicsFlow({
       data: {
         label: "Per Unit Sale Price",
         value: money(priceVal),
-        border: "#BBF7D0",
-        tint: "#F0FDF4",
+        border: "#4ADE80",
         hasSource: true,
       },
     })
@@ -197,9 +189,7 @@ export function UnitEconomicsFlow({
         label: "Per Unit Margin",
         value: money(marginVal),
         caption: marginDerived ? "= sale price − unit cost" : "sale price − unit cost",
-        border: primaryInk,
-        tint: "#FFFFFF",
-        accent: primaryInk,
+        border: "#16A34A",
         hasTarget: true,
       },
     })
@@ -215,15 +205,15 @@ export function UnitEconomicsFlow({
     }
 
     return { nodes, edges }
-  }, [components, unitCost, unitCostDerived, salePrice, margin, marginDerived, brand])
+  }, [components, unitCost, salePrice, margin, marginDerived])
 
   // Uncontrolled flow with a data-keyed remount: a static diagram needs no
   // change handlers, and controlled mode without them never commits node
   // measurements, which keeps edges from rendering.
-  const flowKey = `${components.map((c) => `${c.name}:${c.cost}`).join("|")}|${unitCost}|${salePrice}|${margin}|${brand.primary}`
+  const flowKey = `${components.map((c) => `${c.name}:${c.cost}`).join("|")}|${unitCost}|${salePrice}|${margin}`
 
   return (
-    <div className="h-[380px] w-full overflow-hidden rounded-xl border border-gray-200">
+    <div className="h-[380px] w-full overflow-hidden rounded-xl border border-gray-200 bg-white">
       <ReactFlow
         key={flowKey}
         defaultNodes={nodes}

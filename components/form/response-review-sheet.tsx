@@ -33,6 +33,8 @@ import {
 } from "@/lib/response-events"
 import { useBumpSidebar } from "@/lib/refresh-context"
 import { studentFetch } from "@/lib/cached-fetch"
+import { looksLikeSourcesDoc } from "@/lib/sources"
+import { SourceListDisplay } from "@/components/form/source-list-display"
 
 const IMAGE_UPLOAD = 4
 
@@ -281,6 +283,8 @@ export function ResponseReviewSheet({
                 </Button>
                 <LazyRichTextDisplay raw={value} showComments />
               </div>
+            ) : looksLikeSourcesDoc(value) ? (
+              <SourceListDisplay response={target?.response} />
             ) : (
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{value || "—"}</p>
             )}

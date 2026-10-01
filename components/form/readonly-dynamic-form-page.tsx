@@ -39,6 +39,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
+import { parseSources, sourceSummary } from "@/lib/sources"
+import { SourceListDisplay } from "@/components/form/source-list-display"
 import { TeacherComment } from "./teacher-comment"
 import { QuestionInstructions } from "./question-instructions"
 import { groupResolvedThreads } from "./field-activity-stream"
@@ -153,7 +155,7 @@ function hasResponseContent(r: StudentResponse | undefined | null): boolean {
   return (
     (r.student_response ?? "").trim().length > 0 ||
     !!(img && (img.path || img.url)) ||
-    !!(r.source_link || r.title_of_source || r.author_name_or_publisher)
+    parseSources(r).length > 0
   )
 }
 
@@ -507,88 +509,95 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               ? { readyReview: true, isComplete: false, revisionNeeded: false }
               : { readyReview: false, isComplete: false, revisionNeeded: false }
 
+      // Show the new status at once and let Xano catch up: its queue can hold
+      // a PATCH for seconds, and a click shouldn't wait on it to land. A
+      // failed save rolls the status and the sidebar badges back.
+      const prevResp = responses.get(templateId)
+      const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)
+      const nowReady = patch.readyReview && !patch.isComplete && !patch.revisionNeeded
+      const wasRevision = !!prevResp?.revisionNeeded
+      const nowRevision = patch.revisionNeeded
+      const eventName = `${cfg.eventPrefix ?? ""}review-update`
+      const announce = (sign: 1 | -1) => {
+        if (nowReady !== wasReady) {
+          window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: sign * (nowReady ? 1 : -1) } }))
+        }
+        if (nowRevision !== wasRevision) {
+          window.dispatchEvent(
+            new CustomEvent(eventName, { detail: { sectionId, delta: sign * (nowRevision ? 1 : -1), type: "revision" } })
+          )
+        }
+      }
+      const show = (r: StudentResponse | undefined) => {
+        if (!r) return
+        setResponses((prev) => new Map(prev).set(templateId, r))
+      }
+      show(prevResp ? { ...prevResp, ...patch, last_edited: now } : undefined)
+      announce(1)
+
       try {
         const res = await fetch(`${cfg.responsePatchBase}/${responseId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
         })
-        if (res.ok) {
-          // Log the transition so activity timelines show the history.
-          {
-            const q = questions.find((qq) => qq.id === templateId)
-            if (q && studentId) {
-              postResponseEvent(cfg, {
-                studentId,
-                templateId,
-                fieldName: q.field_name,
-                sectionId,
-                eventType: eventTypeForAction(action),
-                actorName: session?.user?.name ?? "Teacher",
-                teachersId: ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null,
-              })
+        if (!res.ok) throw new Error(`PATCH failed: ${res.status}`)
+
+        // Log the transition so activity timelines show the history.
+        {
+          const q = questions.find((qq) => qq.id === templateId)
+          if (q && studentId) {
+            postResponseEvent(cfg, {
+              studentId,
+              templateId,
+              fieldName: q.field_name,
+              sectionId,
+              eventType: eventTypeForAction(action),
+              actorName: session?.user?.name ?? "Teacher",
+              teachersId: ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null,
+            })
+          }
+        }
+        // A completion change can flip a section's green "fully complete"
+        // check; that set is only recomputed on a sidebar refetch, so bump it.
+        if (!!prevResp?.isComplete !== !!patch.isComplete) {
+          bumpSidebar()
+        }
+
+        if (comment?.trim()) {
+          const teacherName = session?.user?.name ?? "Teacher"
+          const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
+          const q = questions.find((q) => q.id === templateId)
+          await fetch(cfg.commentsEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              students_id: studentId,
+              teachers_id: teachersId,
+              field_name: q?.field_name ?? "",
+              [F.sectionId]: sectionId,
+              [F.templateId]: templateId,
+              note: comment.trim(),
+              isOld: false,
+              isComplete: false,
+              isRevisionFeedback: true,
+              teacher_name: teacherName,
+            }),
+          }).then(async (r) => {
+            if (r.ok) {
+              const newComment = await r.json()
+              setComments((prev) => [...prev, { ...newComment, teacher_name: newComment.teacher_name || teacherName }])
             }
-          }
-          // Notify the sidebar badges of the state transition
-          const prevResp = responses.get(templateId)
-          const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)
-          const nowReady = patch.readyReview && !patch.isComplete && !patch.revisionNeeded
-          const wasRevision = !!prevResp?.revisionNeeded
-          const nowRevision = patch.revisionNeeded
-          const eventName = `${cfg.eventPrefix ?? ""}review-update`
-          if (nowReady !== wasReady) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: nowReady ? 1 : -1 } }))
-          }
-          if (nowRevision !== wasRevision) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: nowRevision ? 1 : -1, type: "revision" } }))
-          }
-          // A completion change can flip a section's green "fully complete"
-          // check; that set is only recomputed on a sidebar refetch, so bump it.
-          if (!!prevResp?.isComplete !== !!patch.isComplete) {
-            bumpSidebar()
-          }
+          }).catch(() => {})
+        }
 
-          setResponses((prev) => {
-            const next = new Map(prev)
-            const existing = next.get(templateId)
-            if (existing) next.set(templateId, { ...existing, ...patch, last_edited: now })
-            return next
-          })
-
-          if (comment?.trim()) {
-            const teacherName = session?.user?.name ?? "Teacher"
-            const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
-            const q = questions.find((q) => q.id === templateId)
-            await fetch(cfg.commentsEndpoint, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                students_id: studentId,
-                teachers_id: teachersId,
-                field_name: q?.field_name ?? "",
-                [F.sectionId]: sectionId,
-                [F.templateId]: templateId,
-                note: comment.trim(),
-                isOld: false,
-                isComplete: false,
-                isRevisionFeedback: true,
-                teacher_name: teacherName,
-              }),
-            }).then(async (r) => {
-              if (r.ok) {
-                const newComment = await r.json()
-                setComments((prev) => [...prev, { ...newComment, teacher_name: newComment.teacher_name || teacherName }])
-              }
-            }).catch(() => {})
-          }
-
-          if (!silent) {
-            const labels: Record<string, string> = { complete: "Marked complete", revision: "Revision requested", ready: "Marked ready for review", clear: "Status cleared" }
-            toast.success(labels[action] ?? "Status updated")
-          }
-
+        if (!silent) {
+          const labels: Record<string, string> = { complete: "Marked complete", revision: "Revision requested", ready: "Marked ready for review", clear: "Status cleared" }
+          toast.success(labels[action] ?? "Status updated")
         }
       } catch {
+        show(prevResp)
+        announce(-1)
         if (!silent) toast.error("Failed to update status")
       }
     },
@@ -735,35 +744,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             <p className="text-muted-foreground text-sm">—</p>
           )
         } else if (typeId === QUESTION_TYPE.SOURCE) {
-          const sl = response?.source_link ?? ""
-          const ts = response?.title_of_source ?? ""
-          const ap = response?.author_name_or_publisher ?? ""
-          const dp = response?.date_of_publication ?? ""
-          const hasAny = sl || ts || ap || dp
-          displayValue = hasAny ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Source Link</p>
-                {sl ? (
-                  <a href={sl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-blue-600 underline break-all hover:text-blue-800 dark:text-blue-400">{sl}</a>
-                ) : <p className="text-muted-foreground text-sm">—</p>}
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Title of Source</p>
-                <p className="text-sm font-semibold">{ts || "—"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Author / Publisher</p>
-                <p className="text-sm font-semibold">{ap || "—"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Date of Publication</p>
-                <p className="text-sm font-semibold">{dp || "—"}</p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">—</p>
-          )
+          displayValue = <SourceListDisplay response={response} />
         } else if (isLineItemsQuestion(q) || looksLikeLineItems(value)) {
           displayValue = <LineItemsTable raw={value} />
         } else if (isRichText || looksLikeRichTextDoc(value)) {
@@ -868,7 +849,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   templateId={q.id}
                   templateIdKey={F.templateId}
                   fieldLabel={q.field_label}
-                  fieldValue={(isRichText ? extractPlainText(value) : value) || "—"}
+                  fieldValue={(isSource ? sourceSummary(parseSources(response)) : isRichText ? extractPlainText(value) : value) || "—"}
                   essayHref={
                     isRichText || looksLikeRichTextDoc(value)
                       ? `${cfg.adminBasePath}/${studentId}/essay/${q.id}`
@@ -1203,7 +1184,6 @@ function PlagiarismScoresInline({ data }: { data: GptZeroResult }) {
   const ai = toPercent(data.class_probability_ai ?? 0)
   const human = toPercent(data.class_probability_human ?? 0)
   const mixed = toPercent(data.mixed ?? 0)
-  const relTime = formatWhen(data.created_at as string | number | null | undefined)
 
   const max = Math.max(ai, human, mixed)
   const aiIsMax = ai === max
@@ -1223,12 +1203,6 @@ function PlagiarismScoresInline({ data }: { data: GptZeroResult }) {
       <span className={mixedIsMax ? "font-bold text-amber-600" : "text-muted-foreground"}>
         Mixed: {mixed}%
       </span>
-      {relTime && (
-        <>
-          <span className="text-muted-foreground/40">&mdash;</span>
-          <span className="text-muted-foreground">{relTime}</span>
-        </>
-      )}
     </span>
   )
 }

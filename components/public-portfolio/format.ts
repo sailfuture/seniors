@@ -1,3 +1,4 @@
+import { parseSources } from "@/lib/sources"
 /**
  * "March 4, 2026". A bare YYYY-MM-DD is a calendar day, so it's read in local
  * time: parsed as UTC midnight it showed a day early everywhere west of UTC.
@@ -55,6 +56,11 @@ export interface SourceFields {
 
 export function hasSource(r: SourceFields | undefined): boolean {
   return !!(r && (r.source_link?.trim() || r.title_of_source?.trim() || r.author_name_or_publisher?.trim()))
+}
+
+/** Every citation an approved Source answer holds (its list, or its legacy columns). */
+export function sourcesOf(r: Parameters<typeof parseSources>[0]): SourceFields[] {
+  return parseSources(r)
 }
 
 /**

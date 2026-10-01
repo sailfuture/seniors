@@ -139,11 +139,11 @@ export function CommentBadge({
           strokeWidth={2}
           className={cn(
             "size-4",
-            hasUnread ? "text-blue-500" : "text-muted-foreground/50"
+            hasUnread ? "text-yellow-500" : "text-muted-foreground/50"
           )}
         />
         {hasUnread && (
-          <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-blue-500 ring-2 ring-white" />
+          <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-yellow-400 ring-2 ring-white" />
         )}
       </button>
 

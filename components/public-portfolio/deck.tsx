@@ -3,21 +3,26 @@
 import type { CSSProperties, ReactNode } from "react"
 import { ArrowRight } from "lucide-react"
 import { inkFor, useBrandTheme } from "@/components/brand-display"
-import { StatusBadge, type FieldStatus } from "@/components/field-status"
+import { StatusBadge, statusOf, type FieldStatus } from "@/components/field-status"
+import { LazyRichTextDisplay } from "@/components/form/rich-text-display-lazy"
+import { looksLikeRichTextDoc } from "@/lib/rich-text"
 import { cn } from "@/lib/utils"
-import { AlignEssaysStart } from "./answers"
+import { AlignEssaysStart, Answer, SourceFooter } from "./answers"
+import { sameTitle } from "./format"
 import { Reveal } from "./motion"
+import { familyOf, isReadingGroup, isReadingSet, splitReading } from "./reading"
 import {
   GroupBody,
   QuestionsBody,
   SectionHero,
+  SourcesInFooter,
   UNIT_SPAN,
   groupAction,
   groupStatus,
   groupUnits,
 } from "./sections"
 import { goToChapter } from "./shell"
-import type { PortfolioGroupModel, PortfolioSectionModel, ResponseMap } from "./types"
+import type { PortfolioGroupModel, PortfolioQuestion, PortfolioSectionModel, ResponseMap } from "./types"
 
 /**
  * A deck slide: a white 16:9 page (taller when its content needs it) with
@@ -28,30 +33,54 @@ const SLIDE =
 
 const pad = (n: number) => String(n).padStart(2, "0")
 
+interface SlideGroups {
+  groups: PortfolioGroupModel[]
+  /** Long writing: a rail beside text in columns, one row per group. */
+  reading: boolean
+}
+
+/** At most this many reading groups stack on one slide. */
+const READING_ROWS = 3
+
 /**
  * A section's groups as slides, laid out by their template widths: a
  * full-width group fills a slide, and halves and thirds share one as columns.
+ * A group with real writing in it gets a reading slide of its own instead,
+ * and sibling reading groups (the three "Messaging Locations") stack on one.
  */
-function packSlides(groups: PortfolioGroupModel[]): PortfolioGroupModel[][] {
-  const slides: PortfolioGroupModel[][] = []
+function packSlides(groups: PortfolioGroupModel[], responseMap: ResponseMap): SlideGroups[] {
+  const slides: SlideGroups[] = []
   let row: PortfolioGroupModel[] = []
   let used = 0
-  for (const group of groups) {
-    const units = groupUnits(group)
-    if (row.length > 0 && used + units > 6) {
-      slides.push(row)
-      row = []
-      used = 0
+  const flush = () => {
+    if (row.length > 0) slides.push({ groups: row, reading: false })
+    row = []
+    used = 0
+  }
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i]
+    if (isReadingGroup(group, responseMap)) {
+      flush()
+      const family = familyOf(group.name)
+      const run = [group]
+      while (
+        i + 1 < groups.length &&
+        run.length < READING_ROWS &&
+        isReadingGroup(groups[i + 1], responseMap) &&
+        familyOf(groups[i + 1].name) === family
+      ) {
+        run.push(groups[++i])
+      }
+      slides.push({ groups: run, reading: true })
+      continue
     }
+    const units = groupUnits(group)
+    if (row.length > 0 && used + units > 6) flush()
     row.push(group)
     used += units
-    if (used >= 6) {
-      slides.push(row)
-      row = []
-      used = 0
-    }
+    if (used >= 6) flush()
   }
-  if (row.length > 0) slides.push(row)
+  flush()
   return slides
 }
 
@@ -72,16 +101,31 @@ export function DeckSections({
   let next = 3
   const plan = sections.map((section) => {
     const divider = next++
-    const slides: { key: string; number: number; groups: PortfolioGroupModel[] | null }[] = []
-    if (section.ungrouped.length > 0) slides.push({ key: "ungrouped", number: next++, groups: null })
-    for (const row of packSlides(section.groups)) {
-      slides.push({ key: row.map((g) => g.id).join("-"), number: next++, groups: row })
+    const slides: { key: string; number: number; groups: PortfolioGroupModel[] | null; reading: boolean }[] = []
+    if (section.ungrouped.length > 0) {
+      slides.push({ key: "ungrouped", number: next++, groups: null, reading: isReadingSet(section.ungrouped, responseMap) })
+    }
+    for (const { groups, reading } of packSlides(section.groups, responseMap)) {
+      slides.push({ key: groups.map((g) => g.id).join("-"), number: next++, groups, reading })
     }
     return { section, divider, slides }
   })
 
+  // The section's answers outside any group, treated as one group titled by
+  // the section (the Executive Summary is one long essay).
+  const ungroupedAs = (section: PortfolioSectionModel): PortfolioGroupModel => ({
+    id: -section.id,
+    name: section.title,
+    description: "",
+    displayTypeId: null,
+    iconName: null,
+    width: null,
+    questions: section.ungrouped,
+  })
+
   return (
     <AlignEssaysStart.Provider value>
+      <SourcesInFooter.Provider value>
       {sections.length > 0 && <ContentsSlide sections={sections} studentName={studentName} />}
       {plan.map(({ section, divider, slides }) => (
         <section
@@ -95,48 +139,66 @@ export function DeckSections({
             deck
             chrome={<SlideHeader label={pad(divider)} studentName={studentName} light />}
           />
-          {slides.map((slide) => (
-            <Slide
-              key={slide.key}
-              header={<SlideHeader label={`${pad(section.number)} · ${section.title}`} studentName={studentName} />}
-              footer={<SlideFooter number={slide.number} studentName={studentName} />}
-            >
-              {slide.groups ? (
-                <GroupsSlideBody
-                  groups={slide.groups}
-                  sectionTitle={section.title}
-                  responseMap={responseMap}
-                />
-              ) : (
-                <>
-                  <SlideTitle title={section.title} />
-                  <div className="mt-8">
-                    <QuestionsBody
-                      questions={section.ungrouped}
-                      responseMap={responseMap}
-                      sectionTitle={section.title}
-                      compactColors
-                    />
-                  </div>
-                </>
-              )}
-            </Slide>
-          ))}
+          {slides.map((slide) => {
+            const groups = slide.groups ?? [ungroupedAs(section)]
+            const questions = groups.flatMap((g) => g.questions)
+            return (
+              <Slide
+                key={slide.key}
+                header={<SlideHeader label={`${pad(section.number)} · ${section.title}`} studentName={studentName} />}
+                sources={<SourceFooter questions={questions} responseMap={responseMap} />}
+                footer={<SlideFooter number={slide.number} studentName={studentName} />}
+              >
+                {slide.reading ? (
+                  <ReadingSlideBody groups={groups} sectionTitle={section.title} responseMap={responseMap} />
+                ) : slide.groups ? (
+                  <GroupsSlideBody groups={slide.groups} sectionTitle={section.title} responseMap={responseMap} />
+                ) : (
+                  <>
+                    <SlideTitle title={section.title} />
+                    <div className="mt-8">
+                      <QuestionsBody
+                        questions={section.ungrouped}
+                        responseMap={responseMap}
+                        sectionTitle={section.title}
+                        compactColors
+                      />
+                    </div>
+                  </>
+                )}
+              </Slide>
+            )
+          })}
           {slides.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">Nothing in this section yet.</p>
           )}
         </section>
       ))}
+      </SourcesInFooter.Provider>
     </AlignEssaysStart.Provider>
   )
 }
 
-function Slide({ header, footer, children }: { header: ReactNode; footer: ReactNode; children: ReactNode }) {
+function Slide({
+  header,
+  sources,
+  footer,
+  children,
+}: {
+  header: ReactNode
+  /** The slide's citations, pinned above the footer. */
+  sources?: ReactNode
+  footer: ReactNode
+  children: ReactNode
+}) {
   return (
     <Reveal>
       <article className={SLIDE}>
         {header}
-        <div className="mt-8 flex-1 md:mt-10">{children}</div>
+        <div className="mt-8 flex flex-1 flex-col md:mt-10">
+          <div>{children}</div>
+          {sources && <div className="mt-auto pt-10 empty:hidden">{sources}</div>}
+        </div>
         {footer}
       </article>
     </Reveal>
@@ -236,6 +298,130 @@ function SlideTitle({
         <div className="flex shrink-0 items-center gap-2">
           <StatusBadge status={badge} />
           {action}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Groups with real writing in them, one row each: the heading, images, and
+ * facts in a rail on the left, the writing in two columns on the right.
+ */
+function ReadingSlideBody({
+  groups,
+  sectionTitle,
+  responseMap,
+}: {
+  groups: PortfolioGroupModel[]
+  sectionTitle: string
+  responseMap: ResponseMap
+}) {
+  const single = groups.length === 1
+  return (
+    <div className="divide-y divide-[#eef1f6]">
+      {groups.map((group, i) => {
+        const { rail, prose } = splitReading(group.questions)
+        return (
+          <div
+            key={group.id}
+            className={cn(
+              "grid gap-x-12 gap-y-6 md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] lg:gap-x-16",
+              i > 0 && "pt-10",
+              i < groups.length - 1 && "pb-10"
+            )}
+          >
+            <div className="@container">
+              <SlideTitle
+                title={group.name}
+                description={group.description}
+                status={groupStatus(group, responseMap)}
+                action={groupAction(group, responseMap)}
+                size={single ? "slide" : "column"}
+              />
+              {rail.length > 0 && (
+                <div className="mt-6 space-y-5">
+                  {rail.map((q) => (
+                    <div key={q.id} className="empty:hidden">
+                      <Answer
+                        question={q}
+                        response={responseMap.get(q.id)}
+                        groupTitle={group.name}
+                        sectionTitle={sectionTitle}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="@container md:pt-1">
+              <div className="space-y-8 @3xl:columns-2 @3xl:gap-x-10">
+                {prose.map((q) => (
+                  <ReadingPassage
+                    key={q.id}
+                    question={q}
+                    responseMap={responseMap}
+                    groupTitle={group.name}
+                    sectionTitle={sectionTitle}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * One passage of a reading row. It renders plain blocks (no flex) so the
+ * text can flow across the row's columns; an unapproved passage shows only
+ * its label and review status, as answers do elsewhere.
+ */
+function ReadingPassage({
+  question,
+  responseMap,
+  groupTitle,
+  sectionTitle,
+}: {
+  question: PortfolioQuestion
+  responseMap: ResponseMap
+  groupTitle: string
+  sectionTitle: string
+}) {
+  const response = responseMap.get(question.id)
+  const title = (question.public_display_title || question.field_label || "").trim()
+  const showTitle = !!title && !sameTitle(title, groupTitle) && !sameTitle(title, sectionTitle)
+  const raw = statusOf(response)
+  const status = raw === "complete" ? null : raw
+  const text = (response?.student_response ?? "").trim()
+  const approved = response?.isComplete === true && !!text
+
+  if (!approved) {
+    if (!status) return null
+    return (
+      <div className="flex items-start justify-between gap-3 break-inside-avoid">
+        {showTitle ? <p className="text-[13px] leading-snug font-medium text-muted-foreground/70">{title}</p> : <span />}
+        <StatusBadge status={status} />
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {showTitle && (
+        <p className="mb-3 text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">{title}</p>
+      )}
+      {looksLikeRichTextDoc(text) ? (
+        <LazyRichTextDisplay raw={text} fullSize className="text-foreground" />
+      ) : (
+        <div className="space-y-4 text-base leading-[1.7] text-pretty text-foreground/90 sm:text-[17px]">
+          {text.split(/\n\s*\n/).map((paragraph, i) => (
+            <p key={i} className="whitespace-pre-line [overflow-wrap:anywhere]">
+              {paragraph}
+            </p>
+          ))}
         </div>
       )}
     </div>

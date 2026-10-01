@@ -777,7 +777,7 @@ function BtSectionTableRows({
                   <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${groupCommentCount} comment${groupCommentCount !== 1 ? "s" : ""}`}>
                     <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground/50" />
                     {groupUnreadComments > 0 && (
-                      <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{groupUnreadComments}</span>
+                      <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-yellow-400 text-[9px] font-bold text-yellow-950">{groupUnreadComments}</span>
                     )}
                   </div>
                 )}

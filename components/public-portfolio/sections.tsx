@@ -1,6 +1,6 @@
 "use client"
 
-import type { ComponentProps, ReactNode } from "react"
+import { createContext, useContext, type ComponentProps, type ReactNode } from "react"
 import { motion } from "motion/react"
 import {
   DISPLAY_TYPE,
@@ -14,7 +14,7 @@ import { aspectRatioCss } from "@/lib/image-ratio"
 import { cn } from "@/lib/utils"
 import { Answer, GroupIcon, SourceList } from "./answers"
 import { ChartPattern, SECTION_PATTERNS } from "./patterns"
-import { hasSource, sameTitle } from "./format"
+import { sameTitle, sourcesOf } from "./format"
 import { EASE, GhostNumeral, HeroPhoto, Reveal, WordReveal } from "./motion"
 import { ImageStrip } from "./motion-plus"
 import { heroAngle, heroGradient, heroPhotoWash } from "./theme"
@@ -494,6 +494,12 @@ export function GroupBody({
   )
 }
 
+/**
+ * On a deck slide the sources gather in the slide's footer, so a group's
+ * body leaves them out instead of citing them inline.
+ */
+export const SourcesInFooter = createContext(false)
+
 /** Answers in a grid, then the citations for any sources among them. */
 export function QuestionsBody({
   questions,
@@ -508,11 +514,14 @@ export function QuestionsBody({
   sectionTitle: string
   compactColors: boolean
 }) {
+  const sourcesInFooter = useContext(SourcesInFooter)
   const answers = questions.filter((q) => typeOf(q) !== QUESTION_TYPE.SOURCE)
   const sources = questions
     .filter((q) => typeOf(q) === QUESTION_TYPE.SOURCE)
-    .map((q) => responseMap.get(q.id))
-    .filter((r): r is NonNullable<typeof r> => !!r?.isComplete && hasSource(r))
+    .flatMap((q) => {
+      const r = responseMap.get(q.id)
+      return r?.isComplete ? sourcesOf(r) : []
+    })
   return (
     <>
       <AnswerGrid
@@ -522,7 +531,7 @@ export function QuestionsBody({
         sectionTitle={sectionTitle}
         compactColors={compactColors}
       />
-      <SourceList entries={sources} className={answers.length > 0 ? "mt-8" : undefined} />
+      {!sourcesInFooter && <SourceList entries={sources} className={answers.length > 0 ? "mt-8" : undefined} />}
     </>
   )
 }

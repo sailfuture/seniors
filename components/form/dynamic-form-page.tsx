@@ -55,7 +55,10 @@ import {
   Comment01Icon,
   SentIcon,
   AlertCircleIcon,
+  PlusSignIcon,
+  Delete02Icon,
 } from "@hugeicons/core-free-icons"
+import { MAX_SOURCES, emptySource, hasSourceEntry, parseSources, serializeSources, sourceSummary, type SourceEntry } from "@/lib/sources"
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
 import { QuestionInstructions } from "./question-instructions"
@@ -162,12 +165,9 @@ interface StudentResponse {
   [key: string]: unknown
 }
 
-interface SourceFields {
-  source_link: string
-  title_of_source: string
-  author_name_or_publisher: string
-  date_of_publication: string
-}
+
+/** Longest competitor-map axis name the form accepts. */
+const AXIS_LABEL_MAX = 30
 
 const QUESTION_TYPE = {
   LONG_RESPONSE: 1,
@@ -201,7 +201,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
   const [customGroups, setCustomGroups] = useState<CustomGroup[]>([])
   const [responses, setResponses] = useState<Map<number, StudentResponse>>(new Map())
   const [localValues, setLocalValues] = useState<Map<number, string>>(new Map())
-  const [localSourceValues, setLocalSourceValues] = useState<Map<number, SourceFields>>(new Map())
+  const [localSourceValues, setLocalSourceValues] = useState<Map<number, SourceEntry[]>>(new Map())
   const [comments, setComments] = useState<Comment[]>([])
   // Inline-thread comments, kept apart so badges/unread counts ignore them.
   const [threadComments, setThreadComments] = useState<Comment[]>([])
@@ -272,20 +272,14 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         const data = (await responsesRes.json()) as StudentResponse[]
         const map = new Map<number, StudentResponse>()
         const values = new Map<number, string>()
-        const sourceValues = new Map<number, SourceFields>()
+        const sourceValues = new Map<number, SourceEntry[]>()
         for (const r of data) {
           if (r.isArchived) continue
           const tid = Number(r[F.templateId])
           map.set(tid, r)
           values.set(tid, r.student_response ?? "")
-          if (r.source_link || r.title_of_source || r.author_name_or_publisher || r.date_of_publication) {
-            sourceValues.set(tid, {
-              source_link: r.source_link ?? "",
-              title_of_source: r.title_of_source ?? "",
-              author_name_or_publisher: r.author_name_or_publisher ?? "",
-              date_of_publication: r.date_of_publication ?? "",
-            })
-          }
+          const entries = parseSources(r)
+          if (entries.length > 0) sourceValues.set(tid, entries)
         }
         setResponses(map)
         setLocalValues(values)
@@ -398,8 +392,10 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           let patch: Record<string, unknown>
 
           if (isSource) {
-            const source = localSourceValues.get(templateId) ?? { source_link: "", title_of_source: "", author_name_or_publisher: "", date_of_publication: "" }
-            patch = { ...source, last_edited: now }
+            const entries = (localSourceValues.get(templateId) ?? []).filter(hasSourceEntry)
+            // The list is the record; the first citation also fills the
+            // legacy columns so anything still reading them sees something.
+            patch = { student_response: serializeSources(entries), ...(entries[0] ?? emptySource()), last_edited: now }
           } else {
             const value = localValues.get(templateId) ?? ""
             // Rich-text essays store TipTap JSON; count prose words, not markup
@@ -503,11 +499,12 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     }, 1500)
   }
 
-  const handleSourceChange = (templateId: number, field: keyof SourceFields, value: string) => {
+  // Edits to a question's citation list; every one marks it dirty for the
+  // autosave, and the save drops rows that never got a citation.
+  const updateSources = (templateId: number, update: (entries: SourceEntry[]) => SourceEntry[]) => {
     setLocalSourceValues((prev) => {
       const next = new Map(prev)
-      const existing = next.get(templateId) ?? { source_link: "", title_of_source: "", author_name_or_publisher: "", date_of_publication: "" }
-      next.set(templateId, { ...existing, [field]: value })
+      next.set(templateId, update(next.get(templateId) ?? [emptySource()]))
       return next
     })
     dirtyRef.current.add(templateId)
@@ -519,6 +516,15 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
       if (dirtyRef.current.size > 0) saveAllRef.current()
     }, 1500)
   }
+  const handleSourceChange = (templateId: number, index: number, field: keyof SourceEntry, value: string) =>
+    updateSources(templateId, (entries) => entries.map((e, i) => (i === index ? { ...e, [field]: value } : e)))
+  const handleSourceAdd = (templateId: number) =>
+    updateSources(templateId, (entries) => (entries.length < MAX_SOURCES ? [...entries, emptySource()] : entries))
+  const handleSourceRemove = (templateId: number, index: number) =>
+    updateSources(templateId, (entries) => {
+      const kept = entries.filter((_, i) => i !== index)
+      return kept.length > 0 ? kept : [emptySource()]
+    })
 
   const handleFieldBlur = useCallback(() => {
     if (dirtyRef.current.size > 0) {
@@ -737,67 +743,72 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         ? { readyReview: true, isComplete: false, revisionNeeded: false }
         : { readyReview: false, isComplete: false, revisionNeeded: false }
 
+      // The checks above are done, so show the new status at once and let
+      // Xano catch up: its queue can hold a PATCH for seconds. A failed save
+      // rolls the status and the sidebar badges back.
+      const prevResp = responses.get(templateId)
+      const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)
+      const nowReady = patch.readyReview
+      const wasRevision = !!prevResp?.revisionNeeded
+      const eventName = `${cfg.eventPrefix ?? ""}review-update`
+      const announce = (sign: 1 | -1) => {
+        if (nowReady !== wasReady) {
+          window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: sign * (nowReady ? 1 : -1) } }))
+        }
+        if (wasRevision) {
+          window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: -sign, type: "revision" } }))
+        }
+      }
+      const show = (r: StudentResponse | undefined) => {
+        if (!r) return
+        setResponses((prev) => new Map(prev).set(templateId, r))
+      }
+      show(prevResp ? { ...prevResp, ...patch, last_edited: now } : undefined)
+      announce(1)
+
       try {
         const res = await fetch(`${cfg.responsePatchBase}/${responseId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
         })
-        if (res.ok) {
-          changed = true
-          // Log the transition so activity timelines show the history.
-          {
-            const q = questions.find((qq) => qq.id === templateId)
-            if (q && studentId) {
-              postResponseEvent(cfg, {
+        if (!res.ok) throw new Error(`PATCH failed: ${res.status}`)
+        changed = true
+        // Log the transition so activity timelines show the history.
+        {
+          const q = questions.find((qq) => qq.id === templateId)
+          if (q && studentId) {
+            postResponseEvent(cfg, {
+              studentId,
+              templateId,
+              fieldName: q.field_name,
+              sectionId,
+              eventType: action === "ready" ? "submitted" : "reopened",
+              actorName: session?.user?.name ?? "Student",
+            })
+            // Snapshot rich-text essays at submit so edit history is preserved.
+            if (action === "ready" && isRichTextQuestion(q)) {
+              postResponseVersion(cfg, {
                 studentId,
                 templateId,
                 fieldName: q.field_name,
                 sectionId,
-                eventType: action === "ready" ? "submitted" : "reopened",
+                studentResponse: localValues.get(templateId) ?? responses.get(templateId)?.student_response ?? "",
+                reason: "submitted",
                 actorName: session?.user?.name ?? "Student",
               })
-              // Snapshot rich-text essays at submit so edit history is preserved.
-              if (action === "ready" && isRichTextQuestion(q)) {
-                postResponseVersion(cfg, {
-                  studentId,
-                  templateId,
-                  fieldName: q.field_name,
-                  sectionId,
-                  studentResponse: localValues.get(templateId) ?? responses.get(templateId)?.student_response ?? "",
-                  reason: "submitted",
-                  actorName: session?.user?.name ?? "Student",
-                })
-              }
             }
           }
-          // Notify the sidebar badges of the state transition
-          const prevResp = responses.get(templateId)
-          const wasReady = !!(prevResp?.readyReview && !prevResp?.isComplete && !prevResp?.revisionNeeded)
-          const nowReady = patch.readyReview
-          const wasRevision = !!prevResp?.revisionNeeded
-          const eventName = `${cfg.eventPrefix ?? ""}review-update`
-          if (nowReady !== wasReady) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: nowReady ? 1 : -1 } }))
-          }
-          if (wasRevision) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { sectionId, delta: -1, type: "revision" } }))
-          }
-          // Reopening a completed answer drops the section out of "fully
-          // complete"; that set only recomputes on a sidebar refetch, so bump it.
-          if (!!prevResp?.isComplete !== !!patch.isComplete) {
-            bumpSidebar()
-          }
-
-          setResponses((prev) => {
-            const next = new Map(prev)
-            const existing = next.get(templateId)
-            if (existing) next.set(templateId, { ...existing, ...patch, last_edited: now })
-            return next
-          })
-          if (!silent) toast.success(action === "ready" ? "Sent for review" : "Reopened for editing")
         }
+        // Reopening a completed answer drops the section out of "fully
+        // complete"; that set only recomputes on a sidebar refetch, so bump it.
+        if (!!prevResp?.isComplete !== !!patch.isComplete) {
+          bumpSidebar()
+        }
+        if (!silent) toast.success(action === "ready" ? "Sent for review" : "Reopened for editing")
       } catch {
+        show(prevResp)
+        announce(-1)
         if (!silent) toast.error("Failed to update status")
       }
       } finally {
@@ -878,7 +889,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
           onEditSubmission={response?.readyReview ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
           onRequestReopen={response?.isComplete ? () => handleResponseStatusChange(response.id, q.id, "clear") : undefined}
           sourceValues={localSourceValues.get(q.id)}
-          onSourceChange={(field, v) => handleSourceChange(q.id, field, v)}
+          onSourceChange={(index, field, v) => handleSourceChange(q.id, index, field, v)}
+          onSourceAdd={() => handleSourceAdd(q.id)}
+          onSourceRemove={(index) => handleSourceRemove(q.id, index)}
         />
       )
     })
@@ -906,9 +919,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
               onClick={() => setSectionCommentsOpen(true)}
               className="relative inline-flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-accent"
             >
-              <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className={`size-4 ${unreadSectionCount > 0 ? "text-blue-500" : "text-muted-foreground/50"}`} />
+              <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className={`size-4 ${unreadSectionCount > 0 ? "text-yellow-500" : "text-muted-foreground/50"}`} />
               {unreadSectionCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
+                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-yellow-400 text-[10px] font-semibold text-yellow-950">
                   {unreadSectionCount}
                 </span>
               )}
@@ -962,8 +975,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             return !!img && Object.keys(img).length > 0 && !!(img.path || img.url || img.name)
           }
           if (q.question_types_id === QUESTION_TYPE.SOURCE) {
-            const src = localSourceValues.get(q.id)
-            return !!(src && (src.source_link.trim() || src.title_of_source.trim()))
+            return !!localSourceValues.get(q.id)?.some(hasSourceEntry)
           }
           const raw = localValues.get(q.id) ?? r.student_response ?? ""
           const text = isRichTextQuestion(q) ? extractPlainText(raw) : raw
@@ -1139,9 +1151,9 @@ function GroupSection({
                 onClick={() => setGroupCommentsOpen(true)}
                 className="relative inline-flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-accent"
               >
-                <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className={`size-4 ${unreadGroupCount > 0 ? "text-blue-500" : "text-muted-foreground/50"}`} />
+                <HugeiconsIcon icon={Comment01Icon} strokeWidth={2} className={`size-4 ${unreadGroupCount > 0 ? "text-yellow-500" : "text-muted-foreground/50"}`} />
                 {unreadGroupCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
+                  <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-yellow-400 text-[10px] font-semibold text-yellow-950">
                     {unreadGroupCount}
                   </span>
                 )}
@@ -1383,6 +1395,8 @@ function DynamicField({
   onEditSubmission,
   sourceValues,
   onSourceChange,
+  onSourceAdd,
+  onSourceRemove,
 }: {
   question: TemplateQuestion
   value: string
@@ -1401,8 +1415,10 @@ function DynamicField({
   plagiarism?: GptZeroResult
   submittingForReview?: boolean
   updatingStatus?: boolean
-  sourceValues?: SourceFields
-  onSourceChange?: (field: keyof SourceFields, value: string) => void
+  sourceValues?: SourceEntry[]
+  onSourceChange?: (index: number, field: keyof SourceEntry, value: string) => void
+  onSourceAdd?: () => void
+  onSourceRemove?: (index: number) => void
   responseStatus?: { isComplete?: boolean; revisionNeeded?: boolean; readyReview?: boolean }
   onSendForReview?: () => Promise<StatusChangeOutcome>
   onRequestReopen?: () => void
@@ -1447,11 +1463,12 @@ function DynamicField({
   const pathname = usePathname()
   const isImageType = typeId === QUESTION_TYPE.IMAGE_UPLOAD
   const isSourceType = typeId === QUESTION_TYPE.SOURCE
+  const isAxisLabel = /(^|_)[xy]_axis_label$/.test(question.field_name)
   const isRichTextType = isRichTextQuestion(question)
   const hasImage = !!imageValue && Object.keys(imageValue).length > 0 && !!(imageValue.path || imageValue.url || imageValue.name)
   const wordCount = isRichTextType ? richTextWordCount(value) : value.trim().split(/\s+/).filter(Boolean).length
   const meetsMinWords = !question.min_words || question.min_words <= 0 || wordCount >= question.min_words
-  const hasSourceContent = isSourceType && sourceValues && (sourceValues.source_link.trim().length > 0 || sourceValues.title_of_source.trim().length > 0)
+  const hasSourceContent = isSourceType && !!sourceValues?.some(hasSourceEntry)
   const hasContent = isImageType ? hasImage : isSourceType ? !!hasSourceContent : value.trim().length > 0
   const canSubmitForReview = hasContent && meetsMinWords
 
@@ -1484,7 +1501,7 @@ function DynamicField({
               templateId={question.id}
               templateIdKey={templateIdKey}
               fieldLabel={question.field_label}
-              fieldValue={(isRichTextType ? extractPlainText(value) : value) || "—"}
+              fieldValue={(isSourceType ? sourceSummary(sourceValues ?? []) : isRichTextType ? extractPlainText(value) : value) || "—"}
               essayHref={isRichTextType ? `${pathname}/write/${question.id}` : undefined}
               resolvedThreads={groupResolvedThreads(
                 (threadComments ?? []).filter((c) =>
@@ -1636,6 +1653,25 @@ function DynamicField({
             disabled={isDimmed}
             placeholder={question.placeholder}
           />
+        ) : isAxisLabel ? (
+          // The competitor map's axis names: a word or two, since they're
+          // printed along the map's edges. A sentence here is the most common
+          // way that map goes wrong.
+          <div className="space-y-1.5">
+            <InputGroup>
+              <WrappingInput
+                placeholder={question.placeholder || "One or two words, e.g. Price"}
+                value={value}
+                onChange={(e) => onChange(e.target.value.slice(0, AXIS_LABEL_MAX))}
+                onBlur={onBlur}
+                readOnly={isDimmed}
+                maxLength={AXIS_LABEL_MAX}
+              />
+            </InputGroup>
+            <p className="text-muted-foreground text-xs">
+              Keep it to one or two words. It labels an edge of your competitor map.
+            </p>
+          </div>
         ) : (
         <InputGroup>
           <WrappingInput
@@ -1744,61 +1780,107 @@ function DynamicField({
         </InputGroup>
       )}
 
-      {typeId === QUESTION_TYPE.SOURCE && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label className="text-muted-foreground text-xs font-medium">Source Link</Label>
-            <InputGroup>
-              <WrappingInput
-                inputMode="url"
-                spellCheck={false}
-                placeholder="https://..."
-                value={sourceValues?.source_link ?? ""}
-                onChange={(e) => onSourceChange?.("source_link", e.target.value)}
-                onBlur={onBlur}
-                readOnly={isDimmed}
-              />
-            </InputGroup>
+      {typeId === QUESTION_TYPE.SOURCE && (() => {
+        // At least one citation row is always open; up to MAX_SOURCES.
+        const entries = sourceValues && sourceValues.length > 0 ? sourceValues : [emptySource()]
+        const canRemove = entries.length > 1 && !isDimmed
+        return (
+          <div className="space-y-4">
+            {entries.map((entry, index) => (
+              <div key={index} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wider">
+                    Source {index + 1}
+                  </p>
+                  {canRemove && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground h-7 gap-1 px-2 text-xs"
+                      onClick={() => onSourceRemove?.(index)}
+                    >
+                      <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-3.5" />
+                      Remove
+                    </Button>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground text-xs font-medium">Source Link</Label>
+                    <InputGroup>
+                      <WrappingInput
+                        inputMode="url"
+                        spellCheck={false}
+                        placeholder="https://..."
+                        value={entry.source_link}
+                        onChange={(e) => onSourceChange?.(index, "source_link", e.target.value)}
+                        onBlur={onBlur}
+                        readOnly={isDimmed}
+                      />
+                    </InputGroup>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground text-xs font-medium">Title of Source</Label>
+                    <InputGroup>
+                      <WrappingInput
+                        placeholder="Enter title..."
+                        value={entry.title_of_source}
+                        onChange={(e) => onSourceChange?.(index, "title_of_source", e.target.value)}
+                        onBlur={onBlur}
+                        readOnly={isDimmed}
+                      />
+                    </InputGroup>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground text-xs font-medium">Author / Publisher</Label>
+                    <InputGroup>
+                      <WrappingInput
+                        placeholder="Enter author or publisher..."
+                        value={entry.author_name_or_publisher}
+                        onChange={(e) => onSourceChange?.(index, "author_name_or_publisher", e.target.value)}
+                        onBlur={onBlur}
+                        readOnly={isDimmed}
+                      />
+                    </InputGroup>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground text-xs font-medium">Date of Publication</Label>
+                    <InputGroup>
+                      <InputGroupInput
+                        className="md:text-base"
+                        type="date"
+                        value={entry.date_of_publication}
+                        onChange={(e) => onSourceChange?.(index, "date_of_publication", e.target.value)}
+                        onBlur={onBlur}
+                        readOnly={isDimmed}
+                      />
+                    </InputGroup>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!isDimmed && (
+              <div className="flex items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={entries.length >= MAX_SOURCES}
+                  onClick={() => onSourceAdd?.()}
+                >
+                  <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} className="size-3.5" />
+                  Add another source
+                </Button>
+                <span className="text-muted-foreground text-xs">
+                  {entries.length} of {MAX_SOURCES}
+                </span>
+              </div>
+            )}
           </div>
-          <div className="space-y-1">
-            <Label className="text-muted-foreground text-xs font-medium">Title of Source</Label>
-            <InputGroup>
-              <WrappingInput
-                placeholder="Enter title..."
-                value={sourceValues?.title_of_source ?? ""}
-                onChange={(e) => onSourceChange?.("title_of_source", e.target.value)}
-                onBlur={onBlur}
-                readOnly={isDimmed}
-              />
-            </InputGroup>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-muted-foreground text-xs font-medium">Author / Publisher</Label>
-            <InputGroup>
-              <WrappingInput
-                placeholder="Enter author or publisher..."
-                value={sourceValues?.author_name_or_publisher ?? ""}
-                onChange={(e) => onSourceChange?.("author_name_or_publisher", e.target.value)}
-                onBlur={onBlur}
-                readOnly={isDimmed}
-              />
-            </InputGroup>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-muted-foreground text-xs font-medium">Date of Publication</Label>
-            <InputGroup>
-              <InputGroupInput
-                className="md:text-base"
-                type="date"
-                value={sourceValues?.date_of_publication ?? ""}
-                onChange={(e) => onSourceChange?.("date_of_publication", e.target.value)}
-                onBlur={onBlur}
-                readOnly={isDimmed}
-              />
-            </InputGroup>
-          </div>
-        </div>
-      )}
+        )
+      })()}
 
       </div>
       </div>

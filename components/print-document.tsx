@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon, PrinterIcon, BookOpen02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
+import { parseSources, type SourceEntry } from "@/lib/sources"
 import {
   BrandThemeProvider,
   deriveBrandTheme,
   parseBrandColor,
   parseExactHex,
-  extractFontFamily,
+  resolveFont,
   useGoogleFont,
   type BrandTheme,
 } from "@/components/brand-display"
@@ -496,7 +497,7 @@ function hasContent(q: TemplateQuestion, r: StudentResponse | undefined): boolea
     return !!(r.image_response?.path || r.image_response?.url)
   }
   if (typeId === QUESTION_TYPE.SOURCE) {
-    return !!(r.source_link || r.title_of_source || r.author_name_or_publisher)
+    return parseSources(r).length > 0
   }
   if (typeId === QUESTION_TYPE.DATE) {
     return !!(r.date_response || (r.student_response ?? "").trim())
@@ -504,7 +505,7 @@ function hasContent(q: TemplateQuestion, r: StudentResponse | undefined): boolea
   return (r.student_response ?? "").trim().length > 0
 }
 
-function formatCitation(r: StudentResponse): string {
+function formatCitation(r: SourceEntry): string {
   const parts: string[] = []
   if (r.author_name_or_publisher) parts.push(r.author_name_or_publisher + ".")
   if (r.title_of_source) parts.push(`“${r.title_of_source}.”`)
@@ -514,7 +515,7 @@ function formatCitation(r: StudentResponse): string {
 
 /** Full citation line with the link folded in and punctuation tidied, so a
     missing link never leaves a dangling “, .” in the printed sources. */
-function citationLine(r: StudentResponse): string {
+function citationLine(r: SourceEntry): string {
   let line = [formatCitation(r).trim(), (r.source_link ?? "").trim()].filter(Boolean).join(" ")
   line = line.replace(/,$/, "")
   if (!/[.!?”]$/.test(line)) line += "."
@@ -1489,22 +1490,20 @@ function buildGroupPrintBlocks(
   }
 
   const sourceEntries = questions
-    .map((q) => ({ q, r: responseMap.get(q.id) }))
-    .filter(
-      ({ q, r }) =>
-        typeIdOf(q) === QUESTION_TYPE.SOURCE &&
-        r?.isComplete &&
-        (r.source_link || r.title_of_source || r.author_name_or_publisher)
-    )
+    .filter((q) => typeIdOf(q) === QUESTION_TYPE.SOURCE)
+    .flatMap((q) => {
+      const r = responseMap.get(q.id)
+      return r?.isComplete ? parseSources(r).map((entry, i) => ({ key: `${q.id}-${i}`, entry })) : []
+    })
   if (sourceEntries.length > 0) {
     bodies.push({
       id: `${base}-sources`,
       node: (
         <div className="border-t border-gray-100 pt-3 break-inside-avoid">
           <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-400">Sources</p>
-          {sourceEntries.map(({ q, r }) => (
-            <p key={q.id} className="text-[11px] leading-snug text-gray-500">
-              {citationLine(r!)}
+          {sourceEntries.map(({ key, entry }) => (
+            <p key={key} className="text-[11px] leading-snug text-gray-500">
+              {citationLine(entry)}
             </p>
           ))}
         </div>
@@ -2208,10 +2207,13 @@ function PrintValue({ q, r, brand }: { q: TemplateQuestion; r: StudentResponse; 
     )
   }
   if (/font/i.test(q.field_label)) {
-    const family = extractFontFamily(text) || brand.primaryFont
+    // Name the face the student chose, set in the Google family that serves
+    // it (or its closest stand-in when Google doesn't host it).
+    const font = resolveFont(text)
+    const family = font.family || brand.primaryFont
     return (
       <p className="text-xl" style={family ? { fontFamily: `"${family}", inherit` } : undefined}>
-        {family || text}
+        {font.name || text}
       </p>
     )
   }

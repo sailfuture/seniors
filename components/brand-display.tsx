@@ -1,7 +1,7 @@
 "use client"
 
-import { createContext, useContext, useEffect } from "react"
-import { GOOGLE_FONTS } from "@/lib/google-fonts"
+import { createContext, useContext, useEffect, useState } from "react"
+import { closestFontName, FONT_STAND_INS, GOOGLE_FONTS } from "@/lib/google-fonts"
 
 // ── Color parsing ──────────────────────────────────────────────────────────
 
@@ -194,30 +194,92 @@ export function extractFontFamily(raw: string): string {
   return name.replace(/\S+/g, (t) => t.charAt(0).toUpperCase() + t.slice(1))
 }
 
-const requestedFonts = new Set<string>()
+export interface ResolvedFont {
+  /** The typeface to name on the page: the student's answer, tidied, or the
+      catalog spelling when the answer was a near miss. */
+  name: string
+  /** The Google Fonts family to load and render with; "" when there is
+      nothing worth requesting. */
+  family: string
+  /** How `family` relates to what the student wrote. */
+  via: "exact" | "corrected" | "stand-in" | "guess" | "none"
+}
+
+const STAND_IN_NAMES = Object.keys(FONT_STAND_INS)
+const titleCase = (s: string) => s.replace(/\S+/g, (t) => t.charAt(0).toUpperCase() + t.slice(1))
 
 /**
- * Load a font family from Google Fonts once per session. Families Google
- * doesn't host simply 404 and the preview keeps its generic fallback stack.
- * Pass `previewText` to fetch only the glyphs needed to render that string —
- * used by pickers that show many families at once.
+ * Turn a free-text font answer into something Google Fonts can serve. Catalog
+ * names load verbatim; a near miss ("Monserrat") is corrected to the catalog
+ * spelling; a face Google doesn't host ("Canva Sans", "Arial") is shown in
+ * its closest Google stand-in and labeled as such; anything else is tried as
+ * typed, since Google hosts far more than the curated list.
  */
-export function useGoogleFont(family: string, previewText?: string) {
-  useEffect(() => {
-    if (!family) return
-    const key = previewText ? `${family}|preview` : family
-    if (requestedFonts.has(key)) return
-    // a full load supersedes any subset need
-    if (previewText && requestedFonts.has(family)) return
-    requestedFonts.add(key)
+export function resolveFont(raw: string): ResolvedFont {
+  const name = extractFontFamily(raw)
+  if (!name) return { name: raw.trim(), family: "", via: "none" }
+  const lower = name.toLowerCase()
+  if (GOOGLE_FONTS.some((f) => f.toLowerCase() === lower)) return { name, family: name, via: "exact" }
+  const standIn = FONT_STAND_INS[lower]
+  if (standIn) return { name, family: standIn, via: "stand-in" }
+  const corrected = closestFontName(name, GOOGLE_FONTS)
+  if (corrected) return { name: corrected, family: corrected, via: "corrected" }
+  const nearStandIn = closestFontName(name, STAND_IN_NAMES)
+  if (nearStandIn) return { name: titleCase(nearStandIn), family: FONT_STAND_INS[nearStandIn], via: "stand-in" }
+  return { name, family: name, via: "guess" }
+}
+
+export type FontLoadStatus = "idle" | "loading" | "loaded" | "missing"
+
+const fontLoads = new Map<string, Promise<boolean>>()
+
+/**
+ * Request a family's stylesheet from Google Fonts once per session and
+ * resolve to whether Google had it (an unknown family answers 400, which
+ * the <link> reports as an error). Pass `previewText` to fetch only the
+ * glyphs needed to render that string — used by pickers that show many
+ * families at once.
+ */
+function loadGoogleFont(family: string, previewText?: string): Promise<boolean> {
+  const key = previewText ? `${family}|preview` : family
+  const existing = fontLoads.get(key) ?? (previewText ? fontLoads.get(family) : undefined)
+  if (existing) return existing
+  const promise = new Promise<boolean>((resolve) => {
     const link = document.createElement("link")
     link.rel = "stylesheet"
     const base = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}`
     link.href = previewText
       ? `${base}&text=${encodeURIComponent(previewText)}&display=swap`
       : `${base}&display=swap`
+    link.onload = () => resolve(true)
+    link.onerror = () => resolve(false)
     document.head.appendChild(link)
+  })
+  fontLoads.set(key, promise)
+  return promise
+}
+
+/**
+ * Load a font family from Google Fonts and report how it went, so a preview
+ * can say when the family isn't available and it is showing a fallback.
+ */
+export function useGoogleFont(family: string, previewText?: string): FontLoadStatus {
+  // The result is remembered per family, so a change of family reads as
+  // "loading" until its own request settles — no synchronous resets needed.
+  const [settled, setSettled] = useState<{ family: string; ok: boolean } | null>(null)
+  useEffect(() => {
+    if (!family) return
+    let active = true
+    loadGoogleFont(family, previewText).then((ok) => {
+      if (active) setSettled({ family, ok })
+    })
+    return () => {
+      active = false
+    }
   }, [family, previewText])
+  if (!family) return "idle"
+  if (!settled || settled.family !== family) return "loading"
+  return settled.ok ? "loaded" : "missing"
 }
 
 export function parseFontStyle(value: string, family?: string): React.CSSProperties {
@@ -450,8 +512,8 @@ export function deriveBrandTheme(
     companyName: text("company_name") || text("my_company"),
     tagline: text("company_tagline"),
     coverImageUrl: approvedImage("cover_background_image") || approvedImage("background_image"),
-    primaryFont: extractFontFamily(text("primary_font_name")),
-    secondaryFont: extractFontFamily(text("secondary_font_name")),
+    primaryFont: resolveFont(text("primary_font_name")).family,
+    secondaryFont: resolveFont(text("secondary_font_name")).family,
     contact: {
       email: text("company_email"),
       phone: text("company_phone_number"),
@@ -479,12 +541,18 @@ export function useBrandTheme(): BrandTheme {
 }
 
 export function FontPreview({ text, fieldLabel }: { text: string; fieldLabel: string }) {
-  const family = extractFontFamily(text)
-  useGoogleFont(family)
-  const fontStyle = parseFontStyle(text, family || undefined)
+  const font = resolveFont(text)
+  const status = useGoogleFont(font.family)
+  const fontStyle = parseFontStyle(text, font.family || undefined)
   const isPrimary = /primary/i.test(fieldLabel)
-  const displayName = family || text
-  const rawDiffers = !!family && text.trim().toLowerCase() !== family.toLowerCase()
+  const displayName = font.name || text
+  const rawDiffers = !!font.name && text.trim().toLowerCase() !== font.name.toLowerCase()
+
+  // When the specimen can't be set in the named face, say what it is set in.
+  let note = ""
+  if (font.via === "stand-in") note = `Not on Google Fonts · shown in ${font.family}, the closest match`
+  else if (font.via === "corrected") note = `Matched to ${font.family} on Google Fonts`
+  else if (font.via === "guess" && status === "missing") note = "Not on Google Fonts · shown in a system font"
 
   return (
     <div>
@@ -496,6 +564,7 @@ export function FontPreview({ text, fieldLabel }: { text: string; fieldLabel: st
         {isPrimary ? "Primary typeface · Headlines" : "Secondary typeface · Body"}
         {rawDiffers && <span className="text-muted-foreground/60 normal-case tracking-normal"> — “{text}”</span>}
       </p>
+      {note && <p className="text-muted-foreground/80 mt-1.5 text-[12px] leading-snug">{note}</p>}
 
       {/* Character specimen */}
       <div className="mt-4 flex items-start gap-5 border-t border-gray-100 pt-4">

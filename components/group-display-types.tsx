@@ -329,6 +329,8 @@ interface MapEntity {
   logoUrl: string
   x: number
   y: number
+  /** Both coordinates were answered; an unplaced company is listed, not plotted at the origin. */
+  placed: boolean
   isMine?: boolean
 }
 
@@ -355,32 +357,28 @@ export function getCompetitorMapData(
   const xAxisLabel = getTextValue("x_axis_label", questions, responseMap) || "X Axis"
   const yAxisLabel = getTextValue("y_axis_label", questions, responseMap) || "Y Axis"
 
+  const coordinate = (field: string): number | null => {
+    const n = parseFloat(getTextValue(field, questions, responseMap))
+    return Number.isFinite(n) ? n : null
+  }
+  const entity = (nameField: string, logoField: string, xField: string, yField: string, isMine = false): MapEntity => {
+    const x = coordinate(xField)
+    const y = coordinate(yField)
+    return {
+      name: getTextValue(nameField, questions, responseMap),
+      logoUrl: getImageUrl(logoField, questions, responseMap),
+      x: x ?? 0,
+      y: y ?? 0,
+      placed: x != null && y != null,
+      ...(isMine ? { isMine } : {}),
+    }
+  }
+
   const entities: MapEntity[] = [
-    {
-      name: getTextValue("competitor_1", questions, responseMap),
-      logoUrl: getImageUrl("competitor_1_logo", questions, responseMap),
-      x: parseFloat(getTextValue("competitor_1_x_coordinate", questions, responseMap)) || 0,
-      y: parseFloat(getTextValue("competitor_1_y_coordinate", questions, responseMap)) || 0,
-    },
-    {
-      name: getTextValue("competitor_2", questions, responseMap),
-      logoUrl: getImageUrl("competitor_2_logo", questions, responseMap),
-      x: parseFloat(getTextValue("competitor_2_x_coordinate", questions, responseMap)) || 0,
-      y: parseFloat(getTextValue("competitor_2_y_coordinate", questions, responseMap)) || 0,
-    },
-    {
-      name: getTextValue("competitor_3", questions, responseMap),
-      logoUrl: getImageUrl("competitor_3_logo", questions, responseMap),
-      x: parseFloat(getTextValue("competitor_3_x_coordinate", questions, responseMap)) || 0,
-      y: parseFloat(getTextValue("competitor_3_y_coordinate", questions, responseMap)) || 0,
-    },
-    {
-      name: getTextValue("my_company", questions, responseMap),
-      logoUrl: getImageUrl("my_company_logo", questions, responseMap),
-      x: parseFloat(getTextValue("mycompany_x_coordinate", questions, responseMap)) || 0,
-      y: parseFloat(getTextValue("mycompany_y_coordinate", questions, responseMap)) || 0,
-      isMine: true,
-    },
+    entity("competitor_1", "competitor_1_logo", "competitor_1_x_coordinate", "competitor_1_y_coordinate"),
+    entity("competitor_2", "competitor_2_logo", "competitor_2_x_coordinate", "competitor_2_y_coordinate"),
+    entity("competitor_3", "competitor_3_logo", "competitor_3_x_coordinate", "competitor_3_y_coordinate"),
+    entity("my_company", "my_company_logo", "mycompany_x_coordinate", "mycompany_y_coordinate", true),
   ]
 
   const labels = [
@@ -402,6 +400,9 @@ export function getCompetitorMapData(
     })),
   }
 }
+
+/** The "Low" / "High" markers at each axis's ends. */
+const AXIS_END = "shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60"
 
 // Inset that keeps a dot at coordinate 0/100 fully inside the plot box.
 const MAP_INSET_X = 26
@@ -492,8 +493,10 @@ export function CompetitorMapPlot({ data, aspect = "3 / 1" }: { data: Competitor
   const myChipBorder = brand.primary ?? "#111827"
   const { xAxisLabel, yAxisLabel, entities, hasData } = data
 
-  // Entities with a name, in stable order shared by dots, pills, and layout.
-  const named = React.useMemo(() => entities.filter((e) => e.name), [entities])
+  // Entities with a name and a place, in stable order shared by dots, pills,
+  // and layout; named companies without coordinates are listed under the map.
+  const named = React.useMemo(() => entities.filter((e) => e.name && e.placed), [entities])
+  const unplaced = React.useMemo(() => entities.filter((e) => e.name && !e.placed), [entities])
 
   const boxRef = React.useRef<HTMLDivElement | null>(null)
   const pillRefs = React.useRef<(HTMLDivElement | null)[]>([])
@@ -543,28 +546,23 @@ export function CompetitorMapPlot({ data, aspect = "3 / 1" }: { data: Competitor
           X-axis label (row 2, col 2) sits centered beneath the grid. The
           100×100 plot therefore falls within both axis labels. */}
       <div className="grid grid-cols-[auto_1fr] gap-x-2 sm:gap-x-3">
-        {/* Y axis label — centered against the plot box (grid row 1) */}
-        <div className="flex items-center justify-center">
-          <span className="rotate-180 whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl]">
+        {/* Y axis — "High" at the top, "Low" at the bottom, the label between
+            them clipped to the plot's height. Students sometimes answer the
+            axis question with a whole sentence, so the label never gets to
+            dictate the layout. */}
+        <div className="flex flex-col items-center justify-between gap-2 self-stretch py-1">
+          <span className={AXIS_END}>High</span>
+          <span
+            title={yAxisLabel}
+            className="min-h-0 flex-1 rotate-180 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl]"
+          >
             {yAxisLabel}
           </span>
+          <span className={AXIS_END}>Low</span>
         </div>
 
         {/* Plot grid — y grows upward: low/low bottom-left, high/high top-right */}
         <div ref={boxRef} className="relative w-full min-w-0 overflow-hidden rounded-xl border bg-white" style={{ aspectRatio: aspect }}>
-          {/* Corner quadrant labels */}
-          <span className="absolute left-3 top-2 z-10 text-[11px] text-muted-foreground/60">
-            High {yAxisLabel} / Low {xAxisLabel}
-          </span>
-          <span className="absolute right-3 top-2 z-10 text-[11px] text-muted-foreground/60">
-            High {yAxisLabel} / High {xAxisLabel}
-          </span>
-          <span className="absolute bottom-2 left-3 z-10 text-[11px] text-muted-foreground/60">
-            Low {yAxisLabel} / Low {xAxisLabel}
-          </span>
-          <span className="absolute bottom-2 right-3 z-10 text-[11px] text-muted-foreground/60">
-            Low {yAxisLabel} / High {xAxisLabel}
-          </span>
 
           {/* Grid lines — quarter grid with an emphasized center cross */}
           {[12.5, 25, 37.5, 50, 62.5, 75, 87.5].map((p) => (
@@ -653,24 +651,80 @@ export function CompetitorMapPlot({ data, aspect = "3 / 1" }: { data: Competitor
           })}
         </div>
 
-        {/* X axis label — row 2 under the plot column, centered on the grid */}
-        <div className="col-start-2 mt-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {xAxisLabel}
+        {/* X axis — "Low" left, "High" right, the label between them on at
+            most two lines */}
+        <div className="col-start-2 mt-2 flex items-start justify-between gap-3">
+          <span className={AXIS_END}>Low</span>
+          <span
+            title={xAxisLabel}
+            className="line-clamp-2 min-w-0 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            {xAxisLabel}
+          </span>
+          <span className={AXIS_END}>High</span>
         </div>
+
+        {unplaced.length > 0 && (
+          <p className="col-start-2 mt-2 text-xs text-muted-foreground">
+            Not placed on the map yet (no coordinates): {unplaced.map((e) => e.name).join(", ")}
+          </p>
+        )}
       </div>
     </>
+  )
+}
+
+function CompetitorAvatar({ entity, label, size = "sm" }: { entity: MapEntity; label: string; size?: "sm" | "md" }) {
+  const dim = size === "md" ? "size-10" : "size-8"
+  return entity.logoUrl ? (
+    <div className={`${dim} shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white`}>
+      <img src={entity.logoUrl} alt={entity.name || label} className="size-full object-contain" />
+    </div>
+  ) : (
+    <div className={`flex ${dim} shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500`}>
+      {(entity.name || "?").charAt(0).toUpperCase()}
+    </div>
   )
 }
 
 function CompetitorMapDisplay({
   questions,
   responseMap,
+  mode,
 }: {
   questions: TemplateQuestion[]
   responseMap: Map<number, StudentResponse>
   mode: string
 }) {
   const data = getCompetitorMapData(questions, responseMap)
+  if (mode === "public") {
+    // On the public page each company is a row: who it is on the left, its
+    // positioning in two columns on the right. Four side-by-side cards made
+    // every writeup a narrow tower.
+    return (
+      <div className="space-y-5">
+        <CompetitorMapPlot data={data} />
+        <div className="divide-y divide-gray-200 border-t border-gray-200">
+          {data.cards.map(({ label, entity, positioning }, idx) => (
+            <div key={idx} className="grid gap-x-10 gap-y-3 py-5 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+              <div className="flex items-center gap-3">
+                <CompetitorAvatar entity={entity} label={label} size="md" />
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-semibold">{entity.name || "—"}</p>
+                  <p className="text-muted-foreground text-xs">{label}</p>
+                </div>
+              </div>
+              {positioning && (
+                <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground/85 md:columns-2 md:gap-x-8">
+                  {positioning}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="space-y-5">
       <CompetitorMapPlot data={data} />
@@ -682,15 +736,7 @@ function CompetitorMapDisplay({
             <Card key={idx} className="gap-0 border-gray-200 py-0 shadow-none">
               <CardContent className="p-3">
                 <div className="flex items-center gap-3">
-                  {entity.logoUrl ? (
-                    <div className="size-8 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-white">
-                      <img src={entity.logoUrl} alt={entity.name || label} className="size-full object-contain" />
-                    </div>
-                  ) : (
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500">
-                      {(entity.name || "?").charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <CompetitorAvatar entity={entity} label={label} />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">
                       {entity.name || "—"}
