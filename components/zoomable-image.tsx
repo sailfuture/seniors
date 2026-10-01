@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
 /**
@@ -30,17 +30,30 @@ export function ZoomableImage({
   draggable?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
+    // Inside a sheet or dialog the lightbox is "outside" as far as that layer
+    // knows. Take Escape before it does (window, capture phase) and keep
+    // presses and focus on the lightbox from reaching its outside-click
+    // handling, so closing the picture doesn't close the sheet with it.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false)
+      if (e.key !== "Escape") return
+      e.stopPropagation()
+      setOpen(false)
     }
-    document.addEventListener("keydown", onKey)
+    const stop = (e: Event) => e.stopPropagation()
+    const overlay = overlayRef.current
+    window.addEventListener("keydown", onKey, true)
+    overlay?.addEventListener("pointerdown", stop)
+    overlay?.addEventListener("focusin", stop)
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
-      document.removeEventListener("keydown", onKey)
+      window.removeEventListener("keydown", onKey, true)
+      overlay?.removeEventListener("pointerdown", stop)
+      overlay?.removeEventListener("focusin", stop)
       document.body.style.overflow = prevOverflow
     }
   }, [open])
@@ -85,7 +98,8 @@ export function ZoomableImage({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="animate-in fade-in fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden p-4 duration-200 md:p-10"
+            ref={overlayRef}
+            className="animate-in fade-in pointer-events-auto fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden p-4 duration-200 md:p-10"
             role="dialog"
             aria-modal="true"
             aria-label={alt || "Image preview"}

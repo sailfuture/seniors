@@ -24,7 +24,7 @@ import { commentMatchesQuestion, getWordCount } from "@/lib/form-types"
 import type { Comment } from "@/lib/form-types"
 import { looksLikeLineItems } from "@/lib/line-items"
 import { LineItemsTable } from "@/components/line-items-table"
-import { BlurredFitImage } from "./blurred-fit-image"
+import { ZoomableImage } from "@/components/zoomable-image"
 import { FieldActivityStream, type ResolvedThreadEntry } from "./field-activity-stream"
 
 interface PlagiarismData {
@@ -197,9 +197,9 @@ export function TeacherComment({
                   </Link>
                 </Button>
               ) : imageUrl ? (
-                <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="block">
-                  <BlurredFitImage src={imageUrl} alt={fieldLabel} className="rounded-lg border" />
-                </a>
+                <div className="bg-muted h-40 overflow-hidden rounded-lg border">
+                  <ZoomableImage src={imageUrl} alt={fieldLabel} blurredFit caption={fieldLabel} />
+                </div>
               ) : displayAnswer && looksLikeLineItems(displayAnswer) ? (
                 <LineItemsTable raw={displayAnswer} />
               ) : displayAnswer ? (

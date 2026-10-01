@@ -64,7 +64,7 @@ import { CommentBadge } from "./comment-badge"
 import { QuestionInstructions } from "./question-instructions"
 import { Markdown } from "@/components/markdown"
 import { groupResolvedThreads } from "./field-activity-stream"
-import { BlurredFitImage } from "./blurred-fit-image"
+import { ZoomableImage } from "@/components/zoomable-image"
 import { ImageCropDialog } from "./image-crop-dialog"
 import { GoogleFontPicker } from "./google-font-picker"
 import { BrandColorInput } from "./brand-color-input"
@@ -100,7 +100,7 @@ import { postResponseVersion } from "@/lib/response-versions"
 import { checkSubmissionForAi, AI_BLOCK_THRESHOLD, AI_CHECK_MIN_WORDS } from "@/lib/ai-submission-check"
 import { Linkify } from "@/components/linkify"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
-import { formatWhen } from "@/lib/format-time"
+import { dateTime, formatWhen, relativeTime, toMillis } from "@/lib/format-time"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -672,8 +672,8 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
         const textWordCount = text.trim().split(/\s+/).filter(Boolean).length
 
         // The writing check comes first for written answers (typos, capitals,
-        // basic punctuation block): the same text the question's Check
-        // Writing button checks, so "It's correct" marks carry over.
+        // basic punctuation, and obvious grammar block): the same text the
+        // question's Check Writing button checks.
         if ((isEssay || question?.question_types_id === QUESTION_TYPE.LONG_RESPONSE) && text.trim()) {
           setCheckingPlagiarism((prev) => new Set(prev).add(templateId))
           try {
@@ -1442,7 +1442,7 @@ function DynamicField({
     return ai >= human && ai >= mixed && ai > 0
   })() : false
 
-  const relativeTime = formatWhen(lastEdited)
+  const editedMs = toMillis(lastEdited)
   const isComplete = responseStatus?.isComplete === true
   const isReadyForReview = responseStatus?.readyReview === true && !isComplete && !responseStatus?.revisionNeeded
   const isDimmed = isComplete || isReadyForReview
@@ -1473,9 +1473,12 @@ function DynamicField({
   const canSubmitForReview = hasContent && meetsMinWords
 
   return (
-    <div className="space-y-2" data-field-name={question.field_name}>
+    <div className="min-w-0 space-y-2" data-field-name={question.field_name}>
+      {/* The header wraps instead of overflowing: in a narrow column of a
+          multi-column group the actions drop under the label, and the
+          timestamp shortens to its relative half. */}
       <div
-        className={`flex items-center justify-between ${isComplete ? "cursor-pointer select-none" : ""}`}
+        className={`@container flex flex-wrap items-center gap-x-1.5 gap-y-1 ${isComplete ? "cursor-pointer select-none" : ""}`}
         onClick={
           isComplete
             ? (e) => {
@@ -1484,17 +1487,18 @@ function DynamicField({
             : undefined
         }
       >
-        <div className="flex items-center gap-1.5">
-          <div className={`inline-flex size-4 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
-            <HugeiconsIcon
-              icon={ArrowDown01Icon}
-              strokeWidth={2}
-              className={`size-2.5 shrink-0 transition-transform duration-200 text-muted-foreground ${questionCollapsed ? "-rotate-90" : ""}`}
-            />
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
+              <HugeiconsIcon
+                icon={ArrowDown01Icon}
+                strokeWidth={2}
+                className={`size-2.5 shrink-0 transition-transform duration-200 text-muted-foreground ${questionCollapsed ? "-rotate-90" : ""}`}
+              />
+            </div>
+            <span className={`min-w-0 ${isDimmed ? "opacity-50" : ""}`}>
+              <Label className={`text-foreground text-sm leading-snug font-medium ${isComplete ? "cursor-pointer" : ""}`}>{question.field_label}</Label>
+            </span>
           </div>
-          <span className={isDimmed ? "opacity-50" : ""}>
-            <Label className={`text-foreground text-sm leading-snug font-medium ${isComplete ? "cursor-pointer" : ""}`}>{question.field_label}</Label>
-          </span>
           {hasComments && (
             <CommentBadge
               fieldName={question.field_name}
@@ -1583,10 +1587,12 @@ function DynamicField({
               {updatingStatus ? <><Loader2 className="size-3 animate-spin" /> Reopening...</> : "Reopen"}
             </Button>
           )}
-        </div>
-        {relativeTime && (
-          <span className="text-muted-foreground shrink-0 text-xs">{relativeTime}</span>
-        )}
+          {editedMs != null && (
+            <span className="text-muted-foreground ml-auto text-xs whitespace-nowrap" title={dateTime(editedMs)}>
+              {relativeTime(editedMs)}
+              <span className="hidden @md:inline"> · {dateTime(editedMs)}</span>
+            </span>
+          )}
       </div>
 
       <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${questionCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}>
@@ -1735,6 +1741,7 @@ function DynamicField({
           onUpload={onImageUpload}
           locked={isDimmed}
           aspectRatio={question.image_aspect_ratio}
+          alt={question.field_label}
         />
       )}
 
@@ -1980,11 +1987,13 @@ function ImageUpload({
   onUpload,
   locked = false,
   aspectRatio,
+  alt = "Uploaded image",
 }: {
   imageValue: Record<string, unknown> | null
   onUpload: (file: File) => void
   locked?: boolean
   aspectRatio?: string
+  alt?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [localPreview, setLocalPreview] = useState<string | null>(null)
@@ -2033,26 +2042,26 @@ function ImageUpload({
         lockedRatio={aspectRatio}
       />
       {preview ? (
-        <div className="group relative overflow-hidden rounded-lg border">
-          <BlurredFitImage src={preview} alt="Upload" />
+        <div className="bg-muted relative h-40 overflow-hidden rounded-lg border">
+          <ZoomableImage src={preview} alt={alt} blurredFit caption={alt} />
           {uploading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <div className="absolute inset-0 z-[2] flex items-center justify-center bg-black/40">
               <div className="flex items-center gap-2 rounded-md bg-white/90 px-3 py-1.5 text-xs font-medium text-black">
                 <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
                 Uploading...
               </div>
             </div>
           )}
+          {/* Clicking the picture opens it full size, so Replace sits in a
+              corner instead of covering the image on hover. */}
           {!uploading && !locked && (
-            <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-              <button
-                type="button"
-                className="rounded-md bg-white/90 px-3 py-1.5 text-xs font-medium text-black"
-                onClick={() => inputRef.current?.click()}
-              >
-                Replace
-              </button>
-            </div>
+            <button
+              type="button"
+              className="absolute right-2 bottom-2 z-[2] rounded-md bg-white/90 px-3 py-1.5 text-xs font-medium text-black shadow-sm transition-colors hover:bg-white"
+              onClick={() => inputRef.current?.click()}
+            >
+              Replace
+            </button>
           )}
         </div>
       ) : (
