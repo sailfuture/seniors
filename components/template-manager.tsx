@@ -41,6 +41,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { MarkdownTextarea } from "@/components/markdown-textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -1724,10 +1725,10 @@ function QuestionSheet({
           {!isSource && (
             <div className="space-y-2">
               <Label>Detailed Instructions</Label>
-              <Textarea
+              <MarkdownTextarea
                 placeholder="In-depth instructions that open in a side panel for the student..."
                 value={form.detailed_instructions}
-                onChange={(e) => updateField("detailed_instructions", e.target.value)}
+                onChange={(value) => updateField("detailed_instructions", value)}
                 rows={6}
               />
             </div>
@@ -2113,10 +2114,10 @@ function GroupSheet({
 
           <div className="space-y-2">
             <Label>Instructions</Label>
-            <Textarea
+            <MarkdownTextarea
               placeholder="Detailed instructions shown in a side panel..."
               value={form.instructions}
-              onChange={(e) => setForm((prev) => ({ ...prev, instructions: e.target.value }))}
+              onChange={(value) => setForm((prev) => ({ ...prev, instructions: value }))}
               rows={5}
             />
           </div>

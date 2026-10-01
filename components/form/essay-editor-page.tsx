@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils"
 import { RichTextEditor } from "./rich-text-editor"
 import { QuestionInstructions } from "./question-instructions"
+import { Markdown } from "@/components/markdown"
 import { SaveIndicator } from "./save-indicator"
 import { useWritingCheck, WritingCheckButton, WritingCheckDock } from "./writing-check"
 import { MUST_FIX_LABEL } from "@/lib/writing-check"
@@ -771,7 +772,7 @@ export function EssayEditorPage({
 /**
  * The question's instructions under the title, at a comfortable reading
  * width. Long ones fold to their first few lines so the document stays in
- * view; the toggle reads the rest. Paragraphs are split on blank lines.
+ * view; the toggle reads the rest. Rendered as Markdown.
  */
 function EssayInstructions({ text }: { text: string }) {
   const bodyId = useId()
@@ -794,19 +795,15 @@ function EssayInstructions({ text }: { text: string }) {
         ref={bodyRef}
         id={bodyId}
         className={cn(
-          "text-muted-foreground space-y-3 text-[15px] leading-relaxed text-pretty",
+          "text-[15px] leading-relaxed text-pretty",
           !expanded && "max-h-[5lh] overflow-hidden",
           !expanded && folds && "[mask-image:linear-gradient(to_bottom,#000_55%,transparent)]"
         )}
       >
-        {text
-          .trim()
-          .split(/\n\s*\n/)
-          .map((paragraph, i) => (
-            <p key={i} className="whitespace-pre-line">
-              {paragraph}
-            </p>
-          ))}
+        <Markdown
+          text={text}
+          className="text-[15px] leading-relaxed [--tw-prose-body:var(--muted-foreground)]"
+        />
       </div>
       {folds && (
         <button

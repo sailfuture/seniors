@@ -59,6 +59,7 @@ import {
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
 import { QuestionInstructions } from "./question-instructions"
+import { Markdown } from "@/components/markdown"
 import { groupResolvedThreads } from "./field-activity-stream"
 import { BlurredFitImage } from "./blurred-fit-image"
 import { ImageCropDialog } from "./image-crop-dialog"
@@ -1211,9 +1212,7 @@ function GroupSection({
               <SheetTitle className="text-base">{group.group_name}</SheetTitle>
             </SheetHeader>
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-              {group.instructions && (
-                <div className="text-sm whitespace-pre-wrap">{group.instructions}</div>
-              )}
+              <Markdown text={group.instructions} />
               {group.resources?.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Resources</Label>

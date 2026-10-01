@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sheet"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { HelpCircleIcon, Link01Icon } from "@hugeicons/core-free-icons"
+import { Markdown } from "@/components/markdown"
 import { cn } from "@/lib/utils"
 
 const SECTION_LABEL = "text-muted-foreground text-xs font-medium tracking-wide uppercase"
@@ -99,9 +100,7 @@ export function QuestionInstructions({
             {question.detailed_instructions?.trim() && (
               <section className="space-y-2 px-6 py-5">
                 <h3 className={SECTION_LABEL}>Instructions</h3>
-                <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {question.detailed_instructions}
-                </div>
+                <Markdown text={question.detailed_instructions} />
               </section>
             )}
             {starters.length > 0 && (

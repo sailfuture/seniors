@@ -14,6 +14,7 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
+import { Markdown } from "@/components/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -437,7 +438,10 @@ export function TeacherEssayReviewPage({
       <div className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">{question.field_label}</h1>
         {question.detailed_instructions && (
-          <p className="text-muted-foreground whitespace-pre-wrap text-sm">{question.detailed_instructions}</p>
+          <Markdown
+            text={question.detailed_instructions}
+            className="max-w-prose [--tw-prose-body:var(--muted-foreground)]"
+          />
         )}
       </div>
 
