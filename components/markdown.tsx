@@ -13,6 +13,20 @@ function remarkNoIndentedCode(this: { data(): object }) {
 }
 
 /**
+ * Typography for teacher-authored Markdown. Shared with the instructions
+ * editor so what the teacher types looks the way the student will see it.
+ */
+export const markdownProseClassName = cn(
+  "prose prose-sm dark:prose-invert max-w-none break-words",
+  // Instructions sit in side panels and under titles, so headings stay
+  // close to body size instead of prose's page-title scale.
+  "prose-headings:font-semibold prose-headings:tracking-tight prose-h1:mt-5 prose-h1:mb-2 prose-h1:text-base prose-h2:mt-5 prose-h2:mb-2 prose-h2:text-[15px] prose-h3:mt-4 prose-h3:mb-1.5 prose-h3:text-sm prose-h4:text-sm",
+  "prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-blockquote:my-3 prose-hr:my-4",
+  "prose-a:text-blue-600 prose-a:underline-offset-2 dark:prose-a:text-blue-400",
+  "[&>:first-child]:mt-0 [&>:last-child]:mb-0"
+)
+
+/**
  * Renders teacher-authored text (question and group instructions) as
  * Markdown: headings, bold/italic, lists, links, quotes and tables. Single
  * line breaks are kept, so plain text written without Markdown in mind reads
@@ -28,18 +42,7 @@ export function Markdown({
   if (!text?.trim()) return null
 
   return (
-    <div
-      className={cn(
-        "prose prose-sm dark:prose-invert max-w-none break-words",
-        // Instructions sit in side panels and under titles, so headings stay
-        // close to body size instead of prose's page-title scale.
-        "prose-headings:font-semibold prose-headings:tracking-tight prose-h1:mt-5 prose-h1:mb-2 prose-h1:text-base prose-h2:mt-5 prose-h2:mb-2 prose-h2:text-[15px] prose-h3:mt-4 prose-h3:mb-1.5 prose-h3:text-sm prose-h4:text-sm",
-        "prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-blockquote:my-3 prose-hr:my-4",
-        "prose-a:text-blue-600 prose-a:underline-offset-2 dark:prose-a:text-blue-400",
-        "[&>:first-child]:mt-0 [&>:last-child]:mb-0",
-        className
-      )}
-    >
+    <div className={cn(markdownProseClassName, className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks, remarkNoIndentedCode]}
         components={{
