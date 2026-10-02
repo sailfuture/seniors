@@ -698,15 +698,16 @@ function CompetitorMapDisplay({
 }) {
   const data = getCompetitorMapData(questions, responseMap)
   if (mode === "public") {
-    // On the public page each company is a row: who it is on the left, its
-    // positioning in two columns on the right. Four side-by-side cards made
-    // every writeup a narrow tower.
+    // On the public page the four companies sit two by two: who it is, then
+    // its positioning underneath as one paragraph. Four side-by-side cards
+    // made every writeup a narrow tower, and a row with the text split into
+    // two columns broke each sentence in half.
     return (
       <div className="space-y-5">
         <CompetitorMapPlot data={data} />
-        <div className="divide-y divide-gray-200 border-t border-gray-200">
+        <div className="grid gap-x-10 md:grid-cols-2">
           {data.cards.map(({ label, entity, positioning }, idx) => (
-            <div key={idx} className="grid gap-x-10 gap-y-3 py-5 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+            <div key={idx} className="border-t border-gray-200 pt-5 pb-6">
               <div className="flex items-center gap-3">
                 <CompetitorAvatar entity={entity} label={label} size="md" />
                 <div className="min-w-0">
@@ -715,7 +716,7 @@ function CompetitorMapDisplay({
                 </div>
               </div>
               {positioning && (
-                <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground/85 md:columns-2 md:gap-x-8">
+                <p className="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed text-foreground/85">
                   {positioning}
                 </p>
               )}
