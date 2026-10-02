@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { useEditor, useEditorState, EditorContent, type Editor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import { TableKit } from "@tiptap/extension-table"
@@ -268,6 +268,7 @@ function LinkButton({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const id = useId()
   const [url, setUrl] = useState("")
   const [text, setText] = useState("")
   // With nothing selected there's no text to turn into a link, so ask for it.
@@ -337,11 +338,11 @@ function LinkButton({
         >
           {needsText && (
             <div className="space-y-1.5">
-              <Label htmlFor="md-link-text" className="text-xs">
+              <Label htmlFor={`${id}-text`} className="text-xs">
                 Text
               </Label>
               <Input
-                id="md-link-text"
+                id={`${id}-text`}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="What the student clicks"
@@ -349,11 +350,11 @@ function LinkButton({
             </div>
           )}
           <div className="space-y-1.5">
-            <Label htmlFor="md-link-url" className="text-xs">
+            <Label htmlFor={`${id}-url`} className="text-xs">
               Link
             </Label>
             <Input
-              id="md-link-url"
+              id={`${id}-url`}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://…"

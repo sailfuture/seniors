@@ -1735,11 +1735,10 @@ function QuestionSheet({
 
           <div className="space-y-2">
             <Label>Teacher Guideline</Label>
-            <Textarea
+            <MarkdownEditor
               placeholder="Internal guideline visible only to teachers when reviewing this question..."
               value={form.teacher_guideline ?? ""}
-              onChange={(e) => updateField("teacher_guideline", e.target.value)}
-              rows={4}
+              onChange={(value) => updateField("teacher_guideline", value)}
             />
           </div>
 

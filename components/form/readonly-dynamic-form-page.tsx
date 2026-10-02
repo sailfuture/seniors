@@ -1258,17 +1258,20 @@ function CollapsibleQuestionCard({
             : undefined
         }
       >
-        <div className="flex items-center gap-1.5">
-          <div className={`inline-flex size-4 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
+        {/* The arrow trails the label so the label lines up with the answer below. */}
+        <div className="group/title flex items-center gap-1.5">
+          <Label
+            className={`text-foreground text-sm leading-snug font-medium transition-colors ${isComplete ? "group-hover/title:text-foreground/65 cursor-pointer" : ""}`}
+          >
+            {label}
+          </Label>
+          <div className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
             <HugeiconsIcon
               icon={ArrowDown01Icon}
               strokeWidth={2}
               className={`size-2.5 shrink-0 transition-transform duration-200 text-muted-foreground ${collapsed ? "-rotate-90" : ""}`}
             />
           </div>
-          <Label className={`text-foreground text-sm leading-snug font-medium ${isComplete ? "cursor-pointer" : ""}`}>
-            {label}
-          </Label>
           {labelAction && <div onClick={(e) => e.stopPropagation()}>{labelAction}</div>}
         </div>
         <div onClick={(e) => e.stopPropagation()}>
@@ -1345,15 +1348,20 @@ function ReadonlyGroupCard({
         }}
       >
         <div className="flex items-center justify-between">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <div className="inline-flex size-7 items-center justify-center rounded-md border">
-              <HugeiconsIcon
-                icon={ArrowDown01Icon}
-                strokeWidth={2}
-                className={`text-muted-foreground size-3.5 shrink-0 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
-              />
+          {/* The arrow trails the title so the title lines up with the questions below. */}
+          <div className="flex min-w-0 flex-1 items-center">
+            <div className="group/title flex min-w-0 items-center gap-2">
+              <CardTitle className="group-hover/title:text-foreground/65 min-w-0 truncate text-lg transition-colors">
+                {group.group_name}
+              </CardTitle>
+              <div className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border">
+                <HugeiconsIcon
+                  icon={ArrowDown01Icon}
+                  strokeWidth={2}
+                  className={`text-muted-foreground size-3.5 shrink-0 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
+                />
+              </div>
             </div>
-            <CardTitle className="min-w-0 flex-1 truncate text-lg">{group.group_name}</CardTitle>
           </div>
           <div className="flex shrink-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
             {completedCount > 0 && (

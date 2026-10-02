@@ -25,6 +25,7 @@ import type { Comment } from "@/lib/form-types"
 import { looksLikeLineItems } from "@/lib/line-items"
 import { LineItemsTable } from "@/components/line-items-table"
 import { ZoomableImage } from "@/components/zoomable-image"
+import { Markdown } from "@/components/markdown"
 import { FieldActivityStream, type ResolvedThreadEntry } from "./field-activity-stream"
 
 interface PlagiarismData {
@@ -219,7 +220,7 @@ export function TeacherComment({
             {teacherGuideline && (
               <div className="border-b px-6 py-4">
                 <p className="text-muted-foreground mb-1 text-xs font-medium uppercase tracking-wide">Teacher Guideline</p>
-                <p className="text-sm">{teacherGuideline}</p>
+                <Markdown text={teacherGuideline} />
               </div>
             )}
 

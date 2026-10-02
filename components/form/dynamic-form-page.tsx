@@ -1096,15 +1096,16 @@ function GroupSection({
           if (isHeaderClick(e)) toggleCollapsed()
         }}
       >
-        <div className="flex items-center gap-2">
-          <div className="inline-flex size-7 items-center justify-center rounded-md border">
+        {/* The arrow trails the title so the title lines up with the questions below. */}
+        <div className="group/title flex items-center gap-2">
+          <CardTitle className="group-hover/title:text-foreground/65 text-lg transition-colors">{group.group_name}</CardTitle>
+          <div className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border">
             <HugeiconsIcon
               icon={ArrowDown01Icon}
               strokeWidth={2}
               className={`text-muted-foreground size-3.5 shrink-0 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
             />
           </div>
-          <CardTitle className="text-lg">{group.group_name}</CardTitle>
           {hasInstructions && (
             <button
               type="button"
@@ -1487,7 +1488,15 @@ function DynamicField({
             : undefined
         }
       >
-          <div className="flex min-w-0 items-center gap-1.5">
+          {/* The arrow trails the label so the label lines up with the field below. */}
+          <div className="group/title flex min-w-0 items-center gap-1.5">
+            <span className={`min-w-0 ${isDimmed ? "opacity-50" : ""}`}>
+              <Label
+                className={`text-foreground text-sm leading-snug font-medium transition-colors ${isComplete ? "group-hover/title:text-foreground/65 cursor-pointer" : ""}`}
+              >
+                {question.field_label}
+              </Label>
+            </span>
             <div className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
               <HugeiconsIcon
                 icon={ArrowDown01Icon}
@@ -1495,9 +1504,6 @@ function DynamicField({
                 className={`size-2.5 shrink-0 transition-transform duration-200 text-muted-foreground ${questionCollapsed ? "-rotate-90" : ""}`}
               />
             </div>
-            <span className={`min-w-0 ${isDimmed ? "opacity-50" : ""}`}>
-              <Label className={`text-foreground text-sm leading-snug font-medium ${isComplete ? "cursor-pointer" : ""}`}>{question.field_label}</Label>
-            </span>
           </div>
           {hasComments && (
             <CommentBadge
