@@ -22,31 +22,31 @@ export const WRITING_ISSUES = {
   capitalization: {
     category: "Capitalization",
     label: "Capitalization",
-    message: "Check capitalization here.",
+    message: "Check whether the highlighted word should start with a capital letter.",
     blocks: true,
   },
   punctuation: {
     category: "Punctuation",
     label: "Punctuation",
-    message: "Review the punctuation in this sentence.",
+    message: "Look at the punctuation and spacing right at the highlighted spot.",
     blocks: true,
   },
   comma: {
     category: "Punctuation",
     label: "Comma placement",
-    message: "Review comma placement in this sentence.",
+    message: "Read the sentence aloud. Does a pause belong at the highlighted spot, or is one there that shouldn't be?",
     blocks: false,
   },
   subject_verb: {
     category: "Grammar",
     label: "Subject/verb agreement",
-    message: "Check that the subject and verb agree in this sentence.",
+    message: "Find who or what is doing the action. Does the highlighted verb match it?",
     blocks: false,
   },
   verb_tense: {
     category: "Grammar",
     label: "Verb tense",
-    message: "Review the verb tense in this sentence.",
+    message: "Work out when this action happens, then check that the highlighted verb matches that time.",
     blocks: false,
   },
   article: {
@@ -58,13 +58,13 @@ export const WRITING_ISSUES = {
   grammar: {
     category: "Grammar",
     label: "Grammar",
-    message: "Review the grammar in this sentence.",
+    message: "The highlighted words don't fit the rest of the sentence. Read it aloud and listen for where it trips.",
     blocks: false,
   },
   word_usage: {
     category: "Word usage",
     label: "Word usage",
-    message: "Check whether this is the correct form of the word.",
+    message: "The highlighted word may be a sound-alike or the wrong form. Is it the word you mean?",
     blocks: false,
   },
 } as const

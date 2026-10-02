@@ -4,10 +4,11 @@ import type { LanguageToolFinding } from "@/lib/languagetool"
 import { WRITING_ISSUES, excerptAround, type WritingIssue } from "@/lib/writing-check"
 
 /**
- * Hints for LanguageTool's flags. A model words each flag as a pointer to the
- * rule involved in that sentence, which the student can act on without being
- * handed the fix. A flag whose hint can't be written, or gives the fix away,
- * keeps its kind's general message.
+ * Hints for the writing check's flags. A model words each flag as a pointer to
+ * the rule involved in that sentence, which the student can act on without
+ * being handed the fix. A hint that comes back empty or gives the fix away is
+ * asked for once more, with the words to avoid spelled out; only if that fails
+ * too does the flag keep its kind's general message.
  */
 
 /** The model behind the writing check's AI steps (hints here, and the
@@ -24,8 +25,9 @@ const HINT_MAX_CHARS = 220
 export const HINT_RULES = `- One sentence of at most 25 words, in plain language, speaking to the student directly. A question is fine.
 - Be specific to this sentence: name the rule or idea involved (the subject is plural, a city's name is a proper noun, two complete sentences are joined by only a comma, the action already happened).
 - Never give the fix. Do not write the corrected word, spelling, punctuation mark, or sentence, and do not list options that include it.
+- A hint that uses any word from the fix is thrown away and the student gets no help, so describe the job the wrong or missing word does instead of naming it (the word that starts a pair finished later in the sentence, the helping verb, the ending that shows the action is over).
 - Do not quote the flagged words back; the student sees them highlighted.
-- If you cannot write a hint without giving the fix, use an empty string.`
+- Leave the hint empty only as a last resort.`
 
 const SYSTEM = `You write hints for a writing checker used by high school seniors. A grammar tool has flagged places in a student's writing. For each flag, write one hint that tells the student what to look at and why, so they can work out the fix on their own.
 
@@ -36,6 +38,10 @@ The checker's note and suggested fix are shown to you only so you understand the
 
 The flagged words are marked [[like this]] inside their sentence.`
 
+const RETRY_NOTE = `
+
+A first hint for each of these flags was thrown away: it used a word from the fix, ran long, or was empty. Write a new one. Each flag lists the words its hint must not contain. Describe what is wrong (what the highlighted words are doing, or failing to do, in the sentence) without using those words.`
+
 const hintsSchema = z.object({
   hints: z.array(z.object({ flag: z.number(), hint: z.string() })),
 })
@@ -45,19 +51,23 @@ const hintsSchema = z.object({
 const written = new Map<string, string>()
 const WRITTEN_MAX = 2000
 
-interface Pending {
-  index: number
-  key: string
+/** What the hint writer is told about one flag. Server-only: `fixes` is the
+ *  answer, which the student must never see. */
+export interface HintRequest {
+  /** The kind's label ("Verb tense"). */
   type: string
+  /** The sentence, with the flagged words marked [[like this]]. */
   sentence: string
   flagged: string
-  finding: LanguageToolFinding
+  /** What the checker said about it, if anything. */
+  note: string
+  fixes: string[]
 }
 
 /** The check's issues, each with a hint where one could be written. Never throws. */
 export async function withHints(text: string, findings: LanguageToolFinding[]): Promise<WritingIssue[]> {
   const issues = findings.map((f): WritingIssue => ({ ...f.issue }))
-  const pending: Pending[] = []
+  const pending: { index: number; key: string; request: HintRequest }[] = []
   findings.forEach((finding, index) => {
     if (finding.typo) return
     const { start, end, kind } = finding.issue
@@ -68,52 +78,86 @@ export async function withHints(text: string, findings: LanguageToolFinding[]): 
     if (known !== undefined) {
       if (known) issues[index].hint = known
     } else if (pending.length < BATCH_SIZE * MAX_BATCHES) {
-      pending.push({ index, key, type: WRITING_ISSUES[kind].label, sentence, flagged: match, finding })
+      pending.push({
+        index,
+        key,
+        request: {
+          type: WRITING_ISSUES[kind].label,
+          sentence,
+          flagged: match,
+          note: [finding.rule, finding.message].filter(Boolean).join(" — "),
+          fixes: finding.replacements,
+        },
+      })
     }
   })
 
-  const batches: Pending[][] = []
-  for (let i = 0; i < pending.length; i += BATCH_SIZE) batches.push(pending.slice(i, i + BATCH_SIZE))
-  await Promise.all(
-    batches.map(async (batch) => {
-      try {
-        for (const [flag, hint] of await writeHints(batch)) {
-          const item = batch[flag]
-          const safe = givesAway(hint, item.flagged, item.finding.replacements) ? "" : hint
-          remember(item.key, safe)
-          if (safe) issues[item.index].hint = safe
-        }
-      } catch (err) {
-        // The checklist still works on the general messages.
-        console.error("Writing check hints failed:", err)
-      }
-    })
-  )
+  const hints = await hintsFor(pending.map((item) => item.request))
+  pending.forEach((item, i) => {
+    const hint = hints[i]
+    // null: the model couldn't be reached, so ask again on the next check.
+    if (hint === null) return
+    remember(item.key, hint)
+    if (hint) issues[item.index].hint = hint
+  })
   return issues
 }
 
+/**
+ * A hint for each flag, in order: "" where none could be written without
+ * giving the fix away, null where the model couldn't be reached. Never throws.
+ */
+export async function hintsFor(requests: HintRequest[]): Promise<(string | null)[]> {
+  const hints: (string | null)[] = requests.map(() => null)
+  const ask = async (indexes: number[], retry: boolean) => {
+    const batches: number[][] = []
+    for (let i = 0; i < indexes.length; i += BATCH_SIZE) batches.push(indexes.slice(i, i + BATCH_SIZE))
+    await Promise.all(
+      batches.map(async (batch) => {
+        try {
+          const got = await writeHints(batch.map((i) => requests[i]), retry)
+          batch.forEach((index, at) => {
+            const hint = got.get(at) ?? ""
+            const { flagged, fixes } = requests[index]
+            hints[index] = givesAway(hint, flagged, fixes) ? "" : hint
+          })
+        } catch (err) {
+          // The checklist still works on the general messages.
+          console.error("Writing check hints failed:", err)
+        }
+      })
+    )
+  }
+
+  await ask(requests.map((_, i) => i), false)
+  const unusable = hints.flatMap((hint, i) => (hint === "" ? [i] : []))
+  if (unusable.length > 0) await ask(unusable, true)
+  return hints
+}
+
 /** One model request: batch position → hint ("" where the model declined). */
-async function writeHints(batch: Pending[]): Promise<Map<number, string>> {
+async function writeHints(batch: HintRequest[], retry: boolean): Promise<Map<number, string>> {
   const prompt = batch
-    .map(({ type, sentence, finding }, i) =>
+    .map(({ type, sentence, flagged, note, fixes }, i) =>
       [
         `Flag ${i + 1}`,
         `Type: ${type}`,
         `Sentence: ${sentence}`,
-        `Checker's note: ${[finding.rule, finding.message].filter(Boolean).join(" — ")}`,
-        `Checker's suggested fix: ${finding.replacements.slice(0, 3).map((r) => JSON.stringify(r)).join(" or ") || "none given"}`,
+        `Checker's note: ${note || "none given"}`,
+        `Checker's suggested fix: ${fixes.slice(0, 3).map((r) => JSON.stringify(r)).join(" or ") || "none given"}`,
+        ...(retry ? [`Words the hint must not contain: ${fixWords(flagged, fixes).join(", ") || "none"}`] : []),
       ].join("\n")
     )
     .join("\n\n")
 
   const { output } = await generateText({
     model: WRITING_MODEL,
-    system: SYSTEM,
+    system: retry ? SYSTEM + RETRY_NOTE : SYSTEM,
     prompt,
     output: Output.object({ schema: hintsSchema }),
     temperature: 0,
     maxRetries: 1,
-    abortSignal: AbortSignal.timeout(15_000),
+    abortSignal: AbortSignal.timeout(retry ? 10_000 : 15_000),
   })
 
   const hints = new Map<number, string>()
@@ -145,8 +189,16 @@ const EVERYDAY = new Set([
   "and", "or", "for", "do", "does", "has", "have", "not",
 ])
 
+/** The words a fix adds that the student didn't write, less the everyday ones:
+ *  what a hint has to steer around. */
+function fixWords(flagged: string, fixes: string[]): string[] {
+  const student = new Set(wordsIn(flagged).map((w) => w.toLowerCase()))
+  const words = fixes.slice(0, 3).flatMap(wordsIn).map((w) => w.toLowerCase())
+  return [...new Set(words)].filter((w) => !student.has(w) && !EVERYDAY.has(w))
+}
+
 /**
- * True when a hint uses a word from LanguageTool's fix that the student didn't
+ * True when a hint uses a word from the checker's fix that the student didn't
  * write — the one thing the checklist must never show. The prompt asks for
  * this already; this is the guarantee.
  */

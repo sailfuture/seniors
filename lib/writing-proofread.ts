@@ -1,7 +1,7 @@
 import { generateText, Output } from "ai"
 import { z } from "zod"
-import { GRAMMAR_KINDS, WRITING_ISSUES, type WritingIssue, type WritingIssueKind } from "@/lib/writing-check"
-import { HINT_RULES, WRITING_MODEL, givesAway, tidyHint } from "@/lib/writing-hints"
+import { GRAMMAR_KINDS, WRITING_ISSUES, excerptAround, type WritingIssue, type WritingIssueKind } from "@/lib/writing-check"
+import { HINT_RULES, WRITING_MODEL, givesAway, hintsFor, tidyHint } from "@/lib/writing-hints"
 
 /**
  * The writing check's second pass: a model proofreads the text for the
@@ -101,9 +101,13 @@ export async function proofread(text: string): Promise<WritingIssue[] | null> {
           maxRetries: 1,
           abortSignal: AbortSignal.timeout(20_000),
         })
+        const placed = batch.map((paragraph, i) =>
+          placeFlags(paragraph, output.flags.filter((f) => f.paragraph === i + 1))
+        )
+        await fillHints(batch, placed)
         batch.forEach((paragraph, i) => {
           if (proofed.size >= PROOFED_MAX) proofed.delete(proofed.keys().next().value as string)
-          proofed.set(paragraph, placeFlags(paragraph, output.flags.filter((f) => f.paragraph === i + 1)))
+          proofed.set(paragraph, placed[i].map((flag) => flag.issue))
         })
         return true
       } catch (err) {
@@ -123,27 +127,67 @@ export async function proofread(text: string): Promise<WritingIssue[] | null> {
   )
 }
 
+/** A flag in its paragraph, with the fix the model gave for it. The fix stays
+ *  on the server: it's only for writing a hint that doesn't give it away. */
+interface PlacedFlag {
+  issue: WritingIssue
+  fix: string
+}
+
 /**
  * The model's flags for one paragraph → issues with offsets into it. Drops a
  * flag whose quote isn't in the paragraph or whose fix changes nothing, and a
  * hint that gives the fix away. An obvious grammar mistake becomes a must-fix.
  */
-export function placeFlags(paragraph: string, raw: RawFlag[]): WritingIssue[] {
-  const issues: WritingIssue[] = []
+export function placeFlags(paragraph: string, raw: RawFlag[]): PlacedFlag[] {
+  const placed: PlacedFlag[] = []
   for (const flag of raw) {
     const quote = flag.quote.trim()
     if (!quote || quote.length > QUOTE_MAX_CHARS || flag.fix.trim() === quote) continue
-    const at = locate(paragraph, quote, issues)
+    const at = locate(paragraph, quote, placed.map((p) => p.issue))
     if (!at) continue
     const hint = tidyHint(flag.hint)
-    issues.push({
-      kind: flag.kind,
-      ...at,
-      ...(hint && !givesAway(hint, quote, [flag.fix]) && { hint }),
-      ...(flag.obvious && GRAMMAR_KINDS.has(flag.kind) && { mustFix: true }),
+    placed.push({
+      issue: {
+        kind: flag.kind,
+        ...at,
+        ...(hint && !givesAway(hint, quote, [flag.fix]) && { hint }),
+        ...(flag.obvious && GRAMMAR_KINDS.has(flag.kind) && { mustFix: true }),
+      },
+      fix: flag.fix,
     })
   }
-  return issues.sort((a, b) => a.start - b.start)
+  return placed.sort((a, b) => a.issue.start - b.issue.start)
+}
+
+/**
+ * Asks the hint writer for the flags left without a hint (the proofreader's
+ * own was empty or gave the fix away), so they don't fall back to the kind's
+ * general message. A misspelling needs none: "check the spelling" says it all.
+ */
+async function fillHints(paragraphs: string[], placed: PlacedFlag[][]): Promise<void> {
+  const bare = placed.flatMap((flags, i) =>
+    flags
+      .filter((flag) => !flag.issue.hint && flag.issue.kind !== "spelling")
+      .map((flag) => ({ flag, paragraph: paragraphs[i] }))
+  )
+  if (bare.length === 0) return
+  const hints = await hintsFor(
+    bare.map(({ flag, paragraph }) => {
+      const { before, match, after } = excerptAround(paragraph, flag.issue.start, flag.issue.end)
+      return {
+        type: WRITING_ISSUES[flag.issue.kind].label,
+        sentence: `${before}[[${match}]]${after}`,
+        flagged: match,
+        note: "",
+        fixes: [flag.fix],
+      }
+    })
+  )
+  bare.forEach(({ flag }, i) => {
+    const hint = hints[i]
+    if (hint) flag.issue.hint = hint
+  })
 }
 
 const inWord = (char: string | undefined) => !!char && /[\p{L}\p{N}]/u.test(char)
