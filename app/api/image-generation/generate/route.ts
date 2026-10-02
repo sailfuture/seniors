@@ -3,12 +3,13 @@ import { experimental_generateImage as generateImage } from "ai"
 import { getApiSession } from "@/lib/api-auth"
 import {
   CATEGORIES,
+  FALLBACK_IMAGE_MODEL,
   MARKETING_PLACEMENTS,
-  MAX_IMAGES_PER_STUDENT,
+  MAX_GENERATIONS_PER_STUDENT,
   type ImageCategory,
   type MarketingPlacement,
 } from "@/lib/image-generation-config"
-import { createImage, listImages, uploadImageToXano } from "@/lib/image-library-xano"
+import { createImage, listGenerations, uploadImageToXano } from "@/lib/image-library-xano"
 import { fetchStudentBrand } from "@/lib/student-brand"
 import {
   editImageWithReference,
@@ -41,7 +42,11 @@ export async function POST(req: NextRequest) {
 
   const rawPrompt = (body.prompt ?? "").trim()
   const category = body.category && CATEGORIES[body.category] ? body.category : "audience"
-  const model = body.model?.trim() || CATEGORIES[category].defaultModel
+  // Only a model the category offers: the request can't pick its own.
+  const requested = body.model?.trim()
+  const model = CATEGORIES[category].alternativeModels.some((m) => m.id === requested)
+    ? (requested as string)
+    : CATEGORIES[category].defaultModel
   const placement =
     category === "marketing" && body.placement && MARKETING_PLACEMENTS[body.placement]
       ? MARKETING_PLACEMENTS[body.placement]
@@ -68,13 +73,14 @@ export async function POST(req: NextRequest) {
     : withPlacement
 
   try {
-    const existing = await listImages(studentId)
-    if (existing.length >= MAX_IMAGES_PER_STUDENT) {
+    // Counts every generation, including images since deleted from the library.
+    const existing = await listGenerations(studentId)
+    if (existing.length >= MAX_GENERATIONS_PER_STUDENT) {
       return NextResponse.json(
         {
-          error: `You've reached the ${MAX_IMAGES_PER_STUDENT}-image limit for this class. Talk to your teacher if you need more.`,
+          error: `You've used all ${MAX_GENERATIONS_PER_STUDENT} of your image generations. Talk to your teacher if you need more.`,
           used: existing.length,
-          limit: MAX_IMAGES_PER_STUDENT,
+          limit: MAX_GENERATIONS_PER_STUDENT,
         },
         { status: 429 },
       )
@@ -94,7 +100,7 @@ export async function POST(req: NextRequest) {
       const promptWithLogoNote = `${prompt}\n\nThe attached reference image is the student's brand logo. Use it as the logo shown in the generated image — preserve its shape, colors, and proportions; do not redraw it.`
       const result = await editImageWithReference({
         // Force a multimodal model that supports image input + image output.
-        // The category default (e.g. gpt-image-2) is image-only and can't accept a reference image.
+        // The category default is text-to-image only and can't accept a reference image.
         model: LOGO_REFERENCE_MODEL,
         prompt: promptWithLogoNote,
         reference: {
@@ -105,7 +111,15 @@ export async function POST(req: NextRequest) {
       imageBytes = result.bytes
       mediaType = result.mediaType
     } else {
-      const { image } = await generateImage({ model, prompt })
+      let image
+      try {
+        ;({ image } = await generateImage({ model, prompt }))
+      } catch (err) {
+        if (model === FALLBACK_IMAGE_MODEL) throw err
+        console.error(`Image generation with ${model} failed; trying ${FALLBACK_IMAGE_MODEL}:`, err)
+        modelUsed = FALLBACK_IMAGE_MODEL
+        ;({ image } = await generateImage({ model: FALLBACK_IMAGE_MODEL, prompt }))
+      }
       imageBytes = image.uint8Array
       mediaType = image.mediaType ?? "image/png"
     }

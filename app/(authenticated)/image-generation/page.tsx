@@ -53,7 +53,7 @@ import {
   CATEGORIES,
   GENERATION_TIPS,
   MARKETING_PLACEMENTS,
-  MAX_IMAGES_PER_STUDENT,
+  MAX_GENERATIONS_PER_STUDENT,
   type GeneratedImage,
   type ImageCategory,
   type MarketingPlacement,
@@ -132,8 +132,9 @@ function StudentImageGeneration() {
   const [imagesLoading, setImagesLoading] = useState(true)
 
   const recent = useMemo(() => allImages.slice(0, 8), [allImages])
-  const used = allImages.length
-  const remaining = Math.max(0, MAX_IMAGES_PER_STUDENT - used)
+  // Generations so far, including images since deleted from the library.
+  const [used, setUsed] = useState(0)
+  const remaining = Math.max(0, MAX_GENERATIONS_PER_STUDENT - used)
   const atLimit = remaining === 0
 
   const loadImages = useCallback(async () => {
@@ -144,8 +145,10 @@ function StudentImageGeneration() {
         setAllImages([])
         return
       }
-      const data = (await res.json()) as GeneratedImage[]
-      setAllImages(Array.isArray(data) ? data : [])
+      const data = (await res.json()) as { images?: GeneratedImage[]; used?: number }
+      const images = Array.isArray(data.images) ? data.images : []
+      setAllImages(images)
+      setUsed(typeof data.used === "number" ? data.used : images.length)
     } catch {
       setAllImages([])
     } finally {
@@ -466,7 +469,7 @@ function StudentImageGeneration() {
                   )}
                   {atLimit && (
                     <p className="text-destructive text-sm">
-                      You&apos;ve reached the {MAX_IMAGES_PER_STUDENT}-image class limit. Ask your teacher if you need more.
+                      You&apos;ve used all {MAX_GENERATIONS_PER_STUDENT} of your image generations. Ask your teacher if you need more.
                     </p>
                   )}
                   {error && id === category && (
@@ -487,7 +490,7 @@ function StudentImageGeneration() {
                     {brainstorming && id === category ? "Polishing your prompt…" : "Help me write a prompt"}
                   </Button>
                   <span className="text-muted-foreground ml-auto text-sm">
-                    {used} of {MAX_IMAGES_PER_STUDENT} images used
+                    {used} of {MAX_GENERATIONS_PER_STUDENT} generations used
                   </span>
                   <Button
                     onClick={handleGenerate}

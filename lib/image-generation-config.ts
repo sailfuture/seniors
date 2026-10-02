@@ -72,14 +72,22 @@ export interface CategoryConfig {
   hasPlacements?: boolean
 }
 
+/** The text-to-image model every category generates with: the 2.5 variant
+ *  built for generation (its sibling, Sunburst, is tuned for editing). */
+export const IMAGE_MODEL = "openai/gpt-image-2.5-flare"
+
+/** Tried once when IMAGE_MODEL fails, so a problem with the newer model
+ *  doesn't leave students unable to generate. */
+export const FALLBACK_IMAGE_MODEL = "openai/gpt-image-2"
+
 export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
   logo: {
     id: "logo",
     label: "Logo",
     description: "Brand marks, wordmarks, and logo concepts with clean type.",
-    defaultModel: "openai/gpt-image-2",
+    defaultModel: IMAGE_MODEL,
     alternativeModels: [
-      { id: "openai/gpt-image-2", label: "GPT Image 2 (text accuracy)" },
+      { id: IMAGE_MODEL, label: "GPT Image 2.5 (text accuracy)" },
     ],
     promptPlaceholder:
       "e.g. A modern wordmark logo for a coffee shop called 'Driftwood', warm cream background, hand-drawn serif type",
@@ -90,9 +98,9 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
     id: "product",
     label: "Product / Business Visual",
     description: "High-quality photographic visuals of products, packaging, or scenes.",
-    defaultModel: "openai/gpt-image-2",
+    defaultModel: IMAGE_MODEL,
     alternativeModels: [
-      { id: "openai/gpt-image-2", label: "GPT Image 2 (photoreal)" },
+      { id: IMAGE_MODEL, label: "GPT Image 2.5 (photoreal)" },
     ],
     promptPlaceholder:
       "e.g. A matte black water bottle photographed on a wet rock at sunrise, shallow depth of field, soft golden light",
@@ -103,9 +111,9 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
     id: "marketing",
     label: "Marketing",
     description: "Mock-ups of your brand or product in a real-world ad placement.",
-    defaultModel: "openai/gpt-image-2",
+    defaultModel: IMAGE_MODEL,
     alternativeModels: [
-      { id: "openai/gpt-image-2", label: "GPT Image 2 (best for ads)" },
+      { id: IMAGE_MODEL, label: "GPT Image 2.5 (best for ads)" },
     ],
     promptPlaceholder: "What brand, product, or message should be featured?",
     brainstormSystemPrompt:
@@ -116,9 +124,9 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
     id: "audience",
     label: "Other",
     description: "Target audience personas, brand reference images, lifestyle scenes, mood boards, and anything else.",
-    defaultModel: "openai/gpt-image-2",
+    defaultModel: IMAGE_MODEL,
     alternativeModels: [
-      { id: "openai/gpt-image-2", label: "GPT Image 2" },
+      { id: IMAGE_MODEL, label: "GPT Image 2.5" },
     ],
     promptPlaceholder:
       "e.g. A college student studying in a sunlit campus cafe, laptop open, friends laughing in the background",
@@ -129,7 +137,9 @@ export const CATEGORIES: Record<ImageCategory, CategoryConfig> = {
 
 export const BRAINSTORM_MODEL = "openai/gpt-5-nano"
 
-export const MAX_IMAGES_PER_STUDENT = 50
+/** Generations each student gets, in total. An image deleted from the
+ *  library still counts: the limit is on what was generated, not what's kept. */
+export const MAX_GENERATIONS_PER_STUDENT = 50
 
 export const GENERATION_TIPS = [
   "Sketching the concept…",
@@ -159,4 +169,6 @@ export interface GeneratedImage {
   prompt: string
   image: XanoFileMetadata
   created_at: number
+  /** Removed from the library by the student; kept so it still counts. */
+  deleted?: boolean | null
 }

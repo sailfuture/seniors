@@ -67,8 +67,8 @@ export default function LibraryPage() {
           setError(`Failed to load (${res.status})`)
           setImages([])
         } else {
-          const data = (await res.json()) as GeneratedImage[]
-          if (!cancelled) setImages(Array.isArray(data) ? data : [])
+          const data = (await res.json()) as { images?: GeneratedImage[] }
+          if (!cancelled) setImages(Array.isArray(data.images) ? data.images : [])
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load")
@@ -234,7 +234,7 @@ function LibraryCard({
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this image?</AlertDialogTitle>
               <AlertDialogDescription>
-                The image will be removed from your library. This counts against your generation quota and cannot be undone.
+                The image will be removed from your library. It still counts toward your generation limit, and this cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
