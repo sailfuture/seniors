@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { MarkdownEditor } from "@/components/markdown-editor"
+import { markdownToPlainText } from "@/lib/markdown-text"
 import {
   Sheet,
   SheetContent,
@@ -571,7 +572,7 @@ export function TemplateOverview({
                 </TableCell>
                 <TableCell>
                   <span className="text-muted-foreground block truncate text-sm">
-                    {s.section.section_description || "—"}
+                    {markdownToPlainText(s.section.section_description) || "—"}
                   </span>
                 </TableCell>
                 <TableCell className="text-center">
@@ -614,13 +615,12 @@ export function TemplateOverview({
           <div className="flex-1 overflow-y-auto">
             <div className="space-y-4 border-b px-6 py-5">
               <div className="space-y-2">
-                <Label htmlFor="sheet-section-description">Description</Label>
-                <Textarea
-                  id="sheet-section-description"
+                <Label>Description</Label>
+                <MarkdownEditor
                   value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
+                  onChange={setEditDescription}
                   placeholder="Add a description for this section..."
-                  rows={3}
+                  compact
                 />
               </div>
               <div className="space-y-2">
@@ -843,13 +843,12 @@ export function TemplateOverview({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new-section-description">Description</Label>
-              <Textarea
-                id="new-section-description"
+              <Label>Description</Label>
+              <MarkdownEditor
                 value={newSectionDescription}
-                onChange={(e) => setNewSectionDescription(e.target.value)}
+                onChange={setNewSectionDescription}
                 placeholder="Brief description of this section..."
-                rows={3}
+                compact
               />
             </div>
           </div>

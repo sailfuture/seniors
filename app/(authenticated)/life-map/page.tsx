@@ -50,6 +50,7 @@ import { GroupActivitySheet } from "@/components/form/group-activity-sheet"
 import { fetchResponseEvents, type ResponseEvent } from "@/lib/response-events"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { formatWhen } from "@/lib/format-time"
+import { markdownToPlainText } from "@/lib/markdown-text"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -582,7 +583,7 @@ function SectionTableRows({
               )}
             </div>
             {row.section.section_description && (
-              <p className="text-muted-foreground mt-0.5 truncate text-xs">{row.section.section_description}</p>
+              <p className="text-muted-foreground mt-0.5 truncate text-xs">{markdownToPlainText(row.section.section_description)}</p>
             )}
           </div>
         </TableCell>
@@ -626,7 +627,7 @@ function SectionTableRows({
             <span className={`text-sm font-medium ${locked ? "text-muted-foreground/40" : ""}`}>({totalGroups})</span>
           </div>
           {row.section.section_description && (
-            <p className="text-muted-foreground mt-0.5 truncate text-xs">{row.section.section_description}</p>
+            <p className="text-muted-foreground mt-0.5 truncate text-xs">{markdownToPlainText(row.section.section_description)}</p>
           )}
         </TableCell>
         <TableCell className="text-right">

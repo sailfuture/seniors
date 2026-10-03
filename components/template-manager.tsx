@@ -71,6 +71,7 @@ import { currentYearGroupValue } from "@/lib/students"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
 import { useBumpSidebar } from "@/lib/refresh-context"
 import { editorFetch, invalidateCachedFetch } from "@/lib/cached-fetch"
+import { Markdown } from "@/components/markdown"
 
 interface TemplateQuestion {
   id?: number
@@ -938,7 +939,7 @@ export function TemplateManager({
           </div>
         </div>
         {localDescription && (
-          <p className="text-muted-foreground mt-1 text-sm">{localDescription}</p>
+          <Markdown text={localDescription} className="mt-1 [--tw-prose-body:var(--muted-foreground)]" />
         )}
       </div>
 
@@ -1303,13 +1304,12 @@ export function TemplateManager({
 
           <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
             <div className="space-y-2">
-              <Label htmlFor="section-description">Description</Label>
-              <Textarea
-                id="section-description"
+              <Label>Description</Label>
+              <MarkdownEditor
                 value={localDescription}
-                onChange={(e) => setLocalDescription(e.target.value)}
+                onChange={setLocalDescription}
                 placeholder="Add a description for this section..."
-                rows={4}
+                compact
               />
             </div>
 
@@ -2102,11 +2102,11 @@ function GroupSheet({
 
           <div className="space-y-2">
             <Label>Description</Label>
-            <Textarea
+            <MarkdownEditor
               placeholder="Optional description shown to students..."
               value={form.group_description}
-              onChange={(e) => setForm((prev) => ({ ...prev, group_description: e.target.value }))}
-              rows={3}
+              onChange={(value) => setForm((prev) => ({ ...prev, group_description: value }))}
+              compact
             />
           </div>
 

@@ -48,10 +48,13 @@ export function MarkdownEditor({
   value,
   onChange,
   placeholder,
+  compact = false,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  /** A shorter writing area, for descriptions rather than full instructions. */
+  compact?: boolean
 }) {
   const [linkOpen, setLinkOpen] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -85,7 +88,7 @@ export function MarkdownEditor({
     contentType: "markdown",
     editorProps: {
       attributes: {
-        class: cn(markdownProseClassName, "min-h-72 px-3 py-2.5 focus:outline-none"),
+        class: cn(markdownProseClassName, compact ? "min-h-28" : "min-h-72", "px-3 py-2.5 focus:outline-none"),
         spellcheck: "true",
       },
       handleKeyDown: (_view, event) => {

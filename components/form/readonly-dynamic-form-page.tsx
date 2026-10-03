@@ -56,6 +56,8 @@ import { eventTypeForAction, postResponseEvent } from "@/lib/response-events"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { formatWhen } from "@/lib/format-time"
+import { markdownToPlainText } from "@/lib/markdown-text"
+import { Markdown } from "@/components/markdown"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -986,7 +988,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{title}</h1>
-          {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
+          {subtitle && <Markdown text={subtitle} className="mt-1 [--tw-prose-body:var(--muted-foreground)]" />}
         </div>
       </div>
 
@@ -1391,7 +1393,7 @@ function ReadonlyGroupCard({
             <TeacherComment
               fieldName="_section_comment"
               fieldLabel={group.group_name}
-              fieldValue={group.group_description || undefined}
+              fieldValue={markdownToPlainText(group.group_description) || undefined}
               comments={groupComments}
               onSubmit={async (_, note) => {
                 const teacherName = session?.user?.name ?? "Teacher"
@@ -1459,7 +1461,7 @@ function ReadonlyGroupCard({
           </div>
         </div>
         {!collapsed && group.group_description && (
-          <p className="text-muted-foreground mt-1 text-sm">{group.group_description}</p>
+          <Markdown text={group.group_description} className="mt-1 [--tw-prose-body:var(--muted-foreground)]" />
         )}
       </div>
       <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}>

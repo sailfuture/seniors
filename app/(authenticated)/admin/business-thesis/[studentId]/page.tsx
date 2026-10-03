@@ -58,6 +58,7 @@ import { GroupActivitySheet } from "@/components/form/group-activity-sheet"
 import { fetchResponseEvents, type ResponseEvent } from "@/lib/response-events"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { formatWhen } from "@/lib/format-time"
+import { markdownToPlainText } from "@/lib/markdown-text"
 
 const BT_BASE =
   process.env.NEXT_PUBLIC_XANO_BT_API_BASE ??
@@ -666,7 +667,7 @@ function BtSectionTableRows({
           <div className="min-w-0">
             <span className={`text-sm font-medium ${locked ? "text-muted-foreground/40" : ""}`}>{row.section.section_title}</span>
             {row.section.description && (
-              <p className="text-muted-foreground mt-0.5 truncate text-xs">{row.section.description}</p>
+              <p className="text-muted-foreground mt-0.5 truncate text-xs">{markdownToPlainText(row.section.description)}</p>
             )}
           </div>
         </TableCell>
@@ -713,7 +714,7 @@ function BtSectionTableRows({
             <span className={`text-sm font-medium ${locked ? "text-muted-foreground/40" : ""}`}>({totalGroups})</span>
           </div>
           {row.section.description && (
-            <p className="text-muted-foreground mt-0.5 truncate text-xs">{row.section.description}</p>
+            <p className="text-muted-foreground mt-0.5 truncate text-xs">{markdownToPlainText(row.section.description)}</p>
           )}
         </TableCell>
         <TableCell className="text-right">

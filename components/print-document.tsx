@@ -31,6 +31,7 @@ import { formatYearGroup } from "@/lib/year-group"
 import { fetchProjectLock } from "@/lib/project-lock"
 import { cachedFetch } from "@/lib/cached-fetch"
 import { fetchStudentProfile } from "@/lib/students"
+import { markdownToPlainText } from "@/lib/markdown-text"
 
 interface TemplateQuestion {
   id: number
@@ -1520,7 +1521,7 @@ function buildGroupPrintBlocks(
         <h3 className="text-lg font-semibold tracking-tight">{group.group_name}</h3>
       </div>
       {group.group_description && (
-        <p className="mt-2 text-xs leading-relaxed text-gray-500">{group.group_description}</p>
+        <p className="mt-2 text-xs leading-relaxed text-gray-500">{markdownToPlainText(group.group_description)}</p>
       )}
     </div>
   )
@@ -1909,7 +1910,7 @@ function PaginatedSheets({
               </h2>
               {(section.description || section.section_description) && (
                 <p className="mt-2 max-w-[6in] text-sm leading-relaxed text-gray-500">
-                  {section.description || section.section_description}
+                  {markdownToPlainText(section.description || section.section_description)}
                 </p>
               )}
             </header>

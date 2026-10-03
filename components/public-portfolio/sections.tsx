@@ -30,6 +30,7 @@ import {
   type PortfolioSectionModel,
   type ResponseMap,
 } from "./types"
+import { markdownToPlainText } from "@/lib/markdown-text"
 
 type DisplayQuestions = ComponentProps<typeof GroupDisplayRenderer>["questions"]
 type DisplayResponses = ComponentProps<typeof GroupDisplayRenderer>["responseMap"]
@@ -107,7 +108,7 @@ export function buildPortfolioSections<S extends SectionSource, Q extends Portfo
       anchor: `section-${section.id}`,
       number: i + 1,
       title: section.section_title,
-      description: descriptionOf(section),
+      description: markdownToPlainText(descriptionOf(section)),
       photoUrl: studentPhoto
         ? resolveImageUrl(studentPhoto)
         : templatePhotos && section.photo?.path
@@ -120,7 +121,7 @@ export function buildPortfolioSections<S extends SectionSource, Q extends Portfo
         .map((g) => ({
           id: g.id,
           name: g.group_name,
-          description: g.group_description?.trim() ?? "",
+          description: markdownToPlainText(g.group_description),
           displayTypeId: displayTypeOf(g),
           iconName: g.icon_name?.trim() || null,
           width: widthOf(g),

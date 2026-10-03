@@ -844,7 +844,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     return (
       <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
         <h1 className="text-2xl font-bold">{title}</h1>
-        {subtitle && <p className="text-muted-foreground text-sm">{subtitle}</p>}
+        {subtitle && <Markdown text={subtitle} className="[--tw-prose-body:var(--muted-foreground)]" />}
         <p className="text-muted-foreground">No questions have been published for this section yet.</p>
       </div>
     )
@@ -928,7 +928,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
             </button>
           )}
         </div>
-        {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
+        {subtitle && <Markdown text={subtitle} className="mt-1 [--tw-prose-body:var(--muted-foreground)]" />}
         {backHref && (
           <div className="mt-3">
             <Button variant="outline" size="sm" asChild className="gap-2">
@@ -1209,7 +1209,7 @@ function GroupSection({
         <div className="overflow-hidden">
           {group.group_description && (
             <div className="border-b px-6 py-3">
-              <p className="text-muted-foreground text-sm">{group.group_description}</p>
+              <Markdown text={group.group_description} className="[--tw-prose-body:var(--muted-foreground)]" />
             </div>
           )}
           <CardContent className="p-6">
