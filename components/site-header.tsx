@@ -106,6 +106,9 @@ function useStudentName(studentId: string | null) {
 
 function HeaderBreadcrumb() {
   const pathname = usePathname()
+  const { data: session } = useSession()
+  // Advisors have no roster page; their way back is the dashboard.
+  const isAdvisor = (session?.user as Record<string, unknown> | undefined)?.role === "advisor"
 
   const adminLifeMap = pathname.match(/^\/admin\/life-map\/([^/]+)/)
   const adminBusiness = pathname.match(/^\/admin\/business-thesis\/([^/]+)/)
@@ -119,7 +122,7 @@ function HeaderBreadcrumb() {
 
   if (adminLifeMap) {
     const sectionMatch = pathname.match(/^\/admin\/life-map\/([^/]+)\/([^/]+)/)
-    crumbs.push({ label: "Life Map", href: "/admin/life-map" })
+    crumbs.push({ label: "Life Map", href: isAdvisor ? undefined : "/admin/life-map" })
     if (studentName) {
       crumbs.push(
         sectionMatch
@@ -132,7 +135,7 @@ function HeaderBreadcrumb() {
     }
   } else if (adminBusiness) {
     const sectionMatch = pathname.match(/^\/admin\/business-thesis\/([^/]+)\/([^/]+)/)
-    crumbs.push({ label: "Business Thesis", href: "/admin/business-thesis" })
+    crumbs.push({ label: "Business Thesis", href: isAdvisor ? undefined : "/admin/business-thesis" })
     if (studentName) {
       crumbs.push(
         sectionMatch

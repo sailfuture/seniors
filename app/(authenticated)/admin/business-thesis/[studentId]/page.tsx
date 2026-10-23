@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "@/components/session-provider"
+import { useCanReview } from "@/hooks/use-can-review"
 import Link from "next/link"
 import {
   Table,
@@ -151,6 +152,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
   const { studentId } = use(params)
   const router = useRouter()
   const { data: session } = useSession()
+  const canReview = useCanReview()
 
   const [rows, setRows] = useState<SectionRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -503,7 +505,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
                   <InlineCommentCard
                     key={c.id}
                     comment={c}
-                    onDelete={() => c.id && handleDeleteComment(c.id)}
+                    onDelete={canReview ? () => c.id && handleDeleteComment(c.id) : undefined}
                   />
                 ))}
               </div>
@@ -900,7 +902,8 @@ function InlineCommentCard({
   onDelete,
 }: {
   comment: Comment
-  onDelete: () => void
+  /** Omit to hide the delete button (advisors). */
+  onDelete?: () => void
 }) {
   const createdDate = comment.created_at ? new Date(parseTimestamp(comment.created_at)) : null
   const readTime = comment.isRead ? formatRelativeTime(
@@ -909,7 +912,7 @@ function InlineCommentCard({
 
   return (
     <div className="relative rounded-md border p-3 text-sm">
-      {comment.id && (
+      {comment.id && onDelete && (
         <div className="absolute right-2 top-2">
           <button
             type="button"

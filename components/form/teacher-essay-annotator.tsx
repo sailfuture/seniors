@@ -26,6 +26,7 @@ export function TeacherEssayAnnotator({
   onCommentsSheetOpenChange,
   showCommentsButton,
   onCommentCounts,
+  annotateOnly = false,
 }: {
   initialValue: string
   /** Full URL of the response to PATCH, e.g. `${responsePatchBase}/${id}`. */
@@ -42,6 +43,8 @@ export function TeacherEssayAnnotator({
   onCommentsSheetOpenChange?: (open: boolean) => void
   showCommentsButton?: boolean
   onCommentCounts?: (counts: { open: number; unread: number }) => void
+  /** Comment highlights only, no prose edits (advisors). */
+  annotateOnly?: boolean
 }) {
   const [value, setValue] = useState(initialValue)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -87,6 +90,7 @@ export function TeacherEssayAnnotator({
       minHeightClass="min-h-0"
       bodyClassName={bodyClassName}
       comments={comments}
+      annotateOnly={annotateOnly}
       showThreadList
       commentsSheetOpen={commentsSheetOpen}
       onCommentsSheetOpenChange={onCommentsSheetOpenChange}

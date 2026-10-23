@@ -21,6 +21,13 @@ const isTemplateRoute = createRouteMatcher([
   "/admin/business-thesis-template(.*)",
 ])
 
+// One student's work. Advisors may open these for the students they're
+// assigned to; the [studentId] layouts check the assignment itself.
+const isStudentWorkRoute = createRouteMatcher([
+  "/admin/life-map/:studentId(.*)",
+  "/admin/business-thesis/:studentId(.*)",
+])
+
 // The Users page (staff roles + the thesis-advisor directory).
 const isUsersRoute = createRouteMatcher(["/admin/users(.*)", "/admin/advisors(.*)"])
 
@@ -32,10 +39,11 @@ export default clerkMiddleware(async (auth, req) => {
     })
   }
 
-  // Keep students and advisors out of the staff surface, supervisors out of
-  // the templates, and teachers out of the Users page. Only enforceable when
-  // the session token is configured to carry publicMetadata; without that
-  // claim we let the request through rather than lock staff out.
+  // Keep students and advisors out of the staff surface (advisors may open
+  // their assigned students' work), supervisors out of the templates, and
+  // teachers out of the Users page. Only enforceable when the session token
+  // is configured to carry publicMetadata; without that claim we let the
+  // request through rather than lock staff out.
   if (isAdminRoute(req)) {
     const { sessionClaims } = await auth.protect({
       unauthenticatedUrl: new URL("/", req.url).toString(),
@@ -46,6 +54,7 @@ export default clerkMiddleware(async (auth, req) => {
         ? (metadata as Record<string, unknown>).role
         : undefined
     if (typeof role !== "string") return
+    if (role === "advisor" && isStudentWorkRoute(req)) return
     if (!isStaffRole(role)) {
       return Response.redirect(new URL("/dashboard", req.url))
     }

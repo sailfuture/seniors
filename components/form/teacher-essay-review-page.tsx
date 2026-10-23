@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useSession } from "@/components/session-provider"
+import { useCanReview } from "@/hooks/use-can-review"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
@@ -110,6 +111,8 @@ export function TeacherEssayReviewPage({
   const F = cfg.fields
   const router = useRouter()
   const { data: session } = useSession()
+  // Advisors read and comment; review status and the essay text stay with staff.
+  const canReview = useCanReview()
   const teacherName = session?.user?.name ?? "Teacher"
   const teachersId = ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null
   const bumpSidebar = useBumpSidebar()
@@ -514,6 +517,7 @@ export function TeacherEssayReviewPage({
             onCommentsSheetOpenChange={setCommentsOpen}
             showCommentsButton={false}
             onCommentCounts={handleCommentCounts}
+            annotateOnly={!canReview}
             comments={{
               commentsEndpoint: cfg.commentsEndpoint,
               sectionIdField: F.sectionId,
@@ -543,6 +547,7 @@ export function TeacherEssayReviewPage({
       </div>
 
       {/* Review actions stay reachable while the teacher scrolls the essay. */}
+      {canReview && (
       <div className="bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky bottom-0 mt-6 flex items-center gap-2 border-t py-3 backdrop-blur">
         {status.isComplete || status.revisionNeeded ? (
           <Button variant="outline" className="flex-1 bg-white dark:bg-transparent" disabled={acting} onClick={() => applyAction("ready")}>
@@ -574,6 +579,7 @@ export function TeacherEssayReviewPage({
           </>
         )}
       </div>
+      )}
 
       {/* Overall feedback thread, separate from the anchored inline comments. */}
       <Sheet open={feedbackOpen} onOpenChange={setFeedbackOpen}>
@@ -590,7 +596,7 @@ export function TeacherEssayReviewPage({
               events={events.filter((e) => eventMatchesQuestion(e, question.field_name, questionId, F.templateId))}
               resolvedThreads={resolvedThreads}
               viewer="teacher"
-              onDelete={handleDelete}
+              onDelete={canReview ? handleDelete : undefined}
               scrollToLatest
             />
           </div>
@@ -659,7 +665,7 @@ export function TeacherEssayReviewPage({
                   {openVersion.actor_name && <> · {openVersion.actor_name}</>}
                   {openVersion.wordCount != null && <> · {openVersion.wordCount} words</>}
                 </p>
-                {confirmRestore ? (
+                {!canReview ? null : confirmRestore ? (
                   <span className="flex items-center gap-1.5">
                     <Button
                       size="sm"

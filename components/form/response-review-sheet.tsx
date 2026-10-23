@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useSession } from "@/components/session-provider"
+import { useCanReview } from "@/hooks/use-can-review"
 import {
   Sheet,
   SheetContent,
@@ -88,6 +89,7 @@ export function ResponseReviewSheet({
   const cfg = apiConfig
   const F = cfg.fields
   const { data: session } = useSession()
+  const canReview = useCanReview()
   const bumpSidebar = useBumpSidebar()
 
   const [comments, setComments] = useState<Comment[]>([])
@@ -298,7 +300,7 @@ export function ResponseReviewSheet({
                 <Skeleton className="h-10 w-2/3" />
               </div>
             ) : (
-              <FieldActivityStream comments={comments} events={events} viewer="teacher" onDelete={handleDelete} scrollToLatest />
+              <FieldActivityStream comments={comments} events={events} viewer="teacher" onDelete={canReview ? handleDelete : undefined} scrollToLatest />
             )}
           </div>
         </div>
@@ -308,7 +310,8 @@ export function ResponseReviewSheet({
           <CommentComposer draftRef={draftRef} onSubmit={(text) => postComment(text, false)} />
         </div>
 
-        {/* Full-width review actions */}
+        {/* Full-width review actions (staff only) */}
+        {canReview && (
         <div className="flex items-center gap-2 border-t px-6 py-3">
           {(status.isComplete || status.revisionNeeded) ? (
             <Button variant="outline" className="flex-1 bg-white dark:bg-transparent" disabled={acting} onClick={() => applyAction("ready")}>
@@ -337,6 +340,7 @@ export function ResponseReviewSheet({
             </>
           )}
         </div>
+        )}
       </SheetContent>
     </Sheet>
   )

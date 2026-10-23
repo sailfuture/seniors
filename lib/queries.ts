@@ -12,6 +12,7 @@ import {
 import {
   fetchStaff,
   fetchStaffRoleOverrides,
+  type StaffMember,
   type StaffRoleOverride,
 } from "@/lib/staff"
 
@@ -50,6 +51,11 @@ export function useStaffRoleCacheActions() {
     () => ({
       setOverrides: (rows: StaffRoleOverride[]) =>
         qc.setQueryData<StaffRoleOverride[]>(queryKeys.staffRoles, rows),
+      staffAdded: (member: StaffMember) =>
+        qc.setQueryData<StaffMember[]>(queryKeys.staff, (prev) => [
+          ...(prev ?? []).filter((t) => t.id !== member.id),
+          member,
+        ]),
     }),
     [qc]
   )

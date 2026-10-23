@@ -59,7 +59,8 @@ interface TeacherCommentProps {
   comments: Comment[]
   onSubmit: (fieldName: string, note: string) => Promise<void>
   onMarkComplete?: (commentId: number, isComplete: boolean) => Promise<void>
-  onDelete: (commentId: number) => Promise<void>
+  /** Omit to hide comment deletion (advisors). */
+  onDelete?: (commentId: number) => Promise<void>
   square?: boolean
   plagiarism?: PlagiarismData
   teacherGuideline?: string

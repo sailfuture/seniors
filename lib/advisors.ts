@@ -185,3 +185,22 @@ export function assignmentsFor(
     (a) => String(a.students_id ?? "") === String(studentId) && a.type === product
   )
 }
+
+/**
+ * Whether an advisor may open a student's work for a product: they need an
+ * assignment for that student and product, and (when their row has a type)
+ * the product has to be theirs. Fails closed — an unreachable table means no
+ * access rather than a peek at someone else's student.
+ */
+export async function advisorCanViewStudent(
+  advisorId: number,
+  studentId: string,
+  product: AdvisorProduct
+): Promise<boolean> {
+  const [advisors, assignments] = await Promise.all([fetchAdvisors(), fetchAdvisorAssignments()])
+  const me = advisors.find((a) => Number(a.id) === Number(advisorId))
+  if (!me || me.isActive === false || !advisorAllowsProduct(me, product)) return false
+  return assignmentsFor(assignments, studentId, product).some(
+    (a) => Number(a.advisors_id) === Number(advisorId)
+  )
+}

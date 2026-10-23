@@ -36,7 +36,7 @@ import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSectio
 import { fetchBtSections, invalidateBtSectionsCache, btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
 import { useRefreshKey } from "@/lib/refresh-context"
 import { canEditTemplates, canManageAdvisors, isStaffRole } from "@/lib/roles"
-import { useStudents } from "@/lib/queries"
+import { useAllStudents, useStudents } from "@/lib/queries"
 import { classYearOf, currentClassYear } from "@/lib/students"
 import type { Comment } from "@/lib/form-types"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
@@ -70,8 +70,9 @@ interface StudentInfo {
 
 function useStudentInfo(studentId: string | null): StudentInfo | null {
   // Derived from the shared students cache — the old version fetched the
-  // whole table again into a module-level Map.
-  const { data } = useStudents({ enabled: !!studentId })
+  // whole table again into a module-level Map. Graduated students included,
+  // so their locked projects still get a header and a way back.
+  const { data } = useAllStudents({ enabled: !!studentId })
   return useMemo(() => {
     if (!studentId) return null
     const s = (data ?? []).find((x) => String(x.id) === String(studentId))
@@ -766,6 +767,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const role = (session?.user as Record<string, unknown>)?.role as string | undefined
   // Staff share one sidebar; which extra groups show depends on the tier.
   const isStaff = isStaffRole(role)
+  // Advisors read their assigned students' work through the staff pages.
+  const isAdvisor = role === "advisor"
+  const isReviewer = isStaff || isAdvisor
   const staffAccess: StaffNavAccess = {
     templates: canEditTemplates(role),
     users: canManageAdvisors(role),
@@ -775,12 +779,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { sections: btSections, loading: btSectionsLoading } = useBusinessThesisSections(refreshKey)
 
   const adminStudentId = extractStudentId(pathname)
-  const ownStudentId = !isStaff ? ((session?.user as Record<string, unknown>)?.students_id as string | undefined) ?? null : null
+  const ownStudentId = !isReviewer ? ((session?.user as Record<string, unknown>)?.students_id as string | undefined) ?? null : null
   const studentId = adminStudentId ?? ownStudentId
   const { counts: reviewCounts, loading: reviewLoading } = useSectionReviewCounts(studentId, refreshKey)
-  const { counts: commentCounts, loading: commentLoading } = useSectionCommentCounts(!isStaff ? studentId : null, refreshKey)
+  const { counts: commentCounts, loading: commentLoading } = useSectionCommentCounts(!isReviewer ? studentId : null, refreshKey)
   const { counts: btReviewCounts, loading: btReviewLoading } = useBtSectionReviewCounts(studentId, refreshKey)
-  const { counts: btCommentCounts, loading: btCommentLoading } = useBtSectionCommentCounts(!isStaff ? studentId : null, refreshKey)
+  const { counts: btCommentCounts, loading: btCommentLoading } = useBtSectionCommentCounts(!isReviewer ? studentId : null, refreshKey)
   const sidebarLoading = sectionsLoading || btSectionsLoading || reviewLoading || commentLoading || btReviewLoading || btCommentLoading
   const studentList = useStudentList(isStaff)
   const navItems = getNavFromPathname(pathname, isStaff, staffAccess, sections, btSections, {
@@ -794,14 +798,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     btCompleteSet: btReviewCounts.complete,
   }, studentList)
   const studentInfo = useStudentInfo(adminStudentId)
-  const publicPagesNav = !isStaff ? buildStudentPublicPagesNav(ownStudentId) : null
+  const publicPagesNav = !isReviewer ? buildStudentPublicPagesNav(ownStudentId) : null
 
   const isLifeMap = pathname.startsWith("/admin/life-map/") && adminStudentId
 
-  // Advisors work from their dashboard's student list; the sidebar is built
-  // around a student's own sections or the admin roster, neither of which
-  // applies to them. (After the hooks so the hook order stays stable.)
-  if (role === "advisor") {
+  // Advisors work from their dashboard's student list, so they only get a
+  // sidebar inside one student's work. (After the hooks so the hook order
+  // stays stable.)
+  if (isAdvisor && !adminStudentId) {
     return null
   }
 
@@ -848,10 +852,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroup className="pb-0">
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Student List">
-                  <Link href={isLifeMap ? "/admin/life-map" : "/admin/business-thesis"}>
+                <SidebarMenuButton asChild tooltip={isAdvisor ? "Your Students" : "Student List"}>
+                  <Link href={isAdvisor ? "/dashboard" : isLifeMap ? "/admin/life-map" : "/admin/business-thesis"}>
                     <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} />
-                    <span className="font-semibold">Student List</span>
+                    <span className="font-semibold">{isAdvisor ? "Your Students" : "Student List"}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -859,7 +863,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         )}
         <NavMain items={navItems} hideLabel={!!studentInfo} loading={sidebarLoading} />
-        {!isStaff && (
+        {!isReviewer && (
           <SidebarGroup>
             <SidebarGroupLabel>Tools</SidebarGroupLabel>
             <SidebarMenu>
@@ -911,7 +915,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroup>
         )}
-        {adminStudentId && (
+        {adminStudentId && isAdvisor && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Public Page</SidebarGroupLabel>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={isLifeMap ? "Life Map" : "Business Thesis"}>
+                  <a
+                    href={`/public/${isLifeMap ? "life-map" : "business-thesis"}/${adminStudentId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
+                    <span>{isLifeMap ? "Life Map" : "Business Thesis"}</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+        {adminStudentId && !isAdvisor && (
           <SidebarGroup>
             <SidebarGroupLabel>Public Pages</SidebarGroupLabel>
             <SidebarMenu>

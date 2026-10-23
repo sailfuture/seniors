@@ -4,6 +4,16 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useSession } from "@/components/session-provider"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -24,6 +34,7 @@ import {
 } from "@/components/ui/select"
 import { canManageStaff, STAFF_ROLE_LABEL, type StaffRole } from "@/lib/roles"
 import {
+  addStaffMember,
   effectiveStaffRole,
   setStaffRole,
   staffInitials,
@@ -42,11 +53,20 @@ const ROLE_HELP: Record<StaffRole, string> = {
   supervisor: "Student rosters, reviews, and the thesis advisors — no template editing.",
 }
 
+interface StaffForm {
+  firstName: string
+  lastName: string
+  email: string
+  role: StaffRole
+}
+
+const EMPTY_FORM: StaffForm = { firstName: "", lastName: "", email: "", role: "teacher" }
+
 /**
- * Staff tiers for the Senior Dashboard. Staff members themselves come from
- * the shared teachers roster (added and archived in Toddle); this page only
- * decides what each of them can do here. Only admins can change a tier, and
- * nobody can change their own.
+ * Staff tiers for the Senior Dashboard. Staff members themselves live in the
+ * shared Toddle teachers roster; admins can add someone to it from here
+ * (archiving and other edits stay in Toddle). Only admins can add staff or
+ * change a tier, and nobody can change their own.
  */
 export function StaffManager() {
   const { data: session } = useSession()
@@ -64,6 +84,9 @@ export function StaffManager() {
 
   const [search, setSearch] = useState("")
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [form, setForm] = useState<StaffForm>(EMPTY_FORM)
+  const [adding, setAdding] = useState(false)
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -91,21 +114,73 @@ export function StaffManager() {
     })
   }
 
+  const openAdd = () => {
+    setForm(EMPTY_FORM)
+    setAddOpen(true)
+  }
+
+  const add = async () => {
+    const email = form.email.trim().toLowerCase()
+    if (!form.firstName.trim() || !email) {
+      toast.error("First name and email are required.")
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("That email doesn't look right.")
+      return
+    }
+    setAdding(true)
+    try {
+      const result = await addStaffMember({ ...form, email })
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+      const { member, reactivated } = result
+      cache.staffAdded(member)
+
+      // Toddle only knows Admin/Teacher; a supervisor needs an override row.
+      // The person exists either way, so a failure here only downgrades the toast.
+      let tierSet = true
+      if (effectiveStaffRole(member, overrides) !== form.role) {
+        const next = await setStaffRole(member, form.role, overrides)
+        if (next) cache.setOverrides(next)
+        else tierSet = false
+      }
+
+      if (tierSet) {
+        toast.success(
+          `${staffName(member)} ${reactivated ? "is back on staff" : "added to Toddle"} as ${STAFF_ROLE_LABEL[form.role].toLowerCase()}`,
+          { description: "They can sign in with their school Google account." }
+        )
+      } else {
+        toast.warning(`${staffName(member)} added, but their role didn't save — set it in the table.`)
+      }
+      setAddOpen(false)
+    } finally {
+      setAdding(false)
+    }
+  }
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-muted-foreground max-w-2xl text-sm">
-          Staff are added and archived in Toddle. Their role here decides what they can
-          do on the Senior Dashboard.
-          {!editable && " Only admins can change roles."}
+          Staff live in Toddle&apos;s teacher roster, and anyone added here is added there
+          too. Archiving and other edits still happen in Toddle. Their role here decides
+          what they can do on the Senior Dashboard.
+          {!editable && " Only admins can add staff or change roles."}
         </p>
-        <Input
-          placeholder="Search staff…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          spellCheck={false}
-          className="w-full max-w-xs"
-        />
+        <div className="flex w-full max-w-md items-center gap-2 sm:w-auto">
+          <Input
+            placeholder="Search staff…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            spellCheck={false}
+            className="w-full sm:w-64"
+          />
+          {editable && <Button onClick={openAdd}>Add staff member</Button>}
+        </div>
       </div>
 
       <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
@@ -203,6 +278,80 @@ export function StaffManager() {
           </Table>
         </div>
       )}
+
+      <Dialog open={addOpen} onOpenChange={(o) => { if (!adding) setAddOpen(o) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add staff member</DialogTitle>
+            <DialogDescription>
+              Adds them to Toddle&apos;s teacher roster. Use their school Google email —
+              it&apos;s what they sign in with.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="staff-first">First name</Label>
+                <Input
+                  id="staff-first"
+                  value={form.firstName}
+                  onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                  spellCheck={false}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="staff-last">Last name</Label>
+                <Input
+                  id="staff-last"
+                  value={form.lastName}
+                  onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="staff-email">Email</Label>
+              <Input
+                id="staff-email"
+                type="email"
+                placeholder="name@sailfuture.org"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="staff-role">Role</Label>
+              <Select
+                value={form.role}
+                onValueChange={(v) => setForm((f) => ({ ...f, role: v as StaffRole }))}
+              >
+                <SelectTrigger id="staff-role" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STAFF_ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {STAFF_ROLE_LABEL[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">
+                {ROLE_HELP[form.role]}
+                {form.role === "supervisor" && " Shows as Teacher in Toddle."}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={adding} onClick={() => setAddOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={adding} onClick={add}>
+              {adding ? "Adding…" : "Add staff member"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -39,3 +39,10 @@ export function canManageAdvisors(role: unknown): boolean {
 export function canManageStaff(role: unknown): boolean {
   return role === "admin"
 }
+
+/** Marking work complete, requesting revisions, undoing a review, and
+ *  deleting comments. Advisors can read everything and leave comments, but
+ *  the review status stays with SailFuture staff. */
+export function canReviewWork(role: unknown): boolean {
+  return isStaffRole(role)
+}

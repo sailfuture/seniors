@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react"
 import { useSession } from "@/components/session-provider"
+import { useCanReview } from "@/hooks/use-can-review"
 import Link from "next/link"
 import { ReadOnlyDynamicFormPage } from "@/components/form/readonly-dynamic-form-page"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -31,6 +32,7 @@ export default function AdminLifeMapSectionPage({
 }) {
   const { studentId, section } = use(params)
   const { data: session } = useSession()
+  const canReview = useCanReview()
   const [label, setLabel] = useState(slugToTitle(section))
   const [sectionDescription, setSectionDescription] = useState("")
   const [sectionId, setSectionId] = useState<number | null>(null)
@@ -139,7 +141,7 @@ export default function AdminLifeMapSectionPage({
           fieldLabel={label}
           comments={sectionComments}
           onSubmit={handlePostSectionComment}
-          onDelete={handleDeleteComment}
+          onDelete={canReview ? handleDeleteComment : undefined}
           square
         />
         <div className="inline-flex size-8 items-center justify-center rounded-md border">

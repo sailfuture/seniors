@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
+import Link from "next/link"
 import { useSession } from "@/components/session-provider"
 import {
   advisorProduct,
@@ -26,7 +27,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
-function productHref(product: AdvisorProduct, studentId: string) {
+/** The staff view of a student's work: every response, comment thread,
+    revision, and version, read-only for review status. */
+function reviewHref(product: AdvisorProduct, studentId: string) {
+  return `/admin/${product}/${studentId}`
+}
+
+function publicHref(product: AdvisorProduct, studentId: string) {
   return `/public/${product}/${studentId}`
 }
 
@@ -91,8 +98,8 @@ export function AdvisorDashboard() {
         <h1 className="text-2xl font-bold">Your students</h1>
         <p className="text-muted-foreground mt-1">
           {myProduct
-            ? `Students whose ${PRODUCT_LABEL[myProduct]} you advise on, with links to their current work.`
-            : "Students you advise, with links to their current work."}
+            ? `Students whose ${PRODUCT_LABEL[myProduct]} you advise on. Open one to read every response, comment, and revision.`
+            : "Students you advise. Open one to read every response, comment, and revision."}
         </p>
       </div>
 
@@ -138,15 +145,22 @@ export function AdvisorDashboard() {
               </CardHeader>
               <CardContent className="flex flex-wrap items-center gap-2">
                 {products.map((product) => (
-                  <Button key={product} asChild variant="outline" size="sm">
-                    <a
-                      href={productHref(product, student.id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      View {PRODUCT_LABEL[product]}
-                    </a>
-                  </Button>
+                  <div key={product} className="flex flex-wrap gap-2">
+                    <Button asChild size="sm">
+                      <Link href={reviewHref(product, student.id)}>
+                        Review {PRODUCT_LABEL[product]}
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline" size="sm">
+                      <a
+                        href={publicHref(product, student.id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Public page
+                      </a>
+                    </Button>
+                  </div>
                 ))}
                 {products.length === 0 && (
                   <Badge variant="secondary">No projects assigned</Badge>

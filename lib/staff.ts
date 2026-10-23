@@ -1,10 +1,12 @@
 import type { StaffRole } from "@/lib/roles"
 
 /**
- * Staff members come from the shared Toddle `teachers` table; this app only
- * reads it. The Senior Dashboard tier (admin / teacher / supervisor) is
- * stored in this app's own `senior_staff_roles` table so changing it here
- * never touches what Toddle means by "Admin".
+ * Staff members come from the shared Toddle `teachers` table. This app only
+ * writes to it when an admin adds someone (or brings back an archived row);
+ * everything else about a staff member is managed in Toddle. The Senior
+ * Dashboard tier (admin / teacher / supervisor) is stored in this app's own
+ * `senior_staff_roles` table so changing it here never touches what Toddle
+ * means by "Admin".
  */
 const TEACHERS_ENDPOINT = "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/teachers"
 
@@ -52,6 +54,19 @@ function isStaffRoleValue(v: unknown): v is StaffRole {
   return v === "admin" || v === "teacher" || v === "supervisor"
 }
 
+function toStaffMember(t: StaffMember): StaffMember {
+  return {
+    id: String(t.id),
+    email: t.email,
+    firstName: t.firstName ?? "",
+    lastName: t.lastName ?? "",
+    role: t.role ?? null,
+    isArchived: t.isArchived,
+    picture: t.picture ?? null,
+    headshot: t.headshot ?? null,
+  }
+}
+
 /** Active (non-archived) staff, with only the fields the Users page shows. */
 export async function fetchStaff(): Promise<StaffMember[]> {
   try {
@@ -61,16 +76,7 @@ export async function fetchStaff(): Promise<StaffMember[]> {
     if (!Array.isArray(rows)) return []
     return (rows as StaffMember[])
       .filter((t) => t.isArchived !== true && t.email)
-      .map((t) => ({
-        id: String(t.id),
-        email: t.email,
-        firstName: t.firstName ?? "",
-        lastName: t.lastName ?? "",
-        role: t.role ?? null,
-        isArchived: t.isArchived,
-        picture: t.picture ?? null,
-        headshot: t.headshot ?? null,
-      }))
+      .map(toStaffMember)
   } catch {
     return []
   }
@@ -136,5 +142,72 @@ export async function setStaffRole(
     return [...others, created]
   } catch {
     return null
+  }
+}
+
+/** The value written to Toddle's role column for a new staff member. Only
+ *  admins are "Admin" in Toddle; supervisors are teachers there and get their
+ *  tier from an override row. */
+function toddleRoleFor(role: StaffRole): string {
+  return role === "admin" ? "Admin" : "Teacher"
+}
+
+export type AddStaffResult =
+  | { ok: true; member: StaffMember; reactivated: boolean }
+  | { ok: false; error: string }
+
+/**
+ * Adds a staff member to Toddle's teachers table. An archived row with the
+ * same email is brought back rather than duplicated, since the email is the
+ * sign-in identity. The dashboard tier is set separately (setStaffRole) so a
+ * supervisor still reads as "Teacher" in Toddle.
+ */
+export async function addStaffMember(data: {
+  firstName: string
+  lastName: string
+  email: string
+  role: StaffRole
+}): Promise<AddStaffResult> {
+  const email = data.email.trim().toLowerCase()
+  const fields = {
+    firstName: data.firstName.trim(),
+    lastName: data.lastName.trim(),
+    role: toddleRoleFor(data.role),
+    isArchived: false,
+  }
+
+  try {
+    // The cached list skips archived rows, so read the table fresh.
+    const listRes = await fetch(TEACHERS_ENDPOINT)
+    if (!listRes.ok) return { ok: false, error: "Couldn't reach Toddle — please try again." }
+    const rows = await listRes.json()
+    const existing = Array.isArray(rows)
+      ? (rows as StaffMember[]).find((t) => t.email?.trim().toLowerCase() === email)
+      : undefined
+
+    if (existing && existing.isArchived !== true) {
+      return { ok: false, error: `${staffName(existing)} is already on staff.` }
+    }
+
+    const res = existing
+      ? await fetch(`${TEACHERS_ENDPOINT}/${existing.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fields),
+        })
+      : await fetch(TEACHERS_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...fields, email }),
+        })
+    if (!res.ok) return { ok: false, error: "Toddle didn't accept the new staff member — please try again." }
+
+    const saved = (await res.json().catch(() => null)) as StaffMember | null
+    const id = saved?.id ?? existing?.id
+    if (id == null) return { ok: false, error: "Toddle didn't return the new staff member — refresh to check." }
+    const member = toStaffMember({ ...existing, ...saved, ...fields, email, id } as StaffMember)
+    return { ok: true, member, reactivated: !!existing }
+  } catch {
+    return { ok: false, error: "Couldn't reach Toddle — please try again." }
   }
 }

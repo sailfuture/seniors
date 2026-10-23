@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useSession } from "@/components/session-provider"
+import { useCanReview } from "@/hooks/use-can-review"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -285,6 +286,8 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const focusField = searchParams.get("focus")
   const focusApplied = useRef(false)
   const { data: session } = useSession()
+  // Advisors see everything and can comment; review status stays with staff.
+  const canReview = useCanReview()
   const { register: registerRefresh, unregister: unregisterRefresh } = useRefreshRegister()
   const bumpSidebar = useBumpSidebar()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
@@ -866,17 +869,42 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   minWords={q.min_words > 0 ? q.min_words : undefined}
                   comments={comments}
                   onSubmit={(fieldName, note) => handlePostComment(fieldName, note, q.id)}
-                  onDelete={handleDelete}
+                  onDelete={canReview ? handleDelete : undefined}
                   plagiarism={(isLong || isRichText) && isSubmitted ? gptzero : undefined}
                   teacherGuideline={q.teacher_guideline}
                   responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : null}
                   lastEdited={response?.last_edited}
                   onMarkRepliesSeen={handleMarkRepliesSeen}
-                  onMarkCompleteAction={isSubmitted || hasReviewableContent ? () => handleResponseReviewAction(response!.id, q.id, "complete") : undefined}
-                  onRequestRevision={isSubmitted || hasReviewableContent ? () => { setRevisionModal({ responseId: response!.id, templateId: q.id }); setRevisionComment("") } : undefined}
-                  onUndoStatus={isSubmitted && (response!.isComplete || (response!.revisionNeeded && !studentEditedSinceRevision)) ? () => handleResponseReviewAction(response!.id, q.id, "ready") : undefined}
+                  onMarkCompleteAction={canReview && (isSubmitted || hasReviewableContent) ? () => handleResponseReviewAction(response!.id, q.id, "complete") : undefined}
+                  onRequestRevision={canReview && (isSubmitted || hasReviewableContent) ? () => { setRevisionModal({ responseId: response!.id, templateId: q.id }); setRevisionComment("") } : undefined}
+                  onUndoStatus={canReview && isSubmitted && (response!.isComplete || (response!.revisionNeeded && !studentEditedSinceRevision)) ? () => handleResponseReviewAction(response!.id, q.id, "ready") : undefined}
                 />
                 {response && (() => {
+                  // Advisors get the status icon without the review buttons.
+                  if (!canReview) {
+                    if (!isSubmitted) {
+                      return <span className="text-muted-foreground/50 text-[10px] font-medium uppercase tracking-wide">Draft</span>
+                    }
+                    if (response.isComplete) {
+                      return (
+                        <div title="Complete">
+                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
+                        </div>
+                      )
+                    }
+                    if (response.revisionNeeded) {
+                      return (
+                        <div title="Needs revision">
+                          <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
+                        </div>
+                      )
+                    }
+                    return (
+                      <div title="Ready for review">
+                        <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
+                      </div>
+                    )
+                  }
                   if (!isSubmitted) {
                     return (
                       <>
@@ -1035,7 +1063,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                         </div>
                       )}
                     </div>
-                    {readyCount > 0 && (
+                    {canReview && readyCount > 0 && (
                       <ConfirmAllButton
                         readyCount={readyCount}
                         onConfirmAll={async () => {
@@ -1051,7 +1079,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                         }}
                       />
                     )}
-                    {(() => {
+                    {canReview && (() => {
                       const targets = ungroupedQuestions.filter((q) => {
                         const r = responses.get(q.id)
                         return hasResponseContent(r) && !r!.isComplete && !r!.revisionNeeded
@@ -1109,7 +1137,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 cfg={cfg}
                 F={F}
                 setComments={setComments}
-                handleDelete={handleDelete}
+                handleDelete={canReview ? handleDelete : undefined}
                 handleResponseReviewAction={handleResponseReviewAction}
                 postBulkRevisionNote={postBulkRevisionNote}
                 responses={responses}
@@ -1324,7 +1352,7 @@ function ReadonlyGroupCard({
   cfg: FormApiConfig
   F: FormApiConfig["fields"]
   setComments: React.Dispatch<React.SetStateAction<Comment[]>>
-  handleDelete: (id: number) => Promise<void>
+  handleDelete?: (id: number) => Promise<void>
   handleResponseReviewAction: (responseId: number, templateId: number, action: "complete" | "revision" | "ready" | "clear", comment?: string, silent?: boolean) => Promise<void>
   postBulkRevisionNote: (note: string, groupId?: number) => Promise<void>
   responses: Map<number, StudentResponse>
@@ -1332,6 +1360,7 @@ function ReadonlyGroupCard({
   hasDisplayType: boolean
   renderQuestionList: (qs: TemplateQuestion[], flat?: boolean) => React.ReactNode
 }) {
+  const canReview = useCanReview()
   const [collapsed, setCollapsed] = useState(allComplete)
   const [expandKey, setExpandKey] = useState(0)
 
@@ -1422,7 +1451,7 @@ function ReadonlyGroupCard({
               onDelete={handleDelete}
               square
             />
-            {readyCount > 0 && (
+            {canReview && readyCount > 0 && (
               <ConfirmAllButton
                 readyCount={readyCount}
                 onConfirmAll={async () => {
@@ -1438,7 +1467,7 @@ function ReadonlyGroupCard({
                 }}
               />
             )}
-            {(() => {
+            {canReview && (() => {
               const targets = gQuestions.filter((q) => {
                 const r = responses.get(q.id)
                 return hasResponseContent(r) && !r!.isComplete && !r!.revisionNeeded
