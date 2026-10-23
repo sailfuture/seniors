@@ -183,15 +183,6 @@ export function StaffManager() {
         </div>
       </div>
 
-      <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
-        {STAFF_ROLES.map((r) => (
-          <div key={r} className="rounded-lg border px-3 py-2">
-            <dt className="font-medium">{STAFF_ROLE_LABEL[r]}</dt>
-            <dd className="text-muted-foreground text-xs">{ROLE_HELP[r]}</dd>
-          </div>
-        ))}
-      </dl>
-
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
