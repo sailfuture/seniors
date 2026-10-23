@@ -20,6 +20,7 @@ import {
   AlertCircleIcon,
   ArrowTurnBackwardIcon,
   ArrowDown01Icon,
+  Undo02Icon,
 } from "@hugeicons/core-free-icons"
 import {
   Dialog,
@@ -898,9 +899,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             }
             displayValue={displayValue}
           >
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <div className="flex min-w-0 items-center gap-2">
                 {relativeTime && !showAiFooter && (
-                  <span className="text-muted-foreground whitespace-nowrap text-xs" title={editedTitle}>{relativeTime}</span>
+                  <span className="text-muted-foreground min-w-0 truncate text-xs" title={editedTitle}>{relativeTime}</span>
                 )}
                 <QuestionInstructions question={q} />
                 <TeacherComment
@@ -943,7 +944,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                             <Button
                               variant="outline"
                               size="icon"
-                              className="size-6"
+                              className="size-6 shrink-0"
                               title="Request revision"
                               onClick={() => { setRevisionModal({ responseId: response.id, templateId: q.id }); setRevisionComment("") }}
                             >
@@ -953,7 +954,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                             <Button
                               variant="outline"
                               size="icon"
-                              className="size-6"
+                              className="size-6 shrink-0"
                               title="Mark complete"
                               onClick={() => handleResponseReviewAction(response.id, q.id, "complete")}
                             >
@@ -969,17 +970,18 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   if (response.isComplete) {
                     return (
                       <>
-                        <div title="Complete">
+                        <div title="Complete" className="shrink-0">
                           <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
                         </div>
                         <Button
                           variant="outline"
-                          size="sm"
-                          className="h-7 bg-white px-2.5 text-xs dark:bg-transparent"
+                          size="icon"
+                          className="size-6 shrink-0 bg-white dark:bg-transparent"
                           title="Undo — return to review"
+                          aria-label="Undo — return to review"
                           onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
                         >
-                          Undo
+                          <HugeiconsIcon icon={Undo02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                         </Button>
                       </>
                     )
@@ -987,18 +989,19 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   if (response.revisionNeeded) {
                     return (
                       <>
-                        <div title={revisionBy ? `${revisionBy}${revisionMs != null ? `, ${dateTime(revisionMs)}` : ""}` : "Needs revision"}>
+                        <div className="shrink-0" title={revisionBy ? `${revisionBy}${revisionMs != null ? `, ${dateTime(revisionMs)}` : ""}` : "Needs revision"}>
                           <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
                         </div>
                         {!studentEditedSinceRevision && (
                           <Button
                             variant="outline"
-                            size="sm"
-                            className="h-7 bg-white px-2.5 text-xs dark:bg-transparent"
+                            size="icon"
+                            className="size-6 shrink-0 bg-white dark:bg-transparent"
                             title="Undo — return to review"
+                            aria-label="Undo — return to review"
                             onClick={() => handleResponseReviewAction(response.id, q.id, "ready")}
                           >
-                            Undo
+                            <HugeiconsIcon icon={Undo02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                           </Button>
                         )}
                       </>
@@ -1009,7 +1012,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       <Button
                         variant="outline"
                         size="icon"
-                        className="size-6"
+                        className="size-6 shrink-0"
                         title="Request revision"
                         onClick={() => { setRevisionModal({ responseId: response.id, templateId: q.id }); setRevisionComment("") }}
                       >
@@ -1019,14 +1022,14 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       <Button
                         variant="outline"
                         size="icon"
-                        className="size-6"
+                        className="size-6 shrink-0"
                         title="Mark complete"
                         onClick={() => handleResponseReviewAction(response.id, q.id, "complete")}
                       >
                         <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                       </Button>
                       )}
-                      <div title="Ready for review">
+                      <div title="Ready for review" className="shrink-0">
                         <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
                       </div>
                     </>
@@ -1324,7 +1327,7 @@ function CollapsibleQuestionCard({
           on top, and the timestamp, icons and actions on a line beneath it, so
           nothing is ever laid over the title in narrow (4-column) cards. */}
       <div
-        className={`mb-1.5 flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 ${isComplete ? "cursor-pointer select-none" : ""}`}
+        className={`mb-1.5 flex flex-col gap-1.5 ${isComplete ? "cursor-pointer select-none" : ""}`}
         onClick={
           isComplete
             ? (e) => {
