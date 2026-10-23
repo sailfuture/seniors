@@ -9,7 +9,7 @@ import {
   type AdvisorProduct,
 } from "@/lib/advisors"
 import { type RosterStudent } from "@/lib/students"
-import { useAdvisorAssignments, useAdvisors, useStudents } from "@/lib/queries"
+import { useAdvisorAssignments, useAdvisors, useAllStudents } from "@/lib/queries"
 import {
   Avatar,
   AvatarFallback,
@@ -39,7 +39,8 @@ export function AdvisorDashboard() {
   const { data: session } = useSession()
   const advisorsId = session?.user?.advisors_id
   const assignmentsQuery = useAdvisorAssignments()
-  const studentsQuery = useStudents()
+  // Graduated students stay listed so their locked projects remain reachable.
+  const studentsQuery = useAllStudents()
   const advisorsQuery = useAdvisors()
 
   // A business thesis advisor sees only business theses, a life map advisor

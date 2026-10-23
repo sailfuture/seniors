@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { fetchActiveStudents, type RosterStudent } from "@/lib/students"
+import { fetchActiveStudents, fetchArchivedStudents, type RosterStudent } from "@/lib/students"
 import {
   fetchAdvisors,
   fetchAdvisorAssignments,
@@ -26,6 +26,7 @@ import {
  */
 export const queryKeys = {
   students: ["students"] as const,
+  archivedStudents: ["students", "archived"] as const,
   advisors: ["advisors"] as const,
   advisorAssignments: ["advisor-assignments"] as const,
   staff: ["staff"] as const,
@@ -56,6 +57,31 @@ export function useStaffRoleCacheActions() {
 
 export function useStudents({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({ queryKey: queryKeys.students, queryFn: fetchActiveStudents, enabled })
+}
+
+export function useArchivedStudents({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.archivedStudents,
+    queryFn: fetchArchivedStudents,
+    enabled,
+  })
+}
+
+/**
+ * Active and graduated students together, for surfaces that must resolve any
+ * student id — advisor assignments outlive graduation, so an advisor's list
+ * can point at an archived student. `data` is undefined until both lists
+ * have loaded.
+ */
+export function useAllStudents({ enabled = true }: { enabled?: boolean } = {}) {
+  const active = useStudents({ enabled })
+  const archived = useArchivedStudents({ enabled })
+  const data = useMemo<RosterStudent[] | undefined>(() => {
+    if (!active.data || !archived.data) return undefined
+    const seen = new Set(active.data.map((s) => String(s.id)))
+    return [...active.data, ...archived.data.filter((s) => !seen.has(String(s.id)))]
+  }, [active.data, archived.data])
+  return { data, isPending: active.isPending || archived.isPending }
 }
 
 export function useAdvisors() {

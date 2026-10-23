@@ -79,3 +79,18 @@ export async function fetchActiveStudents(): Promise<RosterStudent[]> {
     return []
   }
 }
+
+const ARCHIVED_STUDENTS_ENDPOINT =
+  "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_archived_students_email"
+
+/** Graduated students (archived in Xano, same fields as the active roster). */
+export async function fetchArchivedStudents(): Promise<RosterStudent[]> {
+  try {
+    const res = await fetch(ARCHIVED_STUDENTS_ENDPOINT)
+    if (!res.ok) return []
+    const rows = await res.json()
+    return Array.isArray(rows) ? (rows as RosterStudent[]) : []
+  } catch {
+    return []
+  }
+}

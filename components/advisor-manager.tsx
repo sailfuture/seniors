@@ -80,7 +80,7 @@ import {
   useAdvisorCacheActions,
   useAdvisorAssignments,
   useAdvisors,
-  useStudents,
+  useAllStudents,
 } from "@/lib/queries"
 import { AdvisorStudentsDialog } from "@/components/advisor-students-dialog"
 import { cn } from "@/lib/utils"
@@ -230,7 +230,8 @@ export function AdvisorManager() {
   // once app-wide instead of once per surface.
   const advisorsQuery = useAdvisors()
   const assignmentsQuery = useAdvisorAssignments()
-  const studentsQuery = useStudents()
+  // Active and graduated: assignments can outlive a student's graduation.
+  const studentsQuery = useAllStudents()
   const advisors = advisorsQuery.data ?? []
   const assignments = assignmentsQuery.data ?? []
   const students = studentsQuery.data ?? []
@@ -256,8 +257,8 @@ export function AdvisorManager() {
   }, [assignments])
 
   const studentsById = useMemo(
-    () => new Map(students.map((s) => [String(s.id), s])),
-    [students]
+    () => new Map((studentsQuery.data ?? []).map((s) => [String(s.id), s])),
+    [studentsQuery.data]
   )
 
   const sorted = useMemo(
