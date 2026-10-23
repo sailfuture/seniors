@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useSession } from "@/components/session-provider"
@@ -37,6 +37,7 @@ import {
   Link01Icon,
   ArrowLeft02Icon,
   Activity01Icon,
+  BookOpen01Icon,
 } from "@hugeicons/core-free-icons"
 import { titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import type { Comment } from "@/lib/form-types"
@@ -51,6 +52,16 @@ import { fetchResponseEvents, type ResponseEvent } from "@/lib/response-events"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { formatWhen } from "@/lib/format-time"
 import { markdownToPlainText } from "@/lib/markdown-text"
+import { SectionGuideSheet, buildSectionGuide } from "@/components/form/section-guide-sheet"
+import {
+  GroupTreeCell,
+  SectionGuideButton,
+  describeGroups,
+  groupRowBackground,
+  GROUP_ROW,
+  GROUP_ROW_LAST,
+  SECTION_HEADER_ROW_EXPANDED,
+} from "@/components/form/section-tree"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -81,6 +92,8 @@ interface TemplateQuestion {
   isPublished: boolean
   sortOrder: number
   min_words?: number
+  detailed_instructions?: string
+  teacher_guideline?: string
   question_types_id?: number | null
   _question_types?: { id: number; type: string; noInput?: boolean }
 }
@@ -131,6 +144,22 @@ export default function StudentLifeMapOverviewPage() {
   const [questionTypes, setQuestionTypes] = useState<{ id: number; type: string }[]>([])
   const [allTemplateQuestions, setAllTemplateQuestions] = useState<TemplateQuestion[]>([])
   const [allResponses, setAllResponses] = useState<StudentResponse[]>([])
+
+  // Project guide: one scrolling outline of every section and group. undefined
+  // = closed, null = open at the top, a number = open at that section.
+  const [guideSectionId, setGuideSectionId] = useState<number | null | undefined>(undefined)
+  const guideSections = useMemo(
+    () =>
+      buildSectionGuide(rows, allTemplateQuestions, {
+        sectionId: (q) => q.lifemap_sections_id,
+        groupId: (q) => q.lifemap_custom_group_id,
+        sectionDescription: (s) => s.section_description,
+        typeName: (q) =>
+          q._question_types?.type ??
+          (q.question_types_id ? questionTypes.find((t) => t.id === q.question_types_id)?.type : undefined),
+      }),
+    [rows, allTemplateQuestions, questionTypes]
+  )
 
   const [sheetRow, setSheetRow] = useState<SectionRow | null>(null)
   const [sheetGroupId, setSheetGroupId] = useState<number | null>(null)
@@ -344,7 +373,9 @@ export default function StudentLifeMapOverviewPage() {
       <div>
         <h1 className="text-2xl font-bold">Life Map Overview</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          View your progress across all sections.
+          Your Life Map is built from sections. Each section is a major component of the
+          plan, and the groups nested inside it break that component into smaller sets of
+          questions. Open the guide to see what every section and group asks for.
         </p>
         <div className="mt-3 flex items-center justify-between">
           <Button variant="outline" size="sm" className="gap-2" asChild>
@@ -353,14 +384,20 @@ export default function StudentLifeMapOverviewPage() {
               Dashboard
             </Link>
           </Button>
-          {studentId && (
-            <Button variant="outline" size="sm" className="gap-2" asChild>
-              <a href={`/public/life-map/${studentId}`} target="_blank" rel="noopener noreferrer">
-                <HugeiconsIcon icon={Link01Icon} strokeWidth={2} className="size-4" />
-                View Life Map
-              </a>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => setGuideSectionId(null)}>
+              <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
+              Guide
             </Button>
-          )}
+            {studentId && (
+              <Button variant="outline" size="sm" className="gap-2" asChild>
+                <a href={`/public/life-map/${studentId}`} target="_blank" rel="noopener noreferrer">
+                  <HugeiconsIcon icon={Link01Icon} strokeWidth={2} className="size-4" />
+                  View Life Map
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
         {projectLock && <ProjectLockedBanner className="mt-3" />}
       </div>
@@ -370,7 +407,7 @@ export default function StudentLifeMapOverviewPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="text-muted-foreground w-[44px] text-xs font-medium uppercase tracking-wide" />
-              <TableHead className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Section / Group</TableHead>
+              <TableHead className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Section</TableHead>
               <TableHead className="text-muted-foreground w-auto text-right text-xs font-medium uppercase tracking-wide">Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -385,6 +422,7 @@ export default function StudentLifeMapOverviewPage() {
                   onRowClick={(slug) => router.push(`/life-map/${slug}`)}
                   onViewSummary={(groupId) => openSheet(row, groupId)}
                   onViewActivity={(groupId) => openActivity(row, groupId)}
+                  onViewGuide={() => setGuideSectionId(row.section.id)}
                   templateQuestions={allTemplateQuestions}
                   responses={allResponses}
                   comments={comments}
@@ -394,6 +432,16 @@ export default function StudentLifeMapOverviewPage() {
           </TableBody>
         </Table>
       </div>
+
+      <SectionGuideSheet
+        open={guideSectionId !== undefined}
+        onOpenChange={(o) => { if (!o) setGuideSectionId(undefined) }}
+        projectName="Life Map"
+        sections={guideSections}
+        focusSectionId={guideSectionId ?? null}
+        viewer="student"
+        printHref="/life-map/guide/print"
+      />
 
       {activity && (
         <GroupActivitySheet
@@ -532,6 +580,7 @@ function SectionTableRows({
   onRowClick,
   onViewSummary,
   onViewActivity,
+  onViewGuide,
   templateQuestions,
   responses,
   comments,
@@ -541,6 +590,7 @@ function SectionTableRows({
   onRowClick: (slug: string) => void
   onViewSummary: (groupId: number | null) => void
   onViewActivity: (groupId: number | null) => void
+  onViewGuide: () => void
   templateQuestions: TemplateQuestion[]
   responses: StudentResponse[]
   comments: Comment[]
@@ -588,9 +638,12 @@ function SectionTableRows({
           </div>
         </TableCell>
         <TableCell className="text-right">
-          {!locked && (
-            <ActivityButton onClick={() => onViewActivity(null)} />
-          )}
+          <div className="flex items-center justify-end gap-1.5">
+            <SectionGuideButton onClick={onViewGuide} muted={locked} />
+            {!locked && (
+              <ActivityButton onClick={() => onViewActivity(null)} />
+            )}
+          </div>
         </TableCell>
       </TableRow>
     )
@@ -609,7 +662,7 @@ function SectionTableRows({
   return (
     <>
       <TableRow
-        className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} [&>td]:py-3.5 ${bgClass}`}
+        className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} [&>td]:py-3.5 ${collapsed ? "" : SECTION_HEADER_ROW_EXPANDED} ${bgClass}`}
         onClick={() => { if (!locked) onRowClick(row.slug) }}
       >
         <TableCell>
@@ -624,24 +677,28 @@ function SectionTableRows({
         <TableCell>
           <div className="flex items-center gap-1.5">
             <span className={`text-sm font-medium ${locked ? "text-muted-foreground/40" : ""}`}>{row.section.section_title}</span>
-            <span className={`text-sm font-medium ${locked ? "text-muted-foreground/40" : ""}`}>({totalGroups})</span>
+            <span className={`text-xs ${locked ? "text-muted-foreground/40" : "text-muted-foreground"}`}>{describeGroups(totalGroups, completedGroups)}</span>
           </div>
           {row.section.section_description && (
             <p className="text-muted-foreground mt-0.5 truncate text-xs">{markdownToPlainText(row.section.section_description)}</p>
           )}
         </TableCell>
         <TableCell className="text-right">
-          <button
-            type="button"
-            className="inline-flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-accent"
-            onClick={(e) => { e.stopPropagation(); setCollapsed((prev) => !prev) }}
-            title={collapsed ? "Expand groups" : "Collapse groups"}
-          >
-            <HugeiconsIcon icon={collapsed ? ArrowDown01Icon : ArrowUp01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />
-          </button>
+          <div className="flex items-center justify-end gap-1.5">
+            <SectionGuideButton onClick={onViewGuide} muted={locked} />
+            <button
+              type="button"
+              className="inline-flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-accent"
+              onClick={(e) => { e.stopPropagation(); setCollapsed((prev) => !prev) }}
+              title={collapsed ? "Expand groups" : "Collapse groups"}
+            >
+              <HugeiconsIcon icon={collapsed ? ArrowDown01Icon : ArrowUp01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />
+            </button>
+          </div>
         </TableCell>
       </TableRow>
-      {!collapsed && row.groups.map((group) => {
+      {!collapsed && row.groups.map((group, groupIndex) => {
+        const isLastGroup = groupIndex === row.groups.length - 1
         const groupQs = sectionQs.filter((q) => q.lifemap_custom_group_id === group.id)
         const groupCompleted = groupQs.filter((q) => responseMap.get(q.id)?.isComplete).length
         const groupRevision = groupQs.filter((q) => responseMap.get(q.id)?.revisionNeeded).length
@@ -663,16 +720,15 @@ function SectionTableRows({
               return rTime > lTime ? r.last_edited : latest
             }, null)
           : null
-        const groupRowBg = locked
-          ? "bg-gray-50 hover:bg-gray-100 dark:bg-gray-900/30 dark:hover:bg-gray-900/50"
-          : "bg-gray-50/25 hover:bg-gray-50/50 dark:bg-gray-900/10 dark:hover:bg-gray-900/20"
+        const groupRowBg = groupRowBackground(locked)
         return (
           <TableRow
             key={group.id}
-            className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} [&>td]:py-2.5 ${groupRowBg}`}
+            className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} ${isLastGroup ? GROUP_ROW_LAST : GROUP_ROW} ${groupRowBg}`}
             onClick={() => { if (!locked) onRowClick(row.slug) }}
           >
             <TableCell>
+              <GroupTreeCell first={groupIndex === 0} last={isLastGroup}>
               {isGroupComplete ? (
                 <div className="inline-flex size-7 items-center justify-center rounded-md border">
                   <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
@@ -682,9 +738,10 @@ function SectionTableRows({
                   <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
                 </div>
               )}
+              </GroupTreeCell>
             </TableCell>
             <TableCell>
-              <div className="flex items-center gap-2 pl-4">
+              <div className="flex items-center gap-2 pl-6">
                 <span className={`text-sm font-normal ${locked ? "text-muted-foreground/40" : "text-foreground"}`}>{group.group_name}</span>
                 {unreadGroupComments > 0 && (
                   <div className="relative inline-flex size-7 items-center justify-center rounded-md border" title={`${unreadGroupComments} unread comment${unreadGroupComments !== 1 ? "s" : ""}`}>
