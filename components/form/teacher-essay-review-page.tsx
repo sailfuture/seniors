@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useSession } from "@/components/session-provider"
-import { useCanReview } from "@/hooks/use-can-review"
+import { useCanApprove } from "@/hooks/use-can-review"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
@@ -52,6 +52,7 @@ import {
   fetchResponseEvents,
   postResponseEvent,
   type ResponseEvent,
+  reviewActor,
 } from "@/lib/response-events"
 import { useBumpSidebar } from "@/lib/refresh-context"
 import { fetchResponseVersions, postResponseVersion, type ResponseVersion } from "@/lib/response-versions"
@@ -111,9 +112,10 @@ export function TeacherEssayReviewPage({
   const F = cfg.fields
   const router = useRouter()
   const { data: session } = useSession()
-  // Advisors read and comment; review status and the essay text stay with staff.
-  const canReview = useCanReview()
-  const teacherName = session?.user?.name ?? "Teacher"
+  // Advisors comment, request revisions, and undo; approving, restoring
+  // versions, and editing the essay text stay with staff.
+  const canApprove = useCanApprove()
+  const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
   const teachersId = ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null
   const bumpSidebar = useBumpSidebar()
 
@@ -296,6 +298,7 @@ export function TeacherEssayReviewPage({
             eventType: evType,
             actorName: teacherName,
             teachersId,
+            advisorsId: reviewActor(session?.user as Record<string, unknown>).advisorsId,
           })
           setEvents((prev) => [
             ...prev,
@@ -517,7 +520,7 @@ export function TeacherEssayReviewPage({
             onCommentsSheetOpenChange={setCommentsOpen}
             showCommentsButton={false}
             onCommentCounts={handleCommentCounts}
-            annotateOnly={!canReview}
+            annotateOnly={!canApprove}
             comments={{
               commentsEndpoint: cfg.commentsEndpoint,
               sectionIdField: F.sectionId,
@@ -546,8 +549,8 @@ export function TeacherEssayReviewPage({
         {minWords ? `${wordCount} / ${minWords} words` : `${wordCount} ${wordCount === 1 ? "word" : "words"}`}
       </div>
 
-      {/* Review actions stay reachable while the teacher scrolls the essay. */}
-      {canReview && (
+      {/* Review actions stay reachable while the teacher scrolls the essay.
+          Approving is staff only. */}
       <div className="bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky bottom-0 mt-6 flex items-center gap-2 border-t py-3 backdrop-blur">
         {status.isComplete || status.revisionNeeded ? (
           <Button variant="outline" className="flex-1 bg-white dark:bg-transparent" disabled={acting} onClick={() => applyAction("ready")}>
@@ -567,6 +570,7 @@ export function TeacherEssayReviewPage({
               <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-4" />
               Revision
             </Button>
+            {canApprove && (
             <Button
               variant="outline"
               className="flex-1 gap-1.5 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800"
@@ -576,10 +580,10 @@ export function TeacherEssayReviewPage({
               <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
               Complete
             </Button>
+            )}
           </>
         )}
       </div>
-      )}
 
       {/* Overall feedback thread, separate from the anchored inline comments. */}
       <Sheet open={feedbackOpen} onOpenChange={setFeedbackOpen}>
@@ -596,7 +600,7 @@ export function TeacherEssayReviewPage({
               events={events.filter((e) => eventMatchesQuestion(e, question.field_name, questionId, F.templateId))}
               resolvedThreads={resolvedThreads}
               viewer="teacher"
-              onDelete={canReview ? handleDelete : undefined}
+              onDelete={canApprove ? handleDelete : undefined}
               scrollToLatest
             />
           </div>
@@ -665,7 +669,7 @@ export function TeacherEssayReviewPage({
                   {openVersion.actor_name && <> · {openVersion.actor_name}</>}
                   {openVersion.wordCount != null && <> · {openVersion.wordCount} words</>}
                 </p>
-                {!canReview ? null : confirmRestore ? (
+                {!canApprove ? null : confirmRestore ? (
                   <span className="flex items-center gap-1.5">
                     <Button
                       size="sm"

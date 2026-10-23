@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "@/components/session-provider"
-import { useCanReview } from "@/hooks/use-can-review"
+import { useCanApprove } from "@/hooks/use-can-review"
 import Link from "next/link"
 import {
   Table,
@@ -56,7 +56,7 @@ import { useRefreshRegister } from "@/lib/refresh-context"
 import { Linkify } from "@/components/linkify"
 import { BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 import { GroupActivitySheet } from "@/components/form/group-activity-sheet"
-import { fetchResponseEvents, type ResponseEvent } from "@/lib/response-events"
+import { fetchResponseEvents, type ResponseEvent, reviewActor } from "@/lib/response-events"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { formatWhen } from "@/lib/format-time"
 import { markdownToPlainText } from "@/lib/markdown-text"
@@ -152,7 +152,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
   const { studentId } = use(params)
   const router = useRouter()
   const { data: session } = useSession()
-  const canReview = useCanReview()
+  const canApprove = useCanApprove()
 
   const [rows, setRows] = useState<SectionRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -302,7 +302,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
   const handlePostComment = async () => {
     if (!commentNote.trim() || !sheetRow) return
     setPostingComment(true)
-    const teacherName = session?.user?.name ?? "Teacher"
+    const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
     const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
     const payload: Record<string, unknown> = {
       students_id: studentId,
@@ -505,7 +505,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
                   <InlineCommentCard
                     key={c.id}
                     comment={c}
-                    onDelete={canReview ? () => c.id && handleDeleteComment(c.id) : undefined}
+                    onDelete={canApprove ? () => c.id && handleDeleteComment(c.id) : undefined}
                   />
                 ))}
               </div>

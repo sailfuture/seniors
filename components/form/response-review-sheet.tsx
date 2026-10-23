@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useSession } from "@/components/session-provider"
-import { useCanReview } from "@/hooks/use-can-review"
+import { useCanApprove } from "@/hooks/use-can-review"
 import {
   Sheet,
   SheetContent,
@@ -31,6 +31,7 @@ import {
   fetchResponseEvents,
   postResponseEvent,
   type ResponseEvent,
+  reviewActor,
 } from "@/lib/response-events"
 import { useBumpSidebar } from "@/lib/refresh-context"
 import { studentFetch } from "@/lib/cached-fetch"
@@ -89,7 +90,7 @@ export function ResponseReviewSheet({
   const cfg = apiConfig
   const F = cfg.fields
   const { data: session } = useSession()
-  const canReview = useCanReview()
+  const canApprove = useCanApprove()
   const bumpSidebar = useBumpSidebar()
 
   const [comments, setComments] = useState<Comment[]>([])
@@ -147,7 +148,7 @@ export function ResponseReviewSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, target?.response.id])
 
-  const teacherName = session?.user?.name ?? "Teacher"
+  const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
   const teachersId = ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null
 
   const postComment = useCallback(
@@ -218,6 +219,7 @@ export function ResponseReviewSheet({
             eventType: eventTypeForAction(action),
             actorName: teacherName,
             teachersId,
+            advisorsId: reviewActor(session?.user as Record<string, unknown>).advisorsId,
           })
           const eventName = `${cfg.eventPrefix ?? ""}review-update`
           const wasReady = status.readyReview && !status.isComplete && !status.revisionNeeded
@@ -300,7 +302,7 @@ export function ResponseReviewSheet({
                 <Skeleton className="h-10 w-2/3" />
               </div>
             ) : (
-              <FieldActivityStream comments={comments} events={events} viewer="teacher" onDelete={canReview ? handleDelete : undefined} scrollToLatest />
+              <FieldActivityStream comments={comments} events={events} viewer="teacher" onDelete={canApprove ? handleDelete : undefined} scrollToLatest />
             )}
           </div>
         </div>
@@ -310,8 +312,7 @@ export function ResponseReviewSheet({
           <CommentComposer draftRef={draftRef} onSubmit={(text) => postComment(text, false)} />
         </div>
 
-        {/* Full-width review actions (staff only) */}
-        {canReview && (
+        {/* Full-width review actions; approving is staff only. */}
         <div className="flex items-center gap-2 border-t px-6 py-3">
           {(status.isComplete || status.revisionNeeded) ? (
             <Button variant="outline" className="flex-1 bg-white dark:bg-transparent" disabled={acting} onClick={() => applyAction("ready")}>
@@ -328,6 +329,7 @@ export function ResponseReviewSheet({
                 <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-4" />
                 Revision
               </Button>
+              {canApprove && (
               <Button
                 variant="outline"
                 className="flex-1 gap-1.5 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800"
@@ -337,10 +339,10 @@ export function ResponseReviewSheet({
                 <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
                 Complete
               </Button>
+              )}
             </>
           )}
         </div>
-        )}
       </SheetContent>
     </Sheet>
   )

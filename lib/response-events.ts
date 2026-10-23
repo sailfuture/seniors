@@ -10,7 +10,49 @@ export interface ResponseEvent {
   event_type: ResponseEventType | string
   actor_name?: string
   teachers_id?: string | null
+  advisors_id?: number | null
   [key: string]: unknown
+}
+
+/** Who is acting on a review, as logged on events and comments. */
+export interface ReviewActor {
+  /** Display name; advisors carry an "(advisor)" tag so the log reads right
+   *  even where only the name is shown. */
+  actorName: string
+  teachersId: string | null
+  advisorsId: number | null
+}
+
+export function reviewActor(user: Record<string, unknown> | null | undefined): ReviewActor {
+  const name = (user?.name as string | undefined)?.trim() || (user?.role === "advisor" ? "Advisor" : "Teacher")
+  const isAdvisor = user?.role === "advisor"
+  return {
+    actorName: isAdvisor && name !== "Advisor" ? `${name} (advisor)` : name,
+    teachersId: (user?.teachers_id as string | undefined) ?? null,
+    advisorsId: isAdvisor ? ((user?.advisors_id as number | undefined) ?? null) : null,
+  }
+}
+
+/** The most recent event of a type for one question, or null. */
+export function latestEvent(
+  events: ResponseEvent[],
+  type: ResponseEventType,
+  fieldName: string,
+  questionId: number | null | undefined,
+  templateIdKey: string
+): ResponseEvent | null {
+  let best: ResponseEvent | null = null
+  let bestTs = -1
+  for (const e of events) {
+    if (e.event_type !== type || !eventMatchesQuestion(e, fieldName, questionId, templateIdKey)) continue
+    const raw = e.created_at
+    const ts = typeof raw === "number" ? raw : raw ? Date.parse(raw) : 0
+    if (ts >= bestTs) {
+      best = e
+      bestTs = ts
+    }
+  }
+  return best
 }
 
 /**
@@ -52,6 +94,9 @@ export function postResponseEvent(
     eventType: ResponseEventType
     actorName: string
     teachersId?: string | null
+    /** Set when a thesis advisor acted (needs an advisors_id column on the
+     *  events table to be stored; the "(advisor)" name tag covers it until then). */
+    advisorsId?: number | null
   }
 ): void {
   if (!cfg.responseEventsEndpoint || !ev.studentId) return
@@ -61,6 +106,7 @@ export function postResponseEvent(
     event_type: ev.eventType,
     actor_name: ev.actorName,
     teachers_id: ev.teachersId ?? null,
+    ...(ev.advisorsId != null ? { advisors_id: ev.advisorsId } : {}),
     [cfg.fields.templateId]: ev.templateId,
     [cfg.fields.sectionId]: ev.sectionId,
   }

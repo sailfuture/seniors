@@ -1,5 +1,6 @@
 "use client"
 
+import type { ResponseEvent } from "@/lib/response-events"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import {
@@ -69,6 +70,9 @@ interface TeacherCommentProps {
   /** Called with unseen student-reply ids when the sheet opens, so the
    *  teacher's badge clears once they've looked at the activity. */
   onMarkRepliesSeen?: (commentIds: number[]) => void
+  /** Review history for this question (revision requests, approvals, undos),
+   *  folded into the thread with who did it and when. */
+  events?: ResponseEvent[]
   onMarkCompleteAction?: () => void
   onRequestRevision?: () => void
   onClearStatus?: () => void
@@ -94,6 +98,7 @@ export function TeacherComment({
   responseStatus,
   lastEdited,
   onMarkRepliesSeen,
+  events,
   onMarkCompleteAction,
   onRequestRevision,
   onClearStatus,
@@ -229,6 +234,7 @@ export function TeacherComment({
               <FieldActivityStream
                 resolvedThreads={resolvedThreads}
                 comments={fieldComments}
+                events={events}
                 viewer="teacher"
                 responseStatus={responseStatus}
                 lastEdited={lastEdited}

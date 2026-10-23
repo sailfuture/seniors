@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useSession } from "@/components/session-provider"
-import { useCanReview } from "@/hooks/use-can-review"
+import { useCanApprove } from "@/hooks/use-can-review"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -53,10 +53,18 @@ import { isLineItemsQuestion, looksLikeLineItems } from "@/lib/line-items"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc, richTextWordCount } from "@/lib/rich-text"
 import { ZoomableImage } from "@/components/zoomable-image"
 import { LIFEMAP_API_CONFIG, type FormApiConfig } from "@/lib/form-api-config"
-import { eventTypeForAction, postResponseEvent } from "@/lib/response-events"
+import {
+  eventMatchesQuestion,
+  eventTypeForAction,
+  fetchResponseEvents,
+  latestEvent,
+  postResponseEvent,
+  reviewActor,
+  type ResponseEvent,
+} from "@/lib/response-events"
 import { useRefreshRegister, useBumpSidebar } from "@/lib/refresh-context"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
-import { formatWhen } from "@/lib/format-time"
+import { dateTime, relativeTime as relativeFrom, toMillis } from "@/lib/format-time"
 import { markdownToPlainText } from "@/lib/markdown-text"
 import { Markdown } from "@/components/markdown"
 
@@ -286,8 +294,9 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const focusField = searchParams.get("focus")
   const focusApplied = useRef(false)
   const { data: session } = useSession()
-  // Advisors see everything and can comment; review status stays with staff.
-  const canReview = useCanReview()
+  // Advisors comment, request revisions, and undo; approving is staff only.
+  // (Everyone who reaches this page can request a revision.)
+  const canApprove = useCanApprove()
   const { register: registerRefresh, unregister: unregisterRefresh } = useRefreshRegister()
   const bumpSidebar = useBumpSidebar()
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
@@ -300,10 +309,14 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const [plagiarismData, setPlagiarismData] = useState<Map<number, GptZeroResult>>(new Map())
   const [revisionModal, setRevisionModal] = useState<{ responseId: number; templateId: number } | null>(null)
   const [revisionComment, setRevisionComment] = useState("")
+  // Review history (who requested a revision, approved, undid, and when).
+  const [events, setEvents] = useState<ResponseEvent[]>([])
 
   const loadData = useCallback(async (showLoading = false) => {
       if (showLoading) setLoading(true)
       try {
+        // Not awaited with the rest: the history only decorates the cards.
+        fetchResponseEvents(cfg, studentId).then(setEvents)
         const [templateRes, responsesRes, groupsRes, commentsRes, qTypesRes] = await Promise.all([
           cachedFetch(cfg.templateEndpoint),
           studentFetch(`${cfg.responsesEndpoint}?students_id=${studentId}`),
@@ -435,7 +448,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
 
   const handlePostComment = useCallback(
     async (fieldName: string, note: string, templateId?: number) => {
-      const teacherName = session?.user?.name ?? "Teacher"
+      const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
       const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
 
       const payload: Record<string, unknown> = {
@@ -552,15 +565,26 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         {
           const q = questions.find((qq) => qq.id === templateId)
           if (q && studentId) {
+            const actor = reviewActor(session?.user as Record<string, unknown>)
             postResponseEvent(cfg, {
               studentId,
               templateId,
               fieldName: q.field_name,
               sectionId,
               eventType: eventTypeForAction(action),
-              actorName: session?.user?.name ?? "Teacher",
-              teachersId: ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null,
+              ...actor,
             })
+            setEvents((prev) => [
+              ...prev,
+              {
+                students_id: studentId,
+                field_name: q.field_name,
+                event_type: eventTypeForAction(action),
+                actor_name: actor.actorName,
+                created_at: Date.now(),
+                [F.templateId]: templateId,
+              },
+            ])
           }
         }
         // A completion change can flip a section's green "fully complete"
@@ -570,7 +594,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         }
 
         if (comment?.trim()) {
-          const teacherName = session?.user?.name ?? "Teacher"
+          const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
           const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
           const q = questions.find((q) => q.id === templateId)
           await fetch(cfg.commentsEndpoint, {
@@ -614,7 +638,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const postBulkRevisionNote = useCallback(
     async (note: string, groupId?: number) => {
       if (!note) return
-      const teacherName = session?.user?.name ?? "Teacher"
+      const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
       const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
       const payload: Record<string, unknown> = {
         students_id: studentId,
@@ -697,7 +721,20 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         // submission.
         const hasReviewableContent = hasResponseContent(response)
         const qIsDimmed = qIsComplete || qNeedsRevision
-        const relativeTime = formatWhen(response?.last_edited)
+        const qEvents = events.filter((e) => eventMatchesQuestion(e, q.field_name, q.id, F.templateId))
+        // Who sent it back and when, so a request from an advisor is never anonymous.
+        const revisionEvent = qNeedsRevision
+          ? latestEvent(qEvents, "revision_requested", q.field_name, q.id, F.templateId)
+          : null
+        const revisionMs = toMillis(revisionEvent?.created_at)
+        const revisionBy = revisionEvent
+          ? `Revision requested${revisionEvent.actor_name ? ` by ${revisionEvent.actor_name}` : ""}`
+          : null
+        // Short "3d ago" in the card; the exact date rides in the tooltip so
+        // the header stays on one line.
+        const editedMs = toMillis(response?.last_edited)
+        const relativeTime = editedMs == null ? null : relativeFrom(editedMs)
+        const editedTitle = editedMs == null ? undefined : `Last edited ${dateTime(editedMs)}`
         // The AI/originality report and last-edited time sit together in the
         // field's lower-right; only text answers have a GPTZero report.
         const showAiFooter = !!(gptzero && isSubmitted)
@@ -783,7 +820,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       {relativeTime && (
                         <>
                           <span className="text-muted-foreground/40">&mdash;</span>
-                          <span>{relativeTime}</span>
+                          <span className="whitespace-nowrap" title={editedTitle}>{relativeTime}</span>
                         </>
                       )}
                     </span>
@@ -809,7 +846,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       {relativeTime && (
                         <>
                           <span className="text-muted-foreground/40">&mdash;</span>
-                          <span>{relativeTime}</span>
+                          <span className="whitespace-nowrap" title={editedTitle}>{relativeTime}</span>
                         </>
                       )}
                     </span>
@@ -828,6 +865,17 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             isDimmed={qIsDimmed}
             isComplete={qIsComplete}
             label={q.field_label}
+            statusNote={
+              revisionBy ? (
+                <p
+                  className="text-xs text-red-600"
+                  title={revisionMs == null ? undefined : dateTime(revisionMs)}
+                >
+                  {revisionBy}
+                  {revisionMs != null && <span className="text-red-600/70"> · {relativeFrom(revisionMs)}</span>}
+                </p>
+              ) : undefined
+            }
             labelAction={
               isRichText || looksLikeRichTextDoc(value) ? (
                 <Button
@@ -846,7 +894,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           >
               <div className="flex items-center gap-2">
                 {relativeTime && !showAiFooter && (
-                  <span className="text-muted-foreground text-xs">{relativeTime}</span>
+                  <span className="text-muted-foreground whitespace-nowrap text-xs" title={editedTitle}>{relativeTime}</span>
                 )}
                 <QuestionInstructions question={q} />
                 <TeacherComment
@@ -869,42 +917,18 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   minWords={q.min_words > 0 ? q.min_words : undefined}
                   comments={comments}
                   onSubmit={(fieldName, note) => handlePostComment(fieldName, note, q.id)}
-                  onDelete={canReview ? handleDelete : undefined}
+                  onDelete={canApprove ? handleDelete : undefined}
                   plagiarism={(isLong || isRichText) && isSubmitted ? gptzero : undefined}
                   teacherGuideline={q.teacher_guideline}
                   responseStatus={response ? { isComplete: response.isComplete, revisionNeeded: response.revisionNeeded, readyReview: response.readyReview } : null}
                   lastEdited={response?.last_edited}
                   onMarkRepliesSeen={handleMarkRepliesSeen}
-                  onMarkCompleteAction={canReview && (isSubmitted || hasReviewableContent) ? () => handleResponseReviewAction(response!.id, q.id, "complete") : undefined}
-                  onRequestRevision={canReview && (isSubmitted || hasReviewableContent) ? () => { setRevisionModal({ responseId: response!.id, templateId: q.id }); setRevisionComment("") } : undefined}
-                  onUndoStatus={canReview && isSubmitted && (response!.isComplete || (response!.revisionNeeded && !studentEditedSinceRevision)) ? () => handleResponseReviewAction(response!.id, q.id, "ready") : undefined}
+                  events={qEvents}
+                  onMarkCompleteAction={canApprove && (isSubmitted || hasReviewableContent) ? () => handleResponseReviewAction(response!.id, q.id, "complete") : undefined}
+                  onRequestRevision={(isSubmitted || hasReviewableContent) ? () => { setRevisionModal({ responseId: response!.id, templateId: q.id }); setRevisionComment("") } : undefined}
+                  onUndoStatus={isSubmitted && (response!.isComplete || (response!.revisionNeeded && !studentEditedSinceRevision)) ? () => handleResponseReviewAction(response!.id, q.id, "ready") : undefined}
                 />
                 {response && (() => {
-                  // Advisors get the status icon without the review buttons.
-                  if (!canReview) {
-                    if (!isSubmitted) {
-                      return <span className="text-muted-foreground/50 text-[10px] font-medium uppercase tracking-wide">Draft</span>
-                    }
-                    if (response.isComplete) {
-                      return (
-                        <div title="Complete">
-                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-                        </div>
-                      )
-                    }
-                    if (response.revisionNeeded) {
-                      return (
-                        <div title="Needs revision">
-                          <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-                        </div>
-                      )
-                    }
-                    return (
-                      <div title="Ready for review">
-                        <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
-                      </div>
-                    )
-                  }
                   if (!isSubmitted) {
                     return (
                       <>
@@ -919,6 +943,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                             >
                               <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                             </Button>
+                            {canApprove && (
                             <Button
                               variant="outline"
                               size="icon"
@@ -928,6 +953,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                             >
                               <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                             </Button>
+                            )}
                           </>
                         )}
                         <span className="text-muted-foreground/50 text-[10px] font-medium uppercase tracking-wide">Draft</span>
@@ -955,7 +981,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   if (response.revisionNeeded) {
                     return (
                       <>
-                        <div title="Needs revision">
+                        <div title={revisionBy ? `${revisionBy}${revisionMs != null ? `, ${dateTime(revisionMs)}` : ""}` : "Needs revision"}>
                           <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
                         </div>
                         {!studentEditedSinceRevision && (
@@ -983,6 +1009,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       >
                         <HugeiconsIcon icon={ArrowTurnBackwardIcon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                       </Button>
+                      {canApprove && (
                       <Button
                         variant="outline"
                         size="icon"
@@ -992,6 +1019,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                       >
                         <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                       </Button>
+                      )}
                       <div title="Ready for review">
                         <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
                       </div>
@@ -1063,7 +1091,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                         </div>
                       )}
                     </div>
-                    {canReview && readyCount > 0 && (
+                    {canApprove && readyCount > 0 && (
                       <ConfirmAllButton
                         readyCount={readyCount}
                         onConfirmAll={async () => {
@@ -1079,7 +1107,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                         }}
                       />
                     )}
-                    {canReview && (() => {
+                    {(() => {
                       const targets = ungroupedQuestions.filter((q) => {
                         const r = responses.get(q.id)
                         return hasResponseContent(r) && !r!.isComplete && !r!.revisionNeeded
@@ -1137,7 +1165,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 cfg={cfg}
                 F={F}
                 setComments={setComments}
-                handleDelete={canReview ? handleDelete : undefined}
+                handleDelete={canApprove ? handleDelete : undefined}
                 handleResponseReviewAction={handleResponseReviewAction}
                 postBulkRevisionNote={postBulkRevisionNote}
                 responses={responses}
@@ -1247,6 +1275,7 @@ function CollapsibleQuestionCard({
   isDimmed,
   isComplete,
   label,
+  statusNote,
   labelAction,
   displayValue,
   children,
@@ -1256,6 +1285,8 @@ function CollapsibleQuestionCard({
   isDimmed: boolean
   isComplete: boolean
   label: string
+  /** One line under the header, e.g. who requested a revision and when. */
+  statusNote?: React.ReactNode
   /** Rendered immediately to the right of the title (e.g. Open document). */
   labelAction?: React.ReactNode
   displayValue: React.ReactNode
@@ -1279,7 +1310,7 @@ function CollapsibleQuestionCard({
       className={`rounded-lg bg-gray-50 p-3 dark:bg-muted/30 ${colSpan} ${isDimmed ? "opacity-75" : ""}`}
     >
       <div
-        className={`mb-1.5 flex items-center justify-between ${isComplete ? "cursor-pointer select-none" : ""}`}
+        className={`mb-1.5 flex items-start justify-between gap-2 ${isComplete ? "cursor-pointer select-none" : ""}`}
         onClick={
           isComplete
             ? (e) => {
@@ -1289,7 +1320,7 @@ function CollapsibleQuestionCard({
         }
       >
         {/* The arrow trails the label so the label lines up with the answer below. */}
-        <div className="group/title flex items-center gap-1.5">
+        <div className="group/title flex min-w-0 flex-1 items-center gap-1.5 pt-1">
           <Label
             className={`text-foreground text-sm leading-snug font-medium transition-colors ${isComplete ? "group-hover/title:text-foreground/65 cursor-pointer" : ""}`}
           >
@@ -1304,10 +1335,11 @@ function CollapsibleQuestionCard({
           </div>
           {labelAction && <div onClick={(e) => e.stopPropagation()}>{labelAction}</div>}
         </div>
-        <div onClick={(e) => e.stopPropagation()}>
+        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>
+      {statusNote && <div className="mb-1.5">{statusNote}</div>}
       <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}>
         <div className="overflow-hidden">
           {displayValue}
@@ -1360,7 +1392,7 @@ function ReadonlyGroupCard({
   hasDisplayType: boolean
   renderQuestionList: (qs: TemplateQuestion[], flat?: boolean) => React.ReactNode
 }) {
-  const canReview = useCanReview()
+  const canApprove = useCanApprove()
   const [collapsed, setCollapsed] = useState(allComplete)
   const [expandKey, setExpandKey] = useState(0)
 
@@ -1425,7 +1457,7 @@ function ReadonlyGroupCard({
               fieldValue={markdownToPlainText(group.group_description) || undefined}
               comments={groupComments}
               onSubmit={async (_, note) => {
-                const teacherName = session?.user?.name ?? "Teacher"
+                const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
                 const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
                 const payload: Record<string, unknown> = {
                   students_id: studentId,
@@ -1451,7 +1483,7 @@ function ReadonlyGroupCard({
               onDelete={handleDelete}
               square
             />
-            {canReview && readyCount > 0 && (
+            {canApprove && readyCount > 0 && (
               <ConfirmAllButton
                 readyCount={readyCount}
                 onConfirmAll={async () => {
@@ -1467,7 +1499,7 @@ function ReadonlyGroupCard({
                 }}
               />
             )}
-            {canReview && (() => {
+            {(() => {
               const targets = gQuestions.filter((q) => {
                 const r = responses.get(q.id)
                 return hasResponseContent(r) && !r!.isComplete && !r!.revisionNeeded

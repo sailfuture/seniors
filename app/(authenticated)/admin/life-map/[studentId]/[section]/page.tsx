@@ -1,8 +1,9 @@
 "use client"
 
 import { use, useCallback, useEffect, useState } from "react"
+import { reviewActor } from "@/lib/response-events"
 import { useSession } from "@/components/session-provider"
-import { useCanReview } from "@/hooks/use-can-review"
+import { useCanApprove } from "@/hooks/use-can-review"
 import Link from "next/link"
 import { ReadOnlyDynamicFormPage } from "@/components/form/readonly-dynamic-form-page"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -32,7 +33,7 @@ export default function AdminLifeMapSectionPage({
 }) {
   const { studentId, section } = use(params)
   const { data: session } = useSession()
-  const canReview = useCanReview()
+  const canApprove = useCanApprove()
   const [label, setLabel] = useState(slugToTitle(section))
   const [sectionDescription, setSectionDescription] = useState("")
   const [sectionId, setSectionId] = useState<number | null>(null)
@@ -84,7 +85,7 @@ export default function AdminLifeMapSectionPage({
   const handlePostSectionComment = useCallback(
     async (_fieldName: string, note: string) => {
       if (!sectionId) return
-      const teacherName = session?.user?.name ?? "Teacher"
+      const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
       const teachersId = (session?.user as Record<string, unknown>)?.teachers_id ?? null
 
       const payload = {
@@ -141,7 +142,7 @@ export default function AdminLifeMapSectionPage({
           fieldLabel={label}
           comments={sectionComments}
           onSubmit={handlePostSectionComment}
-          onDelete={canReview ? handleDeleteComment : undefined}
+          onDelete={canApprove ? handleDeleteComment : undefined}
           square
         />
         <div className="inline-flex size-8 items-center justify-center rounded-md border">

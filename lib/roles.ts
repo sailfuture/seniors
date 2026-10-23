@@ -40,9 +40,15 @@ export function canManageStaff(role: unknown): boolean {
   return role === "admin"
 }
 
-/** Marking work complete, requesting revisions, undoing a review, and
- *  deleting comments. Advisors can read everything and leave comments, but
- *  the review status stays with SailFuture staff. */
-export function canReviewWork(role: unknown): boolean {
+/** Marking work complete (approving), deleting comments, restoring versions,
+ *  and editing a student's essay text: SailFuture staff only. */
+export function canApproveWork(role: unknown): boolean {
   return isStaffRole(role)
+}
+
+/** Sending work back for revision and undoing a review. Thesis advisors can
+ *  do both alongside commenting; every change is logged with who made it and
+ *  when. */
+export function canRequestRevision(role: unknown): boolean {
+  return isStaffRole(role) || role === "advisor"
 }

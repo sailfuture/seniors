@@ -1,10 +1,20 @@
 "use client"
 
 import { useSession } from "@/components/session-provider"
-import { canReviewWork } from "@/lib/roles"
+import { canApproveWork, canRequestRevision } from "@/lib/roles"
 
-/** Whether the signed-in user may change review status (see canReviewWork). */
-export function useCanReview(): boolean {
+function useRole(): unknown {
   const { data: session } = useSession()
-  return canReviewWork((session?.user as Record<string, unknown> | undefined)?.role)
+  return (session?.user as Record<string, unknown> | undefined)?.role
+}
+
+/** Whether the signed-in user may approve work (see canApproveWork). */
+export function useCanApprove(): boolean {
+  return canApproveWork(useRole())
+}
+
+/** Whether the signed-in user may request a revision or undo a review
+    (staff and advisors). */
+export function useCanRequestRevision(): boolean {
+  return canRequestRevision(useRole())
 }
