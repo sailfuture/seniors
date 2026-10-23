@@ -177,9 +177,10 @@ export function RubricButton({
 const LABEL = "text-muted-foreground text-[11px] font-medium tracking-wide uppercase"
 
 /**
- * One section's rubric, concise: the section's purpose, then each key
- * component with the questions it must answer. Shared by the page and the
- * printed version, which pass their own type scale through `tone`.
+ * One section's rubric, concise: the section's purpose, what it requires,
+ * then each key component summarised — what it is about, the direction the
+ * teacher gave, what it covers and what must be produced. Shared by the
+ * page and the printed version, which pass their type scale through `tone`.
  */
 export function RubricSectionBody({
   section,
@@ -191,38 +192,36 @@ export function RubricSectionBody({
   const print = tone === "print"
   return (
     <div className={cn("space-y-6", print && "space-y-5")}>
-      {(section.description?.trim() || section.requirements.length > 0) && (
-        <div className={cn("grid gap-4", !print && "md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]")} data-keep>
-          {section.description?.trim() && (
-            <div>
-              <p className={cn(LABEL, print && "text-gray-500")}>Purpose</p>
-              <Markdown
-                text={section.description}
-                className={cn("mt-1", print ? "text-[11pt] leading-relaxed" : "text-sm")}
-              />
-            </div>
+      {section.description?.trim() && (
+        <div data-keep>
+          <p className={cn(LABEL, print && "text-gray-500")}>Purpose</p>
+          <Markdown
+            text={section.description}
+            className={cn("mt-1", print ? "text-[11pt] leading-relaxed" : "text-sm")}
+          />
+        </div>
+      )}
+
+      {section.requirements.length > 0 && (
+        <div
+          data-keep
+          className={cn(
+            "rounded-lg border px-4 py-3",
+            print ? "border-gray-300 bg-gray-50" : "border-primary/15 bg-primary/5"
           )}
-          {section.requirements.length > 0 && (
-            <div
-              className={cn(
-                "rounded-lg border px-4 py-3",
-                print ? "border-gray-300 bg-gray-50" : "border-primary/15 bg-primary/5"
-              )}
-            >
-              <p className={cn(LABEL, print && "text-gray-500")}>Requirements</p>
-              <ul className={cn("mt-1.5 space-y-1", print ? "text-[10.5pt]" : "text-sm")}>
-                {section.requirements.map((line) => (
-                  <li key={line} className="flex items-baseline gap-2">
-                    <span
-                      aria-hidden
-                      className={cn("inline-block size-1.5 shrink-0 translate-y-[-1px] rounded-full", print ? "bg-gray-500" : "bg-primary/60")}
-                    />
-                    <span className="leading-snug">{line}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+        >
+          <p className={cn(LABEL, print && "text-gray-500")}>Requirements</p>
+          <ul className={cn("mt-1.5 grid gap-x-6 gap-y-1", !print && "sm:grid-cols-2", print ? "text-[10.5pt]" : "text-sm")}>
+            {section.requirements.map((line) => (
+              <li key={line} className="flex items-baseline gap-2">
+                <span
+                  aria-hidden
+                  className={cn("inline-block size-1.5 shrink-0 translate-y-[-1px] rounded-full", print ? "bg-gray-500" : "bg-primary/60")}
+                />
+                <span className="leading-snug">{line}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -233,7 +232,7 @@ export function RubricSectionBody({
       ) : (
         <div>
           <p className={cn(LABEL, print && "text-gray-500")}>Key components</p>
-          <ol className={cn("mt-2 grid gap-3", !print && "sm:grid-cols-2")}>
+          <ol className="mt-2 space-y-3">
             {section.components.map((component, i) => (
               <RubricComponentCard key={component.id ?? "ungrouped"} component={component} index={i} print={print} />
             ))}
@@ -253,16 +252,12 @@ function RubricComponentCard({
   index: number
   print: boolean
 }) {
-  const words = component.questions.reduce((n, q) => n + (q.minWords ?? 0), 0)
   const description = component.description ? markdownToPlainText(component.description) : ""
   const total = component.questions.length + component.sources
   return (
     <li
       data-keep
-      className={cn(
-        "rounded-lg border",
-        print ? "border-gray-300 px-4 py-3.5" : "bg-card px-4 py-3.5"
-      )}
+      className={cn("rounded-lg border", print ? "border-gray-300 px-4 py-3.5" : "bg-card px-4 py-3.5")}
     >
       <div className="flex items-start gap-3">
         <span
@@ -274,54 +269,39 @@ function RubricComponentCard({
           {component.id === null ? "+" : index + 1}
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className={cn("leading-snug font-semibold", print ? "text-[12pt]" : "text-sm")}>{component.name}</h3>
-          {description && (
-            <p className={cn("mt-0.5 leading-snug", print ? "text-[10pt] text-gray-600" : "text-muted-foreground text-xs")}>
-              {description}
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <h3 className={cn("leading-snug font-semibold", print ? "text-[12pt]" : "text-sm")}>{component.name}</h3>
+            <p className={cn("shrink-0", print ? "text-[9pt] text-gray-500" : "text-muted-foreground/80 text-[11px]")}>
+              {total} question{total === 1 ? "" : "s"}
             </p>
+          </div>
+
+          {/* What it is about and the direction the teacher gave. */}
+          {(description || component.guidelines) && (
+            <div className={cn("mt-1.5 space-y-1.5", print ? "text-[10.5pt] text-gray-700" : "text-muted-foreground text-sm")}>
+              {description && <p className="leading-snug">{description}</p>}
+              {component.guidelines && component.guidelines !== description && (
+                <p className="leading-snug">{component.guidelines}</p>
+              )}
+            </div>
           )}
-          <p className={cn("mt-1", print ? "text-[9pt] text-gray-500" : "text-muted-foreground/80 text-[11px]")}>
-            {total} question{total === 1 ? "" : "s"}
-            {words > 0 && ` · ${words.toLocaleString()} words minimum`}
-            {component.sources > 0 && ` · ${component.sources} source${component.sources === 1 ? "" : "s"} to cite`}
-          </p>
+
+          <dl className={cn("mt-2.5 space-y-1", print ? "text-[10pt]" : "text-xs")}>
+            {component.covers.length > 0 && (
+              <div className="flex gap-2">
+                <dt className={cn("w-16 shrink-0 font-medium", print ? "text-gray-500" : "text-muted-foreground")}>Covers</dt>
+                <dd className={cn("min-w-0 leading-snug", print ? "text-gray-800" : "text-foreground/90")}>{component.covers.join(" · ")}</dd>
+              </div>
+            )}
+            {component.deliverables.length > 0 && (
+              <div className="flex gap-2">
+                <dt className={cn("w-16 shrink-0 font-medium", print ? "text-gray-500" : "text-muted-foreground")}>Produce</dt>
+                <dd className={cn("min-w-0 leading-snug", print ? "text-gray-800" : "text-foreground/90")}>{component.deliverables.join(" · ")}</dd>
+              </div>
+            )}
+          </dl>
         </div>
       </div>
-
-      {component.guidelines && (
-        <div className={cn("mt-3 rounded-md px-3 py-2", print ? "bg-gray-50" : "bg-muted/60")}>
-          <p className={cn(LABEL, print && "text-gray-500")}>Guidelines</p>
-          <p className={cn("mt-0.5 leading-snug", print ? "text-[10pt] text-gray-700" : "text-xs")}>{component.guidelines}</p>
-        </div>
-      )}
-
-      {component.questions.length > 0 && (
-        <ul className={cn("mt-3 space-y-2 border-t pt-3", print ? "border-gray-200" : "border-border/60")}>
-          {component.questions.map((q) => (
-            <li key={q.id} className={cn("flex items-start gap-2", print ? "text-[10.5pt]" : "text-sm")}>
-              <span
-                aria-hidden
-                className={cn("mt-2 inline-block size-1.5 shrink-0 rounded-full", print ? "bg-gray-400" : "bg-primary/40")}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="min-w-0 flex-1 leading-snug">{q.label}</span>
-                  {(q.minWords ?? 0) > 0 && (
-                    <span className={cn("shrink-0 tabular-nums", print ? "text-[9pt] text-gray-500" : "text-muted-foreground text-[11px]")}>
-                      {q.minWords}+ words
-                    </span>
-                  )}
-                </div>
-                {q.requirement && (
-                  <p className={cn("mt-0.5 leading-snug", print ? "text-[9.5pt] text-gray-600" : "text-muted-foreground text-xs")}>
-                    {q.requirement}
-                  </p>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
     </li>
   )
 }
@@ -452,12 +432,6 @@ export function RubricPage({ product, slug }: { product: RubricProduct; slug?: s
                     </div>
                     <p className="text-muted-foreground text-xs">{describeRubricSection(section)}</p>
                   </div>
-                  <Link
-                    href={rubricHref(product, section.slug)}
-                    className="text-muted-foreground hover:text-foreground shrink-0 text-xs underline-offset-4 hover:underline"
-                  >
-                    Open
-                  </Link>
                 </div>
               )}
               <RubricSectionBody section={section} />

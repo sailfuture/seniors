@@ -17,8 +17,6 @@ export interface RubricQuestion {
   kind: RubricQuestionKind
   typeName?: string | null
   minWords?: number | null
-  /** One-line summary of what the answer must do, from the question's instructions. */
-  requirement?: string | null
 }
 
 export interface RubricComponent {
@@ -32,6 +30,10 @@ export interface RubricComponent {
   questions: RubricQuestion[]
   /** How many source citations the component asks for. */
   sources: number
+  /** What the component covers: distinct question topics, numbered repeats folded ("Prototype Image ×5"). */
+  covers: string[]
+  /** What must be produced, one short phrase each ("3 written responses, 500+ words"). */
+  deliverables: string[]
 }
 
 export interface RubricSection {
@@ -63,7 +65,6 @@ export interface RubricQuestionSource {
   field_label: string
   field_name: string
   min_words?: number | null
-  detailed_instructions?: string | null
   sortOrder?: number
 }
 
@@ -113,6 +114,51 @@ export function summarize(text: string | null | undefined, max = 220): string | 
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`
+}
+
+/**
+ * Distinct topics a set of questions covers. Numbered repeats ("Prototype
+ * Image 1", "Prototype Image 2") fold into one entry with a count, so the
+ * rubric reads as a summary rather than the template's full question list.
+ */
+export function coveredTopics(questions: RubricQuestion[], max = 8): string[] {
+  const groups = new Map<string, { label: string; count: number }>()
+  for (const q of questions) {
+    // Drop numbering and single-letter variants anywhere in the label:
+    // "Prototype Image 2 Description" and "Product B Name" fold together.
+    const stripped = q.label
+      .replace(/\s*(?:#|no\.?\s*)?\b(?:\d+|[A-Z])\b\s*/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+    const folded = stripped || q.label
+    // A label written as a full sentence is shortened to its opening words.
+    const base = folded.length > 48 ? `${folded.slice(0, 48).replace(/\s+\S*$/, "")}…` : folded
+    const key = base.toLowerCase()
+    const entry = groups.get(key)
+    if (entry) entry.count += 1
+    else groups.set(key, { label: base, count: 1 })
+  }
+  const items = [...groups.values()].map((g) => (g.count > 1 ? `${g.label} ×${g.count}` : g.label))
+  if (items.length <= max) return items
+  return [...items.slice(0, max), `${items.length - max} more`]
+}
+
+/** What a component must produce, one short phrase per kind of work. */
+export function deriveDeliverables(questions: RubricQuestion[], sources: number): string[] {
+  const written = questions.filter((q) => q.kind === "written")
+  const words = written.reduce((n, q) => n + (q.minWords ?? 0), 0)
+  const short = questions.filter((q) => q.kind === "short" || q.kind === "other").length
+  const images = questions.filter((q) => q.kind === "image").length
+  const tables = questions.filter((q) => q.kind === "lineItems").length
+  const out: string[] = []
+  if (written.length > 0) {
+    out.push(words > 0 ? `${plural(written.length, "written response")}, ${words.toLocaleString()}+ words` : plural(written.length, "written response"))
+  }
+  if (short > 0) out.push(plural(short, "short answer"))
+  if (tables > 0) out.push(plural(tables, "table of figures", "tables of figures"))
+  if (images > 0) out.push(plural(images, "image"))
+  if (sources > 0) out.push(plural(sources, "source to cite", "sources to cite"))
+  return out
 }
 
 /** One short line per kind of work the section asks for. */
@@ -174,18 +220,21 @@ export function buildRubric<
     kind: questionKind(accessors.typeId(q), q.min_words),
     typeName: accessors.typeName(q),
     minWords: q.min_words,
-    requirement: summarize(q.detailed_instructions, 170),
   })
 
   const toComponent = (id: number | null, name: string, description: string | null | undefined, instructions: string | null | undefined, qs: Q[]): RubricComponent => {
     const mapped = qs.map(toQuestion)
+    const questions = mapped.filter((q) => q.kind !== "source")
+    const sources = mapped.length - questions.length
     return {
       id,
       name,
       description,
       guidelines: summarize(instructions),
-      questions: mapped.filter((q) => q.kind !== "source"),
-      sources: mapped.filter((q) => q.kind === "source").length,
+      questions,
+      sources,
+      covers: coveredTopics(questions),
+      deliverables: deriveDeliverables(questions, sources),
     }
   }
 
