@@ -61,6 +61,9 @@ const OUTLOOK_WEEKS = 8
     cards (capped per card) and a long one packs three to a row. */
 const STUDENT_GRID = "grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))]"
 
+/** Closure tiles: as many across as fit at 15rem+, never stretched wide. */
+const CONFLICT_GRID = "mt-3 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15rem),1fr))]"
+
 /** The staff view of a student's work: every response, comment thread,
     revision, and version, read-only for review status. */
 function reviewHref(product: AdvisorProduct, studentId: string) {
@@ -204,8 +207,7 @@ export function AdvisorDashboard() {
         </p>
       </div>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <section className="min-w-0">
+      <section className="min-w-0">
           {advised === null ? (
             <div className={STUDENT_GRID}>
               {Array.from({ length: 3 }).map((_, i) => (
@@ -235,10 +237,9 @@ export function AdvisorDashboard() {
               ))}
             </div>
           )}
-        </section>
+      </section>
 
-        <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} />
-      </div>
+      <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} />
     </div>
   )
 }
@@ -379,20 +380,23 @@ function ScheduleCard({
   const outlook = useMemo(() => (days ? meetingOutlook(days, OUTLOOK_WEEKS) : null), [days])
 
   return (
-    <Card className="xl:sticky xl:top-6">
-      <CardHeader>
+    <Card>
+      <CardHeader className="border-b">
         <div className="flex items-center gap-3">
           <div className="bg-primary/10 flex size-10 shrink-0 items-center justify-center rounded-lg">
             <HugeiconsIcon icon={Calendar03Icon} strokeWidth={2} className="text-primary size-5" />
           </div>
           <div>
             <CardTitle>Class schedule</CardTitle>
-            <CardDescription>When the senior class meets and you can join.</CardDescription>
+            <CardDescription>
+              When the senior class meets and you can join, and the coming sessions the school
+              calendar rules out.
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        <div className="bg-muted/40 rounded-lg border p-4">
+      <CardContent className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <div className="bg-muted/40 self-start rounded-lg border p-4">
           <p className="text-sm font-medium">Thursdays &amp; Fridays</p>
           <p className="text-2xl font-semibold tabular-nums">
             {CLASS_MEETING.startLabel} – {CLASS_MEETING.endLabel}
@@ -408,16 +412,16 @@ function ScheduleCard({
           )}
         </div>
 
-        <div>
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold">Sessions that won&rsquo;t happen</h3>
           <p className="text-muted-foreground mt-0.5 text-xs">
             Days school is closed over the next {OUTLOOK_WEEKS} weeks, from the school calendar.
           </p>
 
           {status === "pending" ? (
-            <div className="mt-3 flex flex-col gap-2">
+            <div className={CONFLICT_GRID}>
               {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-11 rounded-lg" />
+                <Skeleton key={i} className="h-16 rounded-lg" />
               ))}
             </div>
           ) : status === "error" || !outlook ? (
@@ -441,13 +445,13 @@ function ScheduleCard({
                   <span>No closures: every Thursday and Friday session is on.</span>
                 </p>
               ) : (
-                <ul className="mt-3 divide-y rounded-lg border">
+                <ul className={CONFLICT_GRID}>
                   {outlook.conflicts.map((c) => (
-                    <li key={c.date} className="flex items-center gap-3 px-3 py-2.5">
+                    <li key={c.date} className="flex items-start gap-3 rounded-lg border px-3 py-2.5">
                       <HugeiconsIcon
                         icon={CalendarBlock01Icon}
                         strokeWidth={2}
-                        className="size-4 shrink-0 text-amber-600"
+                        className="mt-0.5 size-4 shrink-0 text-amber-600"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">
@@ -457,10 +461,10 @@ function ScheduleCard({
                           )}
                         </p>
                         <p className="text-muted-foreground text-xs">{c.title}</p>
+                        <Badge variant="secondary" className="mt-1.5">
+                          {c.session}
+                        </Badge>
                       </div>
-                      <Badge variant="secondary" className="shrink-0">
-                        {c.session}
-                      </Badge>
                     </li>
                   ))}
                 </ul>
