@@ -898,7 +898,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             }
             displayValue={displayValue}
           >
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 {relativeTime && !showAiFooter && (
                   <span className="text-muted-foreground whitespace-nowrap text-xs" title={editedTitle}>{relativeTime}</span>
                 )}
@@ -1320,8 +1320,9 @@ function CollapsibleQuestionCard({
       data-field-name={fieldName}
       className={`rounded-lg border bg-gray-50 p-3 dark:bg-muted/30 ${tone === "complete" ? "border-transparent" : CARD_TONE_BORDER[tone]} ${colSpan} ${isDimmed ? "opacity-75" : ""}`}
     >
-      {/* Wraps: in narrow (4-column) cards the controls drop to a second
-          line under the title instead of being laid over it. */}
+      {/* Two fixed rows: the title (truncated if long) with its collapse arrow
+          on top, and the timestamp, icons and actions on a line beneath it, so
+          nothing is ever laid over the title in narrow (4-column) cards. */}
       <div
         className={`mb-1.5 flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 ${isComplete ? "cursor-pointer select-none" : ""}`}
         onClick={
@@ -1333,11 +1334,12 @@ function CollapsibleQuestionCard({
         }
       >
         {/* The arrow trails the label so the label lines up with the answer below. */}
-        <div className="group/title flex min-w-0 flex-1 items-center gap-1.5 pt-1">
+        <div className="group/title flex min-w-0 items-center gap-1.5">
           <Label
+            title={label}
             className={`text-foreground min-w-0 text-sm leading-snug font-medium transition-colors ${isComplete ? "group-hover/title:text-foreground/65 cursor-pointer" : ""}`}
           >
-            {label}
+            <span className="min-w-0 truncate">{label}</span>
           </Label>
           <div className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full border ${isComplete ? "border-gray-300" : "border-gray-200"}`}>
             <HugeiconsIcon
@@ -1348,7 +1350,7 @@ function CollapsibleQuestionCard({
           </div>
           {labelAction && <div onClick={(e) => e.stopPropagation()}>{labelAction}</div>}
         </div>
-        <div className="ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex min-w-0 items-center" onClick={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>
