@@ -1,8 +1,6 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { BookOpen01Icon } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 
 /**
@@ -62,25 +60,4 @@ export function groupRowBackground(locked: boolean) {
 export function describeGroups(total: number, complete: number): string {
   const base = `${total} group${total === 1 ? "" : "s"}`
   return complete > 0 ? `${base} · ${complete} complete` : base
-}
-
-/** Opens the project guide scrolled to one section. */
-export function SectionGuideButton({ onClick, muted = false }: { onClick: () => void; muted?: boolean }) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "hover:bg-accent inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors",
-        muted ? "text-muted-foreground/60" : "text-muted-foreground hover:text-foreground"
-      )}
-      title="Section guide: what this section and its groups ask for"
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
-    >
-      <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-3.5" />
-      Guide
-    </button>
-  )
 }

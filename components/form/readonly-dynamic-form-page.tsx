@@ -68,6 +68,7 @@ import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { dateTime, relativeTime as relativeFrom, toMillis } from "@/lib/format-time"
 import { markdownToPlainText } from "@/lib/markdown-text"
 import { Markdown } from "@/components/markdown"
+import { RubricButton } from "./rubric"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -143,6 +144,8 @@ interface ReadOnlyDynamicFormPageProps {
   studentId: string
   headerContent?: React.ReactNode
   apiConfig?: FormApiConfig
+  /** This section's rubric page; shown as a button beside the title. */
+  rubricHref?: string
 }
 
 function getImageUrl(value: unknown): string | null {
@@ -288,7 +291,7 @@ function RequestRevisionAllButton({
   )
 }
 
-export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId, headerContent, apiConfig = LIFEMAP_API_CONFIG }: ReadOnlyDynamicFormPageProps) {
+export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId, headerContent, apiConfig = LIFEMAP_API_CONFIG, rubricHref }: ReadOnlyDynamicFormPageProps) {
   const cfg = apiConfig
   const F = cfg.fields
   const searchParams = useSearchParams()
@@ -1046,7 +1049,10 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">{title}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">{title}</h1>
+            {rubricHref && <RubricButton href={rubricHref} />}
+          </div>
           {subtitle && <Markdown text={subtitle} className="mt-1 [--tw-prose-body:var(--muted-foreground)]" />}
         </div>
       </div>

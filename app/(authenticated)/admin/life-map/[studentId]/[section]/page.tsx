@@ -178,6 +178,7 @@ export default function AdminLifeMapSectionPage({
         sectionId={sectionId}
         studentId={studentId}
         headerContent={actionBar}
+        rubricHref={`/life-map/rubric/${section}`}
       />
     )
   }

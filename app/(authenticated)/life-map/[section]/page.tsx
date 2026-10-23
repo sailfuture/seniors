@@ -55,5 +55,13 @@ export default function LifeMapDynamicSectionPage({
     )
   }
 
-  return <DynamicFormPage title={title} subtitle={description} sectionId={sectionId} backHref="/life-map" />
+  return (
+    <DynamicFormPage
+      title={title}
+      subtitle={description}
+      sectionId={sectionId}
+      backHref="/life-map"
+      rubricHref={`/life-map/rubric/${section}`}
+    />
+  )
 }

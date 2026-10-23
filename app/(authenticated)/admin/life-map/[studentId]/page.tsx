@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { use, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "@/components/session-provider"
 import { useCanApprove } from "@/hooks/use-can-review"
@@ -63,10 +63,9 @@ import { fetchResponseEvents, type ResponseEvent, reviewActor } from "@/lib/resp
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { formatWhen } from "@/lib/format-time"
 import { markdownToPlainText } from "@/lib/markdown-text"
-import { SectionGuideSheet, buildSectionGuide } from "@/components/form/section-guide-sheet"
+import { RubricButton, rubricHref } from "@/components/form/rubric"
 import {
   GroupTreeCell,
-  SectionGuideButton,
   describeGroups,
   groupRowBackground,
   GROUP_ROW,
@@ -159,22 +158,6 @@ export default function AdminStudentLifeMapOverviewPage({
   const [questionTypes, setQuestionTypes] = useState<{ id: number; type: string }[]>([])
   const [allTemplateQuestions, setAllTemplateQuestions] = useState<TemplateQuestion[]>([])
   const [allResponses, setAllResponses] = useState<StudentResponse[]>([])
-
-  // Project guide: one scrolling outline of every section and group. undefined
-  // = closed, null = open at the top, a number = open at that section.
-  const [guideSectionId, setGuideSectionId] = useState<number | null | undefined>(undefined)
-  const guideSections = useMemo(
-    () =>
-      buildSectionGuide(rows, allTemplateQuestions, {
-        sectionId: (q) => q.lifemap_sections_id,
-        groupId: (q) => q.lifemap_custom_group_id,
-        sectionDescription: (s) => s.section_description,
-        typeName: (q) =>
-          q._question_types?.type ??
-          (q.question_types_id ? questionTypes.find((t) => t.id === q.question_types_id)?.type : undefined),
-      }),
-    [rows, allTemplateQuestions, questionTypes]
-  )
 
   const [sheetRow, setSheetRow] = useState<SectionRow | null>(null)
   const [sheetGroupId, setSheetGroupId] = useState<number | null>(null)
@@ -437,9 +420,11 @@ export default function AdminStudentLifeMapOverviewPage({
           </Link>
         </Button>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => setGuideSectionId(null)}>
-            <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
-            Guide
+          <Button variant="outline" size="sm" className="gap-2" asChild>
+            <Link href="/life-map/rubric">
+              <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
+              Rubric
+            </Link>
           </Button>
           <Button variant="outline" size="sm" className="gap-2" asChild>
             <a href={`/public/life-map/${studentId}`} target="_blank" rel="noopener noreferrer">
@@ -470,7 +455,7 @@ export default function AdminStudentLifeMapOverviewPage({
                   onRowClick={(slug) => router.push(`/admin/life-map/${studentId}/${slug}`)}
                   onViewSummary={(groupId) => openSheet(row, groupId)}
                   onViewActivity={(groupId) => openActivity(row, groupId)}
-                  onViewGuide={() => setGuideSectionId(row.section.id)}
+                  rubricHref={rubricHref({ basePath: "/life-map" }, row.slug)}
                   templateQuestions={allTemplateQuestions}
                   responses={allResponses}
                   comments={comments}
@@ -489,16 +474,6 @@ export default function AdminStudentLifeMapOverviewPage({
         studentId={studentId}
         basePath={`/admin/life-map/${studentId}`}
         variant="admin"
-      />
-
-      <SectionGuideSheet
-        open={guideSectionId !== undefined}
-        onOpenChange={(o) => { if (!o) setGuideSectionId(undefined) }}
-        projectName="Life Map"
-        sections={guideSections}
-        focusSectionId={guideSectionId ?? null}
-        viewer="teacher"
-        printHref="/life-map/guide/print"
       />
 
       {activity && (
@@ -667,7 +642,7 @@ function SectionTableRows({
   onRowClick,
   onViewSummary,
   onViewActivity,
-  onViewGuide,
+  rubricHref,
   templateQuestions,
   responses,
   comments,
@@ -677,7 +652,7 @@ function SectionTableRows({
   onRowClick: (slug: string) => void
   onViewSummary: (groupId: number | null) => void
   onViewActivity: (groupId: number | null) => void
-  onViewGuide: () => void
+  rubricHref: string
   templateQuestions: TemplateQuestion[]
   responses: StudentResponse[]
   comments: Comment[]
@@ -717,7 +692,7 @@ function SectionTableRows({
         </TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1.5">
-            <SectionGuideButton onClick={onViewGuide} muted={locked} />
+            <RubricButton href={rubricHref} muted={locked} />
             <ActivityButton onClick={() => onViewActivity(null)} />
           </div>
         </TableCell>
@@ -761,7 +736,7 @@ function SectionTableRows({
         </TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1.5">
-            <SectionGuideButton onClick={onViewGuide} muted={locked} />
+            <RubricButton href={rubricHref} muted={locked} />
             <button
               type="button"
               className="inline-flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-accent"

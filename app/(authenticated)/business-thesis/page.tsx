@@ -52,10 +52,9 @@ import { Linkify } from "@/components/linkify"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { formatWhen } from "@/lib/format-time"
 import { markdownToPlainText } from "@/lib/markdown-text"
-import { SectionGuideSheet, buildSectionGuide } from "@/components/form/section-guide-sheet"
+import { RubricButton, rubricHref } from "@/components/form/rubric"
 import {
   GroupTreeCell,
-  SectionGuideButton,
   describeGroups,
   groupRowBackground,
   GROUP_ROW,
@@ -158,22 +157,6 @@ export default function StudentBusinessThesisOverviewPage() {
   const [questionTypes, setQuestionTypes] = useState<{ id: number; type: string }[]>([])
   const [allTemplateQuestions, setAllTemplateQuestions] = useState<TemplateQuestion[]>([])
   const [allResponses, setAllResponses] = useState<StudentResponse[]>([])
-
-  // Project guide: one scrolling outline of every section and group. undefined
-  // = closed, null = open at the top, a number = open at that section.
-  const [guideSectionId, setGuideSectionId] = useState<number | null | undefined>(undefined)
-  const guideSections = useMemo(
-    () =>
-      buildSectionGuide(rows, allTemplateQuestions, {
-        sectionId: qSectionId,
-        groupId: qGroupId,
-        sectionDescription: (s) => s.description,
-        typeName: (q) =>
-          q._question_types?.type ??
-          (q.question_types_id ? questionTypes.find((t) => t.id === q.question_types_id)?.type : undefined),
-      }),
-    [rows, allTemplateQuestions, questionTypes]
-  )
 
   const [sheetRow, setSheetRow] = useState<SectionRow | null>(null)
   const [sheetGroupId, setSheetGroupId] = useState<number | null>(null)
@@ -389,7 +372,7 @@ export default function StudentBusinessThesisOverviewPage() {
         <p className="text-muted-foreground mt-1 text-sm">
           Your thesis is built from sections. Each section is a major component of the
           senior thesis, and the groups nested inside it break that component into smaller
-          sets of questions. Open the guide to see what every section and group asks for.
+          sets of questions. Open the rubric to see what every section and group must cover.
         </p>
         <div className="mt-3 flex items-center justify-between">
           <Button variant="outline" size="sm" className="gap-2" asChild>
@@ -399,9 +382,11 @@ export default function StudentBusinessThesisOverviewPage() {
             </Link>
           </Button>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => setGuideSectionId(null)}>
-              <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
-              Guide
+            <Button variant="outline" size="sm" className="gap-2" asChild>
+              <Link href="/business-thesis/rubric">
+                <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
+                Rubric
+              </Link>
             </Button>
             {studentId && (
               <Button variant="outline" size="sm" className="gap-2" asChild>
@@ -436,7 +421,7 @@ export default function StudentBusinessThesisOverviewPage() {
                   onRowClick={(slug) => router.push(`/business-thesis/${slug}`)}
                   onViewSummary={(groupId) => openSheet(row, groupId)}
                   onViewActivity={(groupId) => openActivity(row, groupId)}
-                  onViewGuide={() => setGuideSectionId(row.section.id)}
+                  rubricHref={rubricHref({ basePath: "/business-thesis" }, row.slug)}
                   templateQuestions={allTemplateQuestions}
                   responses={allResponses}
                   comments={comments}
@@ -446,16 +431,6 @@ export default function StudentBusinessThesisOverviewPage() {
           </TableBody>
         </Table>
       </div>
-
-      <SectionGuideSheet
-        open={guideSectionId !== undefined}
-        onOpenChange={(o) => { if (!o) setGuideSectionId(undefined) }}
-        projectName="Business Thesis"
-        sections={guideSections}
-        focusSectionId={guideSectionId ?? null}
-        viewer="student"
-        printHref="/business-thesis/guide/print"
-      />
 
       {activity && (
         <GroupActivitySheet
@@ -594,7 +569,7 @@ function BtSectionTableRows({
   onRowClick,
   onViewSummary,
   onViewActivity,
-  onViewGuide,
+  rubricHref,
   templateQuestions,
   responses,
   comments,
@@ -604,7 +579,7 @@ function BtSectionTableRows({
   onRowClick: (slug: string) => void
   onViewSummary: (groupId: number | null) => void
   onViewActivity: (groupId: number | null) => void
-  onViewGuide: () => void
+  rubricHref: string
   templateQuestions: TemplateQuestion[]
   responses: StudentResponse[]
   comments: Comment[]
@@ -653,7 +628,7 @@ function BtSectionTableRows({
         </TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1.5">
-            <SectionGuideButton onClick={onViewGuide} muted={locked} />
+            <RubricButton href={rubricHref} muted={locked} />
             {!locked && (
               <ActivityButton onClick={() => onViewActivity(null)} />
             )}
@@ -704,7 +679,7 @@ function BtSectionTableRows({
         </TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1.5">
-            <SectionGuideButton onClick={onViewGuide} muted={locked} />
+            <RubricButton href={rubricHref} muted={locked} />
             <button
               type="button"
               className="inline-flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-accent"

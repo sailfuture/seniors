@@ -154,6 +154,7 @@ export default function AdminBusinessThesisSectionPage({
         sectionId={sectionId}
         studentId={studentId}
         headerContent={actionBar}
+        rubricHref={`/business-thesis/rubric/${section}`}
         apiConfig={BUSINESSTHESIS_API_CONFIG}
       />
     )

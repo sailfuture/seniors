@@ -63,6 +63,7 @@ export default function BusinessThesisDynamicSectionPage({
       sectionId={sectionId}
       apiConfig={BUSINESSTHESIS_API_CONFIG}
       backHref="/business-thesis"
+      rubricHref={`/business-thesis/rubric/${section}`}
     />
   )
 }

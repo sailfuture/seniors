@@ -63,6 +63,7 @@ import { MAX_SOURCES, emptySource, hasSourceEntry, parseSources, serializeSource
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
 import { QuestionInstructions } from "./question-instructions"
+import { RubricButton } from "./rubric"
 import { Markdown } from "@/components/markdown"
 import { groupResolvedThreads } from "./field-activity-stream"
 import { ZoomableImage } from "@/components/zoomable-image"
@@ -187,9 +188,11 @@ interface DynamicFormPageProps {
   sectionId: number
   apiConfig?: FormApiConfig
   backHref?: string
+  /** This section's rubric page; shown as a button beside the title. */
+  rubricHref?: string
 }
 
-export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMAP_API_CONFIG, backHref }: DynamicFormPageProps) {
+export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMAP_API_CONFIG, backHref, rubricHref }: DynamicFormPageProps) {
   const cfg = apiConfig
   const F = cfg.fields
   const searchParams = useSearchParams()
@@ -929,6 +932,7 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
               )}
             </button>
           )}
+          {rubricHref && <RubricButton href={rubricHref} />}
         </div>
         {subtitle && <Markdown text={subtitle} className="mt-1 [--tw-prose-body:var(--muted-foreground)]" />}
         {backHref && (
