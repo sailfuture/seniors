@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useSyncExternalStore } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon, PrinterIcon, SquareLock02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,9 @@ import { describeRubricSection, rubricCounts } from "@/lib/rubric"
 import { RubricSectionBody, rubricHref, useRubric, type RubricProduct } from "@/components/form/rubric"
 
 const LABEL = "text-[10px] font-semibold tracking-[0.12em] uppercase text-gray-500"
+
+// The query string never changes while the print page is open.
+const subscribeNoop = () => () => {}
 
 /**
  * The rubric as a US-Letter document: a cover with the outline, then one
@@ -19,11 +22,13 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
   const { sections: all, loading } = useRubric(product)
 
   // ?section=<slug> prints one section only (the section page's sheet links
-  // here). Read after mount so SSR and the first client render agree.
-  const [onlySlug, setOnlySlug] = useState<string | null>(null)
-  useEffect(() => {
-    setOnlySlug(new URLSearchParams(window.location.search).get("section"))
-  }, [])
+  // here). Read as a browser-only snapshot: the server render sees null, and
+  // the client picks up the real value without a setState in an effect.
+  const onlySlug = useSyncExternalStore(
+    subscribeNoop,
+    () => new URLSearchParams(window.location.search).get("section"),
+    () => null
+  )
   const sections = useMemo(
     () => (onlySlug ? all.filter((s) => s.slug === onlySlug) : all),
     [all, onlySlug]
