@@ -128,10 +128,24 @@ fetching the full advisors list and filtering server-side, so advisor sign-in
 works either way. The dedicated endpoint is still worth adding: the fallback
 ships the whole advisor directory to the server on every uncached sign-in.
 
-### Welcome email (Resend)
+### Invitations (Clerk + Resend)
 
-Adding an advisor at `/admin/advisors` fires a welcome email through
-`app/api/advisors/welcome/route.ts` (admin-gated). Setup:
+Adding an advisor on the Users page creates a **Clerk invitation** for their
+email and mails the link in the branded welcome template, through
+`app/api/advisors/invitations/route.ts` (admins and advisor supervisors
+only). The link lands on `/accept-invitation`, where Clerk's `<SignUp />`
+reads the ticket: the email is pre-verified, so the advisor only sets a
+password (or whichever methods the Clerk instance enables) and is redirected
+to the dashboard, where the roster check grants the advisor role.
+
+Clerk is the record of invitation state. The Users page's **Access** column
+reads it (`GET /api/advisors/invitations`): *Has account* (a Clerk user exists
+for the email), *Invited <date>* with its expiry, *Invitation expired*, or *Not
+invited*. Rows offer **Send/Resend invitation** (revokes the live link, issues a
+new 30-day one, re-sends the email) and **Cancel invitation**. Deleting an
+advisor also revokes any unaccepted invitation.
+
+Setup:
 
 1. Create a [Resend](https://resend.com) account and verify the
    `sailfutureacademy.org` sending domain (DNS records shown in their
@@ -139,10 +153,15 @@ Adding an advisor at `/admin/advisors` fires a welcome email through
 2. Set `RESEND_API_KEY` in Vercel and `.env.local`.
 3. Optional: `ADVISOR_EMAIL_FROM` to override the default
    `SailFuture Academy <noreply@sailfutureacademy.org>`.
+4. In the Clerk dashboard keep **sign-up mode public** (restricting sign-up to
+   invitations would block first-time Google sign-in for students and staff;
+   Xano's roster is what gates access) and make sure **Password** is an
+   enabled sign-up method, since the email tells advisors to set one.
 
-Without `RESEND_API_KEY` the route returns 503 and the admin UI shows
-"added, but the welcome email didn't send" — advisor creation itself never
-depends on mail delivery.
+Without `RESEND_API_KEY` the invitation is still created and the Access column
+shows it as invited, but the admin UI warns that the email didn't send; Resend
+from the row once the key is in place. Advisor creation never depends on Clerk
+or mail succeeding.
 
 ## No user data to migrate
 

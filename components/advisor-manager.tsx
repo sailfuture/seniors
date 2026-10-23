@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useSession } from "@/components/session-provider"
 import { Button } from "@/components/ui/button"
@@ -58,6 +58,8 @@ import {
   UserGroupIcon,
   Delete02Icon,
   MoreHorizontalIcon,
+  MailSend01Icon,
+  MailRemove01Icon,
 } from "@hugeicons/core-free-icons"
 import {
   ADVISOR_PRODUCTS,
@@ -74,9 +76,18 @@ import {
   type AdvisorAssignment,
   type AdvisorProduct,
 } from "@/lib/advisors"
+import {
+  accessByEmail,
+  cancelAdvisorInvitation,
+  sendAdvisorInvitation,
+  type AdvisorAccess,
+  type AdvisorAccessResponse,
+} from "@/lib/advisor-invitations"
 import { canManageStaff } from "@/lib/roles"
 import { studentName, type RosterStudent } from "@/lib/students"
 import {
+  queryKeys,
+  useAdvisorAccess,
   useAdvisorCacheActions,
   useAdvisorAssignments,
   useAdvisors,
@@ -204,6 +215,108 @@ function StudentStack({
   )
 }
 
+/** "Oct 23" this year, "Oct 23, 2025" otherwise. */
+function shortDate(ms: number): string {
+  const d = new Date(ms)
+  const thisYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(thisYear ? {} : { year: "numeric" }),
+  })
+}
+
+/**
+ * Where the advisor's sign-in stands, from Clerk: they have an account, an
+ * invitation is out (and when it expires), it expired, or nothing was ever
+ * sent. Expired and never-invited rows get a one-click send right here; the
+ * row menu has the same actions plus cancel.
+ */
+function AccessCell({
+  access,
+  busy,
+  canSend,
+  onSend,
+}: {
+  access: AdvisorAccess | undefined
+  busy: boolean
+  /** False for deactivated advisors: reactivate first, then invite. */
+  canSend: boolean
+  onSend: () => void
+}) {
+  if (!access) {
+    return <span className="text-muted-foreground text-sm">&mdash;</span>
+  }
+  switch (access.state) {
+    case "accepted":
+      return (
+        <div className="leading-tight">
+          <span className="inline-flex items-center gap-1.5 text-sm">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            Has account
+          </span>
+          <p className="text-muted-foreground text-xs">
+            {access.lastSignInAt
+              ? `Last signed in ${shortDate(access.lastSignInAt)}`
+              : "Hasn’t signed in yet"}
+          </p>
+        </div>
+      )
+    case "pending":
+      return (
+        <div className="leading-tight">
+          <span className="inline-flex items-center gap-1.5 text-sm">
+            <span className="size-1.5 rounded-full bg-amber-500" />
+            Invited{access.invitedAt ? ` ${shortDate(access.invitedAt)}` : ""}
+          </span>
+          {access.expiresAt && (
+            <p className="text-muted-foreground text-xs">
+              Link expires {shortDate(access.expiresAt)}
+            </p>
+          )}
+        </div>
+      )
+    case "expired":
+      return (
+        <div className="leading-tight">
+          <span className="inline-flex items-center gap-1.5 text-sm">
+            <span className="size-1.5 rounded-full bg-red-500" />
+            Invitation expired
+          </span>
+          {canSend && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onSend}
+              className="text-muted-foreground hover:text-foreground block text-xs underline underline-offset-4 disabled:opacity-50"
+            >
+              {busy ? "Sending…" : "Resend invitation"}
+            </button>
+          )}
+        </div>
+      )
+    default:
+      return (
+        <div className="leading-tight">
+          <span className="inline-flex items-center gap-1.5 text-sm">
+            <span className="bg-muted-foreground/40 size-1.5 rounded-full" />
+            Not invited
+          </span>
+          {canSend && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onSend}
+              className="text-muted-foreground hover:text-foreground block text-xs underline underline-offset-4 disabled:opacity-50"
+            >
+              {busy ? "Sending…" : "Send invitation"}
+            </button>
+          )}
+        </div>
+      )
+  }
+}
+
 interface AdvisorForm {
   firstName: string
   lastName: string
@@ -238,6 +351,22 @@ export function AdvisorManager() {
   const loading =
     advisorsQuery.isPending || assignmentsQuery.isPending || studentsQuery.isPending
   const cache = useAdvisorCacheActions()
+  const qc = useQueryClient()
+
+  // Clerk's view of each advisor's sign-in: account, invited, expired, none.
+  // The column disappears when Clerk can't be reached rather than lying.
+  const accessQuery = useAdvisorAccess(true)
+  const accessOk = accessQuery.data?.ok !== false
+  const access = useMemo(
+    () => accessByEmail(accessQuery.data?.access ?? []),
+    [accessQuery.data]
+  )
+  const setAccess = (next: AdvisorAccess) =>
+    qc.setQueryData<AdvisorAccessResponse>(queryKeys.advisorAccess, (prev) => ({
+      ok: true,
+      access: [...(prev?.access ?? []).filter((a) => a.email !== next.email), next],
+    }))
+  const [inviteBusy, setInviteBusy] = useState<number | null>(null)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Advisor | null>(null)
@@ -326,29 +455,21 @@ export function AdvisorManager() {
         if (!created) throw new Error()
         cache.advisorCreated(created)
 
-        // Welcome email goes through our server route (the Resend key can't
-        // live in the browser). The advisor exists either way, so a mail
-        // failure downgrades the toast instead of rolling anything back.
-        try {
-          const res = await fetch("/api/advisors/welcome", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: created.email,
-              firstName: created.firstName,
-            }),
-          })
-          if (res.ok) {
-            toast.success(`${advisorName(created)} added — welcome email sent`)
-          } else {
-            toast.warning(
-              `${advisorName(created)} added, but the welcome email didn't send.`
-            )
-          }
-        } catch {
+        // The invitation (Clerk link + branded email) goes through our server
+        // route. The advisor exists either way, so a failure downgrades the
+        // toast, and the Access column offers a resend.
+        const result = await sendAdvisorInvitation(created.id)
+        if (result.access) setAccess(result.access)
+        if (result.error) {
           toast.warning(
-            `${advisorName(created)} added, but the welcome email didn't send.`
+            `${advisorName(created)} added, but the invitation didn't send: ${result.error}`
           )
+        } else if (result.emailError) {
+          toast.warning(
+            `${advisorName(created)} added, but the invitation email didn't send: ${result.emailError}`
+          )
+        } else {
+          toast.success(`${advisorName(created)} added — invitation sent to ${created.email}`)
         }
       }
       setDialogOpen(false)
@@ -357,6 +478,32 @@ export function AdvisorManager() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const sendInvite = async (a: Advisor) => {
+    setInviteBusy(a.id)
+    const result = await sendAdvisorInvitation(a.id)
+    setInviteBusy(null)
+    if (result.access) setAccess(result.access)
+    if (result.error) {
+      toast.error(result.error)
+    } else if (result.emailError) {
+      toast.warning(`Invitation created, but the email didn't send: ${result.emailError}`)
+    } else {
+      toast.success(`Invitation sent to ${a.email}`)
+    }
+  }
+
+  const cancelInvite = async (a: Advisor) => {
+    setInviteBusy(a.id)
+    const error = await cancelAdvisorInvitation(a.id)
+    setInviteBusy(null)
+    if (error) {
+      toast.error(error)
+      return
+    }
+    setAccess({ email: a.email.trim().toLowerCase(), state: "none" })
+    toast.success(`Invitation for ${advisorName(a)} canceled`)
   }
 
   // Optimistic toggle: the row flips instantly, and onError puts it back if
@@ -403,7 +550,8 @@ export function AdvisorManager() {
         <p className="text-muted-foreground max-w-2xl text-sm">
           Outside advisors who can view and comment on their assigned students&apos; work.
           A business thesis advisor only ever sees business theses; a life map advisor
-          only life maps.
+          only life maps. New advisors are emailed an invitation link to create their
+          account; Access shows whether they&apos;ve accepted it.
         </p>
         <Button size="sm" className="shrink-0 gap-2" onClick={openAdd}>
           <HugeiconsIcon icon={UserAdd01Icon} strokeWidth={2} className="size-4" />
@@ -430,11 +578,12 @@ export function AdvisorManager() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[34%]">Advisor</TableHead>
-                <TableHead className="w-[18%]">Type</TableHead>
-                <TableHead className="w-[26%]">Students</TableHead>
-                <TableHead className="w-[12%]">Status</TableHead>
-                <TableHead className="w-[10%]">
+                <TableHead className="w-[28%]">Advisor</TableHead>
+                <TableHead className="w-[14%]">Type</TableHead>
+                <TableHead className="w-[22%]">Students</TableHead>
+                {accessOk && <TableHead className="w-[18%]">Access</TableHead>}
+                <TableHead className="w-[10%]">Status</TableHead>
+                <TableHead className="w-[8%]">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
@@ -443,6 +592,8 @@ export function AdvisorManager() {
               {sorted.map((a) => {
                 const active = a.isActive ?? true
                 const mine = byAdvisor.get(a.id) ?? []
+                const acc = access.get(a.email?.trim().toLowerCase() ?? "")
+                const busy = inviteBusy === a.id
                 return (
                   <TableRow key={a.id} className={active ? "" : "text-muted-foreground"}>
                     <TableCell>
@@ -470,6 +621,20 @@ export function AdvisorManager() {
                         onClick={() => setManaging(a)}
                       />
                     </TableCell>
+                    {accessOk && (
+                      <TableCell className={cn(!active && "opacity-60")}>
+                        {accessQuery.isPending ? (
+                          <Skeleton className="h-4 w-24" />
+                        ) : (
+                          <AccessCell
+                            access={acc}
+                            busy={busy}
+                            canSend={active}
+                            onSend={() => sendInvite(a)}
+                          />
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
                       {active ? (
                         <span className="inline-flex items-center gap-1.5 text-sm">
@@ -514,6 +679,21 @@ export function AdvisorManager() {
                               <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} />
                               {active ? "Deactivate" : "Reactivate"}
                             </DropdownMenuItem>
+                            {accessOk && acc && acc.state !== "accepted" && active && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem disabled={busy} onClick={() => sendInvite(a)}>
+                                  <HugeiconsIcon icon={MailSend01Icon} strokeWidth={2} />
+                                  {acc.state === "none" ? "Send invitation" : "Resend invitation"}
+                                </DropdownMenuItem>
+                                {acc.state === "pending" && (
+                                  <DropdownMenuItem disabled={busy} onClick={() => cancelInvite(a)}>
+                                    <HugeiconsIcon icon={MailRemove01Icon} strokeWidth={2} />
+                                    Cancel invitation
+                                  </DropdownMenuItem>
+                                )}
+                              </>
+                            )}
                             {canDelete && (
                               <>
                                 <DropdownMenuSeparator />
@@ -591,7 +771,9 @@ export function AdvisorManager() {
           <DialogHeader>
             <DialogTitle>{editing ? "Edit advisor" : "Add advisor"}</DialogTitle>
             <DialogDescription>
-              The email must match the account they&apos;ll sign in with.
+              {editing
+                ? "The email must match the account they sign in with."
+                : "They’ll be emailed a link to create their account and set a password."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">

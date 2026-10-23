@@ -9,6 +9,7 @@ import {
   type Advisor,
   type AdvisorAssignment,
 } from "@/lib/advisors"
+import { fetchAdvisorAccess } from "@/lib/advisor-invitations"
 import {
   fetchStaff,
   fetchStaffRoleOverrides,
@@ -30,6 +31,7 @@ export const queryKeys = {
   archivedStudents: ["students", "archived"] as const,
   advisors: ["advisors"] as const,
   advisorAssignments: ["advisor-assignments"] as const,
+  advisorAccess: ["advisor-access"] as const,
   staff: ["staff"] as const,
   staffRoles: ["staff-roles"] as const,
 }
@@ -92,6 +94,20 @@ export function useAllStudents({ enabled = true }: { enabled?: boolean } = {}) {
 
 export function useAdvisors() {
   return useQuery({ queryKey: queryKeys.advisors, queryFn: fetchAdvisors })
+}
+
+/**
+ * Where each advisor's sign-in stands (account / invited / expired / none),
+ * read from Clerk through our server route. Only the Users page asks, and
+ * only for staff who may manage advisors — the route 403s everyone else.
+ */
+export function useAdvisorAccess(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.advisorAccess,
+    queryFn: fetchAdvisorAccess,
+    enabled,
+    staleTime: 30_000,
+  })
 }
 
 export function useAdvisorAssignments() {

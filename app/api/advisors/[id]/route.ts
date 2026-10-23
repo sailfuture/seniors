@@ -8,14 +8,15 @@ import {
   type Advisor,
   type AdvisorAssignment,
 } from "@/lib/advisors"
+import { revokeInvitationsFor } from "@/lib/advisor-invitations.server"
 
 export const runtime = "nodejs"
 
 /**
  * Permanently removes a thesis advisor: their Clerk account (which revokes any
  * active sessions — roster metadata is cached on the Clerk user, so deleting
- * only the Xano row would leave them signed in), their student assignments,
- * and finally the advisors row itself.
+ * only the Xano row would leave them signed in) and any unaccepted Clerk
+ * invitation, their student assignments, and finally the advisors row itself.
  *
  * Ordered so every failure is retriable: the Xano row is deleted last, and a
  * partial run leaves the advisor deactivatable/deletable rather than orphaned.
@@ -67,6 +68,9 @@ export async function DELETE(
         await client.users.deleteUser(u.id)
         clerkDeleted += 1
       }
+      // An outstanding invitation link would otherwise still create an
+      // account for an advisor who no longer exists.
+      await revokeInvitationsFor(email)
     } catch {
       return NextResponse.json(
         { error: "Couldn't remove the Clerk account — nothing was deleted. Please try again." },
