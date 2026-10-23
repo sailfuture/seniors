@@ -94,21 +94,29 @@ function ComboboxContent({
   align = "start",
   alignOffset = 0,
   anchor,
+  container,
   ...props
 }: ComboboxPrimitive.Popup.Props &
   Pick<
     ComboboxPrimitive.Positioner.Props,
     "side" | "align" | "sideOffset" | "alignOffset" | "anchor"
-  >) {
+  > &
+  // Where the popup mounts. Inside a Radix modal Dialog pass the dialog's
+  // content element: the dialog blocks wheel/pointer events everywhere
+  // else, so a popup portaled to <body> can't be scrolled or clicked.
+  Pick<ComboboxPrimitive.Portal.Props, "container">) {
   return (
-    <ComboboxPrimitive.Portal>
+    <ComboboxPrimitive.Portal container={container}>
       <ComboboxPrimitive.Positioner
         side={side}
         sideOffset={sideOffset}
         align={align}
         alignOffset={alignOffset}
         anchor={anchor}
-        className="isolate z-50"
+        // pointer-events-auto: inside a Radix modal Dialog the body is set to
+        // pointer-events:none, which this portaled popup would inherit and
+        // become unclickable and unscrollable (keyboard would still work).
+        className="isolate z-50 pointer-events-auto"
       >
         <ComboboxPrimitive.Popup
           data-slot="combobox-content"

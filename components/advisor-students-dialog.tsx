@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -39,6 +39,7 @@ import {
   ComboboxItem,
   ComboboxLabel,
   ComboboxList,
+  useComboboxAnchor,
 } from "@/components/ui/combobox"
 import { InputGroupAddon } from "@/components/ui/input-group"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -133,6 +134,13 @@ export function AdvisorStudentsDialog({
   // their own product; the product picker shows only for legacy advisors
   // whose type was never set.
   const fixedProduct = advisorProduct(advisor)
+  // The student list drops down from the whole picker row, not just the
+  // search field, so it spans the dialog.
+  const pickerAnchor = useComboboxAnchor()
+  // The list mounts inside the dialog itself (see ComboboxContent's
+  // `container`), so the modal dialog's scroll and pointer locks don't
+  // apply to it.
+  const dialogRef = useRef<HTMLDivElement>(null)
   const [pickedStudent, setPickedStudent] = useState<RosterStudent | null>(null)
   const [pickedProduct, setPickedProduct] = useState<AdvisorProduct>(
     fixedProduct ?? "business-thesis"
@@ -234,7 +242,7 @@ export function AdvisorStudentsDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) onOpenChange(o) }}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent ref={dialogRef} className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{advisorName(advisor)}&rsquo;s students</DialogTitle>
           <DialogDescription>
@@ -281,7 +289,7 @@ export function AdvisorStudentsDialog({
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div ref={pickerAnchor} className="flex flex-wrap items-center gap-2">
             {!fixedProduct && (
               <Select
                 value={pickedProduct}
@@ -322,21 +330,25 @@ export function AdvisorStudentsDialog({
                   </InputGroupAddon>
                 )}
               </ComboboxInput>
-              <ComboboxContent>
-                <ComboboxEmpty>No students found.</ComboboxEmpty>
-                <ComboboxList className="p-0">
+              <ComboboxContent anchor={pickerAnchor} container={dialogRef} sideOffset={8}>
+                <ComboboxEmpty className="py-6">No students found.</ComboboxEmpty>
+                <ComboboxList className="max-h-[min(24rem,calc(var(--available-height)-1rem))] p-0">
                   {(group: StudentGroup) => (
-                    <ComboboxGroup key={group.value} items={group.items} className="pb-1">
+                    <ComboboxGroup key={group.value} items={group.items} className="pb-1.5">
                       {/* Sticky so the class year stays visible while its students scroll. */}
-                      <ComboboxLabel className="bg-popover sticky top-0 z-10 flex items-center justify-between gap-2 px-3 pt-2 pb-1 text-[0.6875rem] font-medium tracking-wide uppercase">
+                      <ComboboxLabel className="bg-popover sticky top-0 z-10 flex items-center justify-between gap-2 px-4 pt-2.5 pb-1.5 text-[0.6875rem] font-medium tracking-wide uppercase">
                         <span className="truncate">{group.value}</span>
                         <span className="tabular-nums">{group.items.length}</span>
                       </ComboboxLabel>
                       <ComboboxCollection>
                         {(s: RosterStudent) => (
-                          <ComboboxItem key={s.id} value={s} className="mx-1 w-auto gap-2.5 py-1.5 pr-9">
-                            <StudentAvatar student={s} className="size-8" />
-                            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                          <ComboboxItem
+                            key={s.id}
+                            value={s}
+                            className="mx-1.5 w-auto cursor-pointer gap-3 py-2 pr-10 pl-2.5"
+                          >
+                            <StudentAvatar student={s} className="size-9" />
+                            <span className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight">
                               <span className="truncate font-medium">{studentName(s)}</span>
                               <span className="text-muted-foreground truncate text-xs">
                                 {s.studentEmail}
