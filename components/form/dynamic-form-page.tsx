@@ -1093,14 +1093,15 @@ function GroupSection({
   return (
     <Card className="overflow-hidden !gap-0 !py-0">
       <div
-        className={`flex cursor-pointer items-center justify-between px-6 py-4 select-none ${collapsed ? "" : "border-b"}`}
+        className={`flex cursor-pointer flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-4 select-none ${collapsed ? "" : "border-b"}`}
         onClick={(e) => {
           if (isHeaderClick(e)) toggleCollapsed()
         }}
       >
-        {/* The arrow trails the title so the title lines up with the questions below. */}
-        <div className="group/title flex items-center gap-2">
-          <CardTitle className="group-hover/title:text-foreground/65 text-lg transition-colors">{group.group_name}</CardTitle>
+        {/* The arrow trails the title so the title lines up with the questions below.
+            The status chips and Submit All wrap under the title when the card is narrow. */}
+        <div className="group/title flex min-w-0 items-center gap-2">
+          <CardTitle className="group-hover/title:text-foreground/65 min-w-0 text-lg transition-colors">{group.group_name}</CardTitle>
           <div className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border">
             <HugeiconsIcon
               icon={ArrowDown01Icon}
@@ -1121,7 +1122,7 @@ function GroupSection({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="ml-auto flex shrink-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
           {completedCount > 0 && (
             <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
               <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />

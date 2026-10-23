@@ -1314,8 +1314,10 @@ function CollapsibleQuestionCard({
       data-field-name={fieldName}
       className={`rounded-lg border bg-gray-50 p-3 dark:bg-muted/30 ${tone === "complete" ? "border-transparent" : CARD_TONE_BORDER[tone]} ${colSpan} ${isDimmed ? "opacity-75" : ""}`}
     >
+      {/* Wraps: in narrow (4-column) cards the controls drop to a second
+          line under the title instead of being laid over it. */}
       <div
-        className={`mb-1.5 flex items-start justify-between gap-2 ${isComplete ? "cursor-pointer select-none" : ""}`}
+        className={`mb-1.5 flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 ${isComplete ? "cursor-pointer select-none" : ""}`}
         onClick={
           isComplete
             ? (e) => {
@@ -1327,7 +1329,7 @@ function CollapsibleQuestionCard({
         {/* The arrow trails the label so the label lines up with the answer below. */}
         <div className="group/title flex min-w-0 flex-1 items-center gap-1.5 pt-1">
           <Label
-            className={`text-foreground text-sm leading-snug font-medium transition-colors ${isComplete ? "group-hover/title:text-foreground/65 cursor-pointer" : ""}`}
+            className={`text-foreground min-w-0 text-sm leading-snug font-medium transition-colors ${isComplete ? "group-hover/title:text-foreground/65 cursor-pointer" : ""}`}
           >
             {label}
           </Label>
@@ -1340,7 +1342,7 @@ function CollapsibleQuestionCard({
           </div>
           {labelAction && <div onClick={(e) => e.stopPropagation()}>{labelAction}</div>}
         </div>
-        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>
