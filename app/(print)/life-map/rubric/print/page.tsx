@@ -1,3 +1,5 @@
+"use client"
+
 import { RubricPrint } from "@/components/form/rubric-print"
 import { LIFE_MAP_RUBRIC } from "@/lib/rubric-products"
 

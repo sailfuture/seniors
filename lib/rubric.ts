@@ -134,7 +134,7 @@ export function deriveRequirements(components: RubricComponent[]): string[] {
         : plural(written.length, "written response")
     )
   }
-  if (short > 0) lines.push(`${plural(short, "short answer or detail")} to fill in`)
+  if (short > 0) lines.push(`${plural(short, "short answer or detail", "short answers or details")} to fill in`)
   if (tables > 0) lines.push(`${plural(tables, "table of figures")} to complete`)
   if (images > 0) lines.push(`${plural(images, "image")} to upload`)
   if (sources > 0) lines.push(`${plural(sources, "source")} to cite`)
