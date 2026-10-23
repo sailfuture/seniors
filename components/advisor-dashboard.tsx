@@ -3,11 +3,13 @@
 import { useMemo } from "react"
 import { useSession } from "@/components/session-provider"
 import {
+  advisorProduct,
+  PRODUCT_LABEL,
   type AdvisorAssignment,
   type AdvisorProduct,
 } from "@/lib/advisors"
 import { type RosterStudent } from "@/lib/students"
-import { useAdvisorAssignments, useStudents } from "@/lib/queries"
+import { useAdvisorAssignments, useAdvisors, useStudents } from "@/lib/queries"
 import {
   Avatar,
   AvatarFallback,
@@ -24,11 +26,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
-const PRODUCT_LABEL: Record<AdvisorProduct, string> = {
-  "business-thesis": "Business Thesis",
-  "life-map": "Life Map",
-}
-
 function productHref(product: AdvisorProduct, studentId: string) {
   return `/public/${product}/${studentId}`
 }
@@ -43,16 +40,28 @@ export function AdvisorDashboard() {
   const advisorsId = session?.user?.advisors_id
   const assignmentsQuery = useAdvisorAssignments()
   const studentsQuery = useStudents()
+  const advisorsQuery = useAdvisors()
+
+  // A business thesis advisor sees only business theses, a life map advisor
+  // only life maps. Advisors from before types existed (no product on their
+  // row) see whatever they were assigned.
+  const myProduct = useMemo<AdvisorProduct | null>(() => {
+    const me = advisorsQuery.data?.find((a) => Number(a.id) === Number(advisorsId))
+    return me ? advisorProduct(me) : null
+  }, [advisorsQuery.data, advisorsId])
 
   // Same shared caches the staff surfaces use; the advisor only ever sees
   // their own slice of them.
   const advised = useMemo<AdvisedStudent[] | null>(() => {
-    if (advisorsId == null || !assignmentsQuery.data || !studentsQuery.data) return null
+    if (advisorsId == null || !assignmentsQuery.data || !studentsQuery.data || !advisorsQuery.data) {
+      return null
+    }
 
     const byId = new Map(studentsQuery.data.map((s: RosterStudent) => [String(s.id), s]))
 
     const mine = assignmentsQuery.data.filter(
-      (a: AdvisorAssignment) => Number(a.advisors_id) === Number(advisorsId)
+      (a: AdvisorAssignment) =>
+        Number(a.advisors_id) === Number(advisorsId) && (myProduct === null || a.type === myProduct)
     )
 
     const grouped = new Map<string, AdvisedStudent>()
@@ -73,14 +82,16 @@ export function AdvisorDashboard() {
         `${y.student.lastName} ${y.student.firstName}`
       )
     )
-  }, [advisorsId, assignmentsQuery.data, studentsQuery.data])
+  }, [advisorsId, assignmentsQuery.data, studentsQuery.data, advisorsQuery.data, myProduct])
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div>
         <h1 className="text-2xl font-bold">Your students</h1>
         <p className="text-muted-foreground mt-1">
-          Students you advise, with links to their current work.
+          {myProduct
+            ? `Students whose ${PRODUCT_LABEL[myProduct]} you advise on, with links to their current work.`
+            : "Students you advise, with links to their current work."}
         </p>
       </div>
 

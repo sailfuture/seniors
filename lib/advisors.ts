@@ -6,6 +6,22 @@ export const ADVISOR_ASSIGNMENTS_ENDPOINT = `${ADVISORS_BASE}/advisor_assignment
 /** Which product an assignment grants access to (the table's `type` field). */
 export type AdvisorProduct = "business-thesis" | "life-map"
 
+export const ADVISOR_PRODUCTS: AdvisorProduct[] = ["business-thesis", "life-map"]
+
+export const PRODUCT_LABEL: Record<AdvisorProduct, string> = {
+  "business-thesis": "Business Thesis",
+  "life-map": "Life Map",
+}
+
+export const PRODUCT_SHORT: Record<AdvisorProduct, string> = {
+  "business-thesis": "BT",
+  "life-map": "LM",
+}
+
+export function isAdvisorProduct(v: unknown): v is AdvisorProduct {
+  return v === "business-thesis" || v === "life-map"
+}
+
 export interface Advisor {
   id: number
   email: string
@@ -13,6 +29,11 @@ export interface Advisor {
   lastName: string
   profileImage?: string | null
   isActive?: boolean
+  /** The one product this advisor works on — a business thesis advisor or a
+   *  life map advisor — stored in the table's `role` column. Blank on
+   *  advisors added before types existed; those can still be assigned to
+   *  either product until an admin sets their type. */
+  role?: string | null
   /** Stamped by the Clerk webhook on first sign-in; links the row to its
    *  Clerk account so a dashboard-side user deletion can deactivate it. */
   clerk_user_id?: string | null
@@ -35,6 +56,17 @@ export function advisorInitials(a: Advisor): string {
   const f = (a.firstName ?? "").charAt(0)
   const l = (a.lastName ?? "").charAt(0)
   return (f + l).toUpperCase() || a.email.charAt(0).toUpperCase()
+}
+
+/** The advisor's product, or null for a legacy advisor with no type set. */
+export function advisorProduct(a: Pick<Advisor, "role">): AdvisorProduct | null {
+  return isAdvisorProduct(a.role) ? a.role : null
+}
+
+/** Whether this advisor may be assigned to (and see) the given product. */
+export function advisorAllowsProduct(a: Pick<Advisor, "role">, product: AdvisorProduct): boolean {
+  const own = advisorProduct(a)
+  return own === null || own === product
 }
 
 export async function fetchAdvisors(): Promise<Advisor[]> {
@@ -60,7 +92,10 @@ export async function fetchAdvisorAssignments(): Promise<AdvisorAssignment[]> {
 }
 
 export async function createAdvisor(
-  data: Pick<Advisor, "email" | "firstName" | "lastName"> & { isActive?: boolean }
+  data: Pick<Advisor, "email" | "firstName" | "lastName"> & {
+    isActive?: boolean
+    product: AdvisorProduct
+  }
 ): Promise<Advisor | null> {
   try {
     const res = await fetch(ADVISORS_ENDPOINT, {
@@ -72,6 +107,7 @@ export async function createAdvisor(
         lastName: data.lastName.trim(),
         profileImage: null,
         isActive: data.isActive ?? true,
+        role: data.product,
       }),
     })
     if (!res.ok) return null

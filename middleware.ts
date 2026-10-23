@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
+import { canEditTemplates, canManageAdvisors, isStaffRole } from "@/lib/roles"
 
 const isProtectedRoute = createRouteMatcher([
   "/dashboard(.*)",
@@ -14,8 +15,14 @@ const isProtectedRoute = createRouteMatcher([
 
 const isAdminRoute = createRouteMatcher(["/admin(.*)"])
 
-// The one staff surface reserved for admins: the thesis-advisor directory.
-const isAdvisorDirectoryRoute = createRouteMatcher(["/admin/advisors(.*)"])
+// The template editors: staff who only supervise advisors never edit these.
+const isTemplateRoute = createRouteMatcher([
+  "/admin/life-map-template(.*)",
+  "/admin/business-thesis-template(.*)",
+])
+
+// The Users page (staff roles + the thesis-advisor directory).
+const isUsersRoute = createRouteMatcher(["/admin/users(.*)", "/admin/advisors(.*)"])
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
@@ -25,10 +32,10 @@ export default clerkMiddleware(async (auth, req) => {
     })
   }
 
-  // Keep students and advisors out of the staff surface, and teachers out of
-  // the advisor directory. Only enforceable when the session token is
-  // configured to carry publicMetadata; without that claim we let the request
-  // through rather than lock staff out.
+  // Keep students and advisors out of the staff surface, supervisors out of
+  // the templates, and teachers out of the Users page. Only enforceable when
+  // the session token is configured to carry publicMetadata; without that
+  // claim we let the request through rather than lock staff out.
   if (isAdminRoute(req)) {
     const { sessionClaims } = await auth.protect({
       unauthenticatedUrl: new URL("/", req.url).toString(),
@@ -38,10 +45,14 @@ export default clerkMiddleware(async (auth, req) => {
       metadata && typeof metadata === "object"
         ? (metadata as Record<string, unknown>).role
         : undefined
-    if (typeof role === "string" && role !== "admin" && role !== "teacher") {
+    if (typeof role !== "string") return
+    if (!isStaffRole(role)) {
       return Response.redirect(new URL("/dashboard", req.url))
     }
-    if (isAdvisorDirectoryRoute(req) && typeof role === "string" && role !== "admin") {
+    if (isTemplateRoute(req) && !canEditTemplates(role)) {
+      return Response.redirect(new URL("/dashboard", req.url))
+    }
+    if (isUsersRoute(req) && !canManageAdvisors(role)) {
       return Response.redirect(new URL("/dashboard", req.url))
     }
   }

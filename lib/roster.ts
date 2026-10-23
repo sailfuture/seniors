@@ -1,5 +1,6 @@
 import { ADVISORS_ENDPOINT, type Advisor } from "@/lib/advisors"
-import type { AppRole } from "@/lib/roles"
+import { fetchStaffRoleOverrides, staffRoleFromToddle } from "@/lib/staff"
+import type { AppRole, StaffRole } from "@/lib/roles"
 
 const STUDENT_LOGIN_CHECK_ENDPOINT =
   "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/student_login_check"
@@ -14,11 +15,12 @@ const ADVISOR_LOGIN_CHECK_ENDPOINT =
 
 /**
  * Bumped whenever the shape or semantics of RosterMetadata change (v2 split
- * staff into admin/teacher). Cached metadata carrying an older version is
- * re-resolved against Xano on the next request, which is how existing Clerk
- * users migrate without anyone touching their accounts.
+ * staff into admin/teacher; v3 added the supervisor tier, resolved from this
+ * app's own senior_staff_roles table). Cached metadata carrying an older
+ * version is re-resolved against Xano on the next request, which is how
+ * existing Clerk users migrate without anyone touching their accounts.
  */
-export const ROSTER_METADATA_VERSION = 2
+export const ROSTER_METADATA_VERSION = 3
 
 export interface XanoStudent {
   id: string
@@ -96,31 +98,36 @@ export async function lookupTeacher(email: string): Promise<XanoTeacher | null> 
  * Resolves a teacher row to its staff tier. The login-check endpoint only
  * returns identity fields, so when `role`/`isArchived` are missing the full
  * teachers list is scanned for the authoritative row. Archived staff get no
- * access at all; a blank or unknown role gets the less-privileged "teacher".
+ * access at all.
+ *
+ * This app's own `senior_staff_roles` table (set from the Users page) wins;
+ * without a row there, Toddle's `role` column decides ("Admin" → admin,
+ * anything else → teacher). The two are fetched together.
  */
-async function resolveStaffRole(teacher: XanoTeacher): Promise<"admin" | "teacher" | null> {
-  let row: XanoTeacher | null =
-    "role" in teacher || "isArchived" in teacher ? teacher : null
+async function resolveStaffRole(teacher: XanoTeacher): Promise<StaffRole | null> {
+  const needsRow = !("role" in teacher || "isArchived" in teacher)
 
-  if (!row) {
-    try {
-      const res = await fetch(TEACHERS_ENDPOINT)
-      if (res.ok) {
-        const rows = await res.json()
-        if (Array.isArray(rows)) {
-          row = (rows as XanoTeacher[]).find((t) => String(t.id) === String(teacher.id)) ?? null
-        }
-      }
-    } catch {
-      /* fall through */
-    }
-  }
+  const [listed, overrides] = await Promise.all([
+    needsRow
+      ? fetch(TEACHERS_ENDPOINT)
+          .then(async (res) => {
+            if (!res.ok) return null
+            const rows = await res.json()
+            if (!Array.isArray(rows)) return null
+            return (rows as XanoTeacher[]).find((t) => String(t.id) === String(teacher.id)) ?? null
+          })
+          .catch(() => null)
+      : Promise.resolve(teacher),
+    fetchStaffRoleOverrides(),
+  ])
 
   // The row matched login_check but the list was unreachable: stay signed in
   // at the lower staff tier rather than locking staff out on a blip.
-  if (!row) return "teacher"
-  if (row.isArchived === true) return null
-  return String(row.role ?? "").trim().toLowerCase() === "admin" ? "admin" : "teacher"
+  if (!listed) return "teacher"
+  if (listed.isArchived === true) return null
+
+  const override = overrides.find((o) => String(o.teachers_id) === String(teacher.id))
+  return override?.role ?? staffRoleFromToddle(listed.role)
 }
 
 /**

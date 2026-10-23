@@ -9,6 +9,11 @@ import {
   type Advisor,
   type AdvisorAssignment,
 } from "@/lib/advisors"
+import {
+  fetchStaff,
+  fetchStaffRoleOverrides,
+  type StaffRoleOverride,
+} from "@/lib/staff"
 
 /**
  * Shared TanStack Query hooks for the roster-ish tables that many surfaces
@@ -23,6 +28,30 @@ export const queryKeys = {
   students: ["students"] as const,
   advisors: ["advisors"] as const,
   advisorAssignments: ["advisor-assignments"] as const,
+  staff: ["staff"] as const,
+  staffRoles: ["staff-roles"] as const,
+}
+
+/** Staff members (the shared teachers table) — only read by the Users page. */
+export function useStaff({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: queryKeys.staff, queryFn: fetchStaff, enabled })
+}
+
+/** This app's staff-tier overrides; the Users page writes them back with
+    `setStaffRoleOverrides` after each change. */
+export function useStaffRoleOverrides({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: queryKeys.staffRoles, queryFn: fetchStaffRoleOverrides, enabled })
+}
+
+export function useStaffRoleCacheActions() {
+  const qc = useQueryClient()
+  return useMemo(
+    () => ({
+      setOverrides: (rows: StaffRoleOverride[]) =>
+        qc.setQueryData<StaffRoleOverride[]>(queryKeys.staffRoles, rows),
+    }),
+    [qc]
+  )
 }
 
 export function useStudents({ enabled = true }: { enabled?: boolean } = {}) {

@@ -23,7 +23,13 @@ export interface AppSession {
 function isRosterMetadata(value: unknown): value is RosterMetadata {
   if (!value || typeof value !== "object") return false
   const role = (value as Record<string, unknown>).role
-  return role === "student" || role === "admin" || role === "teacher" || role === "advisor"
+  return (
+    role === "student" ||
+    role === "admin" ||
+    role === "teacher" ||
+    role === "supervisor" ||
+    role === "advisor"
+  )
 }
 
 /**

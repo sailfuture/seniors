@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { Resend } from "resend"
 import { getApiSession } from "@/lib/api-auth"
+import { canManageAdvisors } from "@/lib/roles"
 import { APP_URL, escapeHtml, renderBrandedEmail } from "@/lib/email-template"
 
 const FROM =
@@ -47,8 +48,8 @@ export async function POST(req: Request) {
   if (!user) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 })
   }
-  if (user.role !== "admin") {
-    return NextResponse.json({ error: "Admins only" }, { status: 403 })
+  if (!canManageAdvisors(user.role)) {
+    return NextResponse.json({ error: "Admins and advisor supervisors only" }, { status: 403 })
   }
 
   const apiKey = process.env.RESEND_API_KEY

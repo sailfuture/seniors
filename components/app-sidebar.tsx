@@ -35,7 +35,7 @@ import Link from "next/link"
 import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import { fetchBtSections, invalidateBtSectionsCache, btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
 import { useRefreshKey } from "@/lib/refresh-context"
-import { isStaffRole } from "@/lib/roles"
+import { canEditTemplates, canManageAdvisors, isStaffRole } from "@/lib/roles"
 import { useStudents } from "@/lib/queries"
 import { classYearOf, currentClassYear } from "@/lib/students"
 import type { Comment } from "@/lib/form-types"
@@ -567,7 +567,14 @@ function buildStudentNav(
   return groups
 }
 
-function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThesisSection[], pathname: string, students: StudentListItem[], canManageAdvisors: boolean) {
+/** Which staff-only groups this role gets: templates (admins and teachers)
+    and the Users page (admins and advisor supervisors). */
+interface StaffNavAccess {
+  templates: boolean
+  users: boolean
+}
+
+function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThesisSection[], pathname: string, students: StudentListItem[], access: StaffNavAccess) {
   const mapItems = buildLifeMapNavItems(sections)
   const btItems = buildBusinessSectionItems(btSections)
   const onTemplate = pathname.startsWith("/admin/life-map-template")
@@ -596,35 +603,41 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
         url: `/admin/business-thesis/${s.id}`,
       })),
     },
-    {
-      title: "Life Map Template",
-      url: "/admin/life-map-template",
-      icon: <HugeiconsIcon icon={Settings02Icon} strokeWidth={2} />,
-      isActive: onTemplate,
-      separatorBefore: true,
-      items: mapItems.map((s) => ({
-        title: s.title,
-        url: `/admin/life-map-template/${s.slug}`,
-      })),
-    },
-    {
-      title: "Business Thesis Template",
-      url: "/admin/business-thesis-template",
-      icon: <HugeiconsIcon icon={Settings02Icon} strokeWidth={2} />,
-      isActive: onBtTemplate,
-      items: btItems.map((s) => ({
-        title: s.title,
-        url: `/admin/business-thesis-template/${s.slug}`,
-      })),
-    },
-    // Admin-only: teachers see everything else but can't manage advisors.
-    ...(canManageAdvisors
+    // Advisor supervisors never edit the templates.
+    ...(access.templates
       ? [
           {
-            title: "Thesis Advisors",
-            url: "/admin/advisors",
+            title: "Life Map Template",
+            url: "/admin/life-map-template",
+            icon: <HugeiconsIcon icon={Settings02Icon} strokeWidth={2} />,
+            isActive: onTemplate,
+            separatorBefore: true,
+            items: mapItems.map((s) => ({
+              title: s.title,
+              url: `/admin/life-map-template/${s.slug}`,
+            })),
+          },
+          {
+            title: "Business Thesis Template",
+            url: "/admin/business-thesis-template",
+            icon: <HugeiconsIcon icon={Settings02Icon} strokeWidth={2} />,
+            isActive: onBtTemplate,
+            items: btItems.map((s) => ({
+              title: s.title,
+              url: `/admin/business-thesis-template/${s.slug}`,
+            })),
+          },
+        ]
+      : []),
+    // Admins and advisor supervisors manage users; teachers see everything else.
+    ...(access.users
+      ? [
+          {
+            title: "Users",
+            url: "/admin/users",
             icon: <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} />,
-            isActive: pathname.startsWith("/admin/advisors"),
+            isActive: pathname.startsWith("/admin/users") || pathname.startsWith("/admin/advisors"),
+            separatorBefore: !access.templates,
             items: [],
           },
         ]
@@ -718,12 +731,12 @@ interface NavBadgeData {
   btCompleteSet?: Set<number>
 }
 
-function getNavFromPathname(pathname: string, isStaff: boolean, canManageAdvisors: boolean, sections: LifeMapSection[], btSections: BusinessThesisSection[], badges: NavBadgeData, students: StudentListItem[]) {
+function getNavFromPathname(pathname: string, isStaff: boolean, access: StaffNavAccess, sections: LifeMapSection[], btSections: BusinessThesisSection[], badges: NavBadgeData, students: StudentListItem[]) {
   if (pathname.startsWith("/admin/")) {
-    return getTeacherStudentNav(pathname, sections, btSections, badges.readyReviewCounts, badges.revisionCounts, badges.btReadyReviewCounts, badges.btRevisionCounts, badges.completeSet, badges.btCompleteSet) ?? buildTeacherBaseNav(sections, btSections, pathname, students, canManageAdvisors)
+    return getTeacherStudentNav(pathname, sections, btSections, badges.readyReviewCounts, badges.revisionCounts, badges.btReadyReviewCounts, badges.btRevisionCounts, badges.completeSet, badges.btCompleteSet) ?? buildTeacherBaseNav(sections, btSections, pathname, students, access)
   }
   if (isStaff) {
-    return buildTeacherBaseNav(sections, btSections, pathname, students, canManageAdvisors)
+    return buildTeacherBaseNav(sections, btSections, pathname, students, access)
   }
   return buildStudentNav(sections, btSections, pathname, badges.revisionCounts, badges.btRevisionCounts, badges.readyReviewCounts, badges.btReadyReviewCounts, badges.completeSet, badges.btCompleteSet)
 }
@@ -751,8 +764,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const role = (session?.user as Record<string, unknown>)?.role as string | undefined
-  // Teachers share the staff sidebar; only admins get the advisor directory.
+  // Staff share one sidebar; which extra groups show depends on the tier.
   const isStaff = isStaffRole(role)
+  const staffAccess: StaffNavAccess = {
+    templates: canEditTemplates(role),
+    users: canManageAdvisors(role),
+  }
   const refreshKey = useRefreshKey()
   const { sections, loading: sectionsLoading } = useLifeMapSections(refreshKey)
   const { sections: btSections, loading: btSectionsLoading } = useBusinessThesisSections(refreshKey)
@@ -766,7 +783,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { counts: btCommentCounts, loading: btCommentLoading } = useBtSectionCommentCounts(!isStaff ? studentId : null, refreshKey)
   const sidebarLoading = sectionsLoading || btSectionsLoading || reviewLoading || commentLoading || btReviewLoading || btCommentLoading
   const studentList = useStudentList(isStaff)
-  const navItems = getNavFromPathname(pathname, isStaff, role === "admin", sections, btSections, {
+  const navItems = getNavFromPathname(pathname, isStaff, staffAccess, sections, btSections, {
     commentCounts: commentCounts,
     revisionCounts: reviewCounts.revisionNeeded,
     readyReviewCounts: reviewCounts.readyReview,

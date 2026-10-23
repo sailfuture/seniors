@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
+import { useSession } from "@/components/session-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Table,
   TableBody,
@@ -35,18 +36,46 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { UserAdd01Icon, PencilEdit02Icon, UserGroupIcon, Delete02Icon } from "@hugeicons/core-free-icons"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  UserAdd01Icon,
+  PencilEdit02Icon,
+  UserGroupIcon,
+  Delete02Icon,
+  MoreHorizontalIcon,
+} from "@hugeicons/core-free-icons"
+import {
+  ADVISOR_PRODUCTS,
+  PRODUCT_LABEL,
+  PRODUCT_SHORT,
   advisorInitials,
   advisorName,
+  advisorProduct,
   createAdvisor,
   deleteAdvisor,
+  isAdvisorProduct,
   updateAdvisor,
   type Advisor,
   type AdvisorAssignment,
+  type AdvisorProduct,
 } from "@/lib/advisors"
-import { studentName } from "@/lib/students"
+import { canManageStaff } from "@/lib/roles"
+import { studentName, type RosterStudent } from "@/lib/students"
 import {
   useAdvisorCacheActions,
   useAdvisorAssignments,
@@ -54,19 +83,149 @@ import {
   useStudents,
 } from "@/lib/queries"
 import { AdvisorStudentsDialog } from "@/components/advisor-students-dialog"
+import { cn } from "@/lib/utils"
 
-const PRODUCT_LABEL: Record<string, string> = {
-  "business-thesis": "Business Thesis",
-  "life-map": "Life Map",
+const PRODUCT_BADGE: Record<AdvisorProduct, string> = {
+  "business-thesis": "border-sky-200 bg-sky-50 text-sky-900",
+  "life-map": "border-emerald-200 bg-emerald-50 text-emerald-900",
 }
 
+/** The advisor's type as a chip; legacy rows without one get a nudge. */
+function ProductBadge({ advisor }: { advisor: Advisor }) {
+  const product = advisorProduct(advisor)
+  if (!product) {
+    return (
+      <Badge
+        variant="outline"
+        className="border-amber-200 bg-amber-50 font-normal text-amber-800"
+        title="Added before advisor types existed — edit the advisor to set one."
+      >
+        Type not set
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className={cn("font-normal", PRODUCT_BADGE[product])}>
+      {PRODUCT_LABEL[product]}
+    </Badge>
+  )
+}
+
+const STACK_LIMIT = 5
+
 /**
- * Advisor directory: add outside thesis advisors, edit their details,
- * deactivate them without deleting (so their past feedback keeps its author),
- * or delete them outright — which also removes their Clerk sign-in account.
- * Assigning an advisor to a student happens on each product's roster.
+ * The advisor's students as an overlapping avatar row with a count, and the
+ * full list (with product when it isn't implied by the advisor's type) on
+ * hover. Clicking opens the manage dialog.
+ */
+function StudentStack({
+  advisor,
+  assignments,
+  studentsById,
+  onClick,
+}: {
+  advisor: Advisor
+  assignments: AdvisorAssignment[]
+  studentsById: Map<string, RosterStudent>
+  onClick: () => void
+}) {
+  const product = advisorProduct(advisor)
+  const rows = useMemo(
+    () =>
+      [...assignments]
+        .map((m) => ({ m, student: studentsById.get(String(m.students_id)) }))
+        .sort((a, b) =>
+          (a.student ? studentName(a.student) : "").localeCompare(
+            b.student ? studentName(b.student) : ""
+          )
+        ),
+    [assignments, studentsById]
+  )
+
+  if (rows.length === 0) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="text-muted-foreground hover:text-foreground -mx-2 rounded-md px-2 py-1 text-sm underline-offset-4 hover:underline"
+      >
+        No students yet
+      </button>
+    )
+  }
+
+  const shown = rows.slice(0, STACK_LIMIT)
+  const extra = rows.length - shown.length
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={`Manage ${advisorName(advisor)}'s students`}
+          className="hover:bg-muted/60 -mx-2 flex items-center gap-2.5 rounded-md px-2 py-1 text-left"
+        >
+          <span className="flex -space-x-2">
+            {shown.map(({ m, student }) => (
+              <Avatar key={m.id} className="ring-background size-7 ring-2">
+                <AvatarImage src={student?.profileImage || undefined} />
+                <AvatarFallback className="text-[10px]">
+                  {student
+                    ? `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase()
+                    : "?"}
+                </AvatarFallback>
+              </Avatar>
+            ))}
+            {extra > 0 && (
+              <span className="bg-muted text-muted-foreground ring-background flex size-7 items-center justify-center rounded-full text-[10px] font-medium ring-2">
+                +{extra}
+              </span>
+            )}
+          </span>
+          <span className="text-sm tabular-nums">
+            {rows.length} {rows.length === 1 ? "student" : "students"}
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="start" className="max-w-xs">
+        <ul className="grid gap-0.5">
+          {rows.map(({ m, student }) => (
+            <li key={m.id} className="flex items-baseline gap-2">
+              <span>{student ? studentName(student) : `Student #${m.students_id}`}</span>
+              {(product === null || m.type !== product) && isAdvisorProduct(m.type) && (
+                <span className="opacity-70">{PRODUCT_SHORT[m.type]}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+interface AdvisorForm {
+  firstName: string
+  lastName: string
+  email: string
+  product: AdvisorProduct | ""
+}
+
+const EMPTY_FORM: AdvisorForm = { firstName: "", lastName: "", email: "", product: "" }
+
+/**
+ * Advisor directory: add outside thesis advisors (each a business thesis or a
+ * life map advisor), edit their details, deactivate them without deleting (so
+ * their past feedback keeps its author), or delete them outright — which also
+ * removes their Clerk sign-in account. Students are assigned from here or
+ * from each product's roster.
  */
 export function AdvisorManager() {
+  const { data: session } = useSession()
+  const myRole = (session?.user as Record<string, unknown> | undefined)?.role
+  // Deleting also removes a sign-in account; supervisors can do everything else.
+  const canDelete = canManageStaff(myRole)
+
   // Shared caches: the same three tables the rosters and dialogs read, fetched
   // once app-wide instead of once per surface.
   const advisorsQuery = useAdvisors()
@@ -82,13 +241,13 @@ export function AdvisorManager() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Advisor | null>(null)
   const [managing, setManaging] = useState<Advisor | null>(null)
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "" })
+  const [form, setForm] = useState<AdvisorForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<Advisor | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
 
   // Assignments per advisor, so the table can show who they cover.
-  const countsByAdvisor = useMemo(() => {
+  const byAdvisor = useMemo(() => {
     const m = new Map<number, AdvisorAssignment[]>()
     for (const a of assignments) {
       m.set(a.advisors_id, [...(m.get(a.advisors_id) ?? []), a])
@@ -101,15 +260,32 @@ export function AdvisorManager() {
     [students]
   )
 
+  const sorted = useMemo(
+    () =>
+      [...advisors].sort((a, b) => {
+        // Active first, then by name.
+        const aa = a.isActive ?? true
+        const ba = b.isActive ?? true
+        if (aa !== ba) return aa ? -1 : 1
+        return advisorName(a).localeCompare(advisorName(b))
+      }),
+    [advisors]
+  )
+
   const openAdd = () => {
     setEditing(null)
-    setForm({ firstName: "", lastName: "", email: "" })
+    setForm(EMPTY_FORM)
     setDialogOpen(true)
   }
 
   const openEdit = (a: Advisor) => {
     setEditing(a)
-    setForm({ firstName: a.firstName ?? "", lastName: a.lastName ?? "", email: a.email ?? "" })
+    setForm({
+      firstName: a.firstName ?? "",
+      lastName: a.lastName ?? "",
+      email: a.email ?? "",
+      product: advisorProduct(a) ?? "",
+    })
     setDialogOpen(true)
   }
 
@@ -117,6 +293,10 @@ export function AdvisorManager() {
     const email = form.email.trim().toLowerCase()
     if (!email || !form.firstName.trim()) {
       toast.error("First name and email are required.")
+      return
+    }
+    if (!form.product) {
+      toast.error("Choose whether this is a business thesis or a life map advisor.")
       return
     }
     // The email is the sign-in identity, so a duplicate would collide.
@@ -127,27 +307,21 @@ export function AdvisorManager() {
       toast.error(`${advisorName(clash)} already uses that email.`)
       return
     }
+    const patch = {
+      firstName: form.firstName.trim(),
+      lastName: form.lastName.trim(),
+      email,
+      role: form.product,
+    }
     setSaving(true)
     try {
       if (editing) {
-        const ok = await updateAdvisor(editing.id, {
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          email,
-        })
+        const ok = await updateAdvisor(editing.id, patch)
         if (!ok) throw new Error()
-        cache.advisorUpdated(editing.id, {
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          email,
-        })
+        cache.advisorUpdated(editing.id, patch)
         toast.success("Advisor updated")
       } else {
-        const created = await createAdvisor({
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          email,
-        })
+        const created = await createAdvisor({ ...patch, product: form.product })
         if (!created) throw new Error()
         cache.advisorCreated(created)
 
@@ -185,8 +359,7 @@ export function AdvisorManager() {
   }
 
   // Optimistic toggle: the row flips instantly, and onError puts it back if
-  // Xano rejects the PATCH — the rollback the old hand-rolled version did
-  // manually now comes from the mutation lifecycle.
+  // Xano rejects the PATCH.
   const toggleMutation = useMutation({
     mutationFn: async (a: Advisor) => {
       const next = !(a.isActive ?? true)
@@ -224,15 +397,13 @@ export function AdvisorManager() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Thesis Advisors</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Outside advisors who can view and comment on an assigned student&apos;s work. Assign
-            them to students from the Business Thesis or Life Map roster.
-          </p>
-        </div>
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="text-muted-foreground max-w-2xl text-sm">
+          Outside advisors who can view and comment on their assigned students&apos; work.
+          A business thesis advisor only ever sees business theses; a life map advisor
+          only life maps.
+        </p>
         <Button size="sm" className="shrink-0 gap-2" onClick={openAdd}>
           <HugeiconsIcon icon={UserAdd01Icon} strokeWidth={2} className="size-4" />
           Add advisor
@@ -242,7 +413,7 @@ export function AdvisorManager() {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
+            <Skeleton key={i} className="h-14 w-full" />
           ))}
         </div>
       ) : advisors.length === 0 ? (
@@ -258,95 +429,104 @@ export function AdvisorManager() {
           <Table>
             <TableHeader>
               <TableRow>
-                {/* Proportional widths: with a fixed pixel width only on the
-                    actions, the email column used to absorb every bit of slack
-                    on a wide screen and strand the rest at the far right. */}
-                <TableHead className="w-[28%]">Advisor</TableHead>
-                <TableHead className="w-[30%]">Email</TableHead>
-                <TableHead className="w-[27%]">Assigned</TableHead>
-                <TableHead className="w-[15%] text-right">Status</TableHead>
+                <TableHead className="w-[34%]">Advisor</TableHead>
+                <TableHead className="w-[18%]">Type</TableHead>
+                <TableHead className="w-[26%]">Students</TableHead>
+                <TableHead className="w-[12%]">Status</TableHead>
+                <TableHead className="w-[10%]">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {advisors.map((a) => {
+              {sorted.map((a) => {
                 const active = a.isActive ?? true
-                const mine = countsByAdvisor.get(a.id) ?? []
+                const mine = byAdvisor.get(a.id) ?? []
                 return (
-                  <TableRow key={a.id} className={active ? "" : "opacity-50"}>
+                  <TableRow key={a.id} className={active ? "" : "text-muted-foreground"}>
                     <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="size-8">
+                      <div className={cn("flex items-center gap-3", !active && "opacity-60")}>
+                        <Avatar className="size-9">
+                          <AvatarImage src={a.profileImage || undefined} />
                           <AvatarFallback className="text-xs">{advisorInitials(a)}</AvatarFallback>
                         </Avatar>
-                        <span className="font-medium">{advisorName(a)}</span>
+                        <div className="min-w-0 leading-tight">
+                          <p className="text-foreground truncate font-medium">{advisorName(a)}</p>
+                          <p className="text-muted-foreground truncate text-xs" title={a.email}>
+                            {a.email}
+                          </p>
+                        </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-w-0 truncate" title={a.email}>
-                      {a.email}
+                    <TableCell className={cn(!active && "opacity-60")}>
+                      <ProductBadge advisor={a} />
+                    </TableCell>
+                    <TableCell className={cn(!active && "opacity-60")}>
+                      <StudentStack
+                        advisor={a}
+                        assignments={mine}
+                        studentsById={studentsById}
+                        onClick={() => setManaging(a)}
+                      />
                     </TableCell>
                     <TableCell>
-                      {mine.length === 0 ? (
-                        <span className="text-muted-foreground text-sm">—</span>
+                      {active ? (
+                        <span className="inline-flex items-center gap-1.5 text-sm">
+                          <span className="size-1.5 rounded-full bg-emerald-500" />
+                          Active
+                        </span>
                       ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {mine.map((m) => {
-                            const student = studentsById.get(String(m.students_id))
-                            return (
-                              <Badge
-                                key={m.id}
-                                variant="secondary"
-                                className="max-w-44 font-normal"
-                                title={`${PRODUCT_LABEL[m.type] ?? m.type}`}
-                              >
-                                <span className="truncate">
-                                  {student ? studentName(student) : `#${m.students_id}`}
-                                </span>
-                                <span className="text-muted-foreground ml-1 shrink-0">
-                                  · {m.type === "business-thesis" ? "BT" : "LM"}
-                                </span>
-                              </Badge>
-                            )
-                          })}
-                        </div>
+                        <span className="inline-flex items-center gap-1.5 text-sm">
+                          <span className="bg-muted-foreground/40 size-1.5 rounded-full" />
+                          Inactive
+                        </span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell>
                       <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="outline"
                           size="icon"
                           className="text-muted-foreground size-8"
-                          title="Manage assigned students"
+                          title="Manage students"
                           onClick={() => setManaging(a)}
                         >
                           <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} className="size-4" />
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="text-muted-foreground size-8"
-                          title="Edit advisor"
-                          onClick={() => openEdit(a)}
-                        >
-                          <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} className="size-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="bg-white"
-                          onClick={() => toggleActive(a)}
-                        >
-                          {active ? "Deactivate" : "Activate"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="text-destructive hover:text-destructive size-8"
-                          title="Delete advisor"
-                          onClick={() => setDeleting(a)}
-                        >
-                          <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="text-muted-foreground size-8"
+                              title="More"
+                            >
+                              <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-44">
+                            <DropdownMenuItem onClick={() => openEdit(a)}>
+                              <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} />
+                              Edit details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => toggleActive(a)}>
+                              <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} />
+                              {active ? "Deactivate" : "Reactivate"}
+                            </DropdownMenuItem>
+                            {canDelete && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setDeleting(a)}
+                                >
+                                  <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                                  Delete advisor
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -443,6 +623,29 @@ export function AdvisorManager() {
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="adv-type">Advisor type</Label>
+              <Select
+                value={form.product}
+                onValueChange={(v) => setForm((f) => ({ ...f, product: v as AdvisorProduct }))}
+              >
+                <SelectTrigger id="adv-type" className="w-full">
+                  <SelectValue placeholder="Choose a type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ADVISOR_PRODUCTS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {PRODUCT_LABEL[p]} advisor
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">
+                {editing && !advisorProduct(editing)
+                  ? "This advisor was added before types existed — pick the product they advise on."
+                  : "Decides which product they can be assigned to and see."}
+              </p>
             </div>
           </div>
           <DialogFooter>

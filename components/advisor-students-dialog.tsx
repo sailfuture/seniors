@@ -40,10 +40,15 @@ import {
   ComboboxLabel,
   ComboboxList,
 } from "@/components/ui/combobox"
+import { InputGroupAddon } from "@/components/ui/input-group"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Delete02Icon } from "@hugeicons/core-free-icons"
+import { cn } from "@/lib/utils"
 import {
+  ADVISOR_PRODUCTS,
+  PRODUCT_LABEL,
   advisorName,
+  advisorProduct,
   assignAdvisor,
   unassignAdvisor,
   type Advisor,
@@ -52,16 +57,29 @@ import {
 } from "@/lib/advisors"
 import { currentClassYear, studentName, type RosterStudent } from "@/lib/students"
 
-const PRODUCT_LABEL: Record<AdvisorProduct, string> = {
-  "business-thesis": "Business Thesis",
-  "life-map": "Life Map",
-}
-
-const PRODUCTS = Object.keys(PRODUCT_LABEL) as AdvisorProduct[]
-
 interface StudentGroup {
   value: string
   items: RosterStudent[]
+}
+
+function initials(s?: RosterStudent): string {
+  if (!s) return "?"
+  return `${s.firstName?.charAt(0) ?? ""}${s.lastName?.charAt(0) ?? ""}`.toUpperCase() || "?"
+}
+
+function StudentAvatar({
+  student,
+  className,
+}: {
+  student?: RosterStudent
+  className?: string
+}) {
+  return (
+    <Avatar className={cn("size-7 shrink-0", className)}>
+      <AvatarImage src={student?.profileImage || undefined} />
+      <AvatarFallback className="text-[0.7em] font-medium">{initials(student)}</AvatarFallback>
+    </Avatar>
+  )
 }
 
 /** Xano stores the year as "Batch of 2026"; the UI calls it "Class of 2026". */
@@ -111,8 +129,14 @@ export function AdvisorStudentsDialog({
   onAssigned: (a: AdvisorAssignment) => void
   onUnassigned: (assignmentId: number) => void
 }) {
+  // A typed advisor (business thesis or life map) can only be assigned to
+  // their own product; the product picker shows only for legacy advisors
+  // whose type was never set.
+  const fixedProduct = advisorProduct(advisor)
   const [pickedStudent, setPickedStudent] = useState<RosterStudent | null>(null)
-  const [pickedProduct, setPickedProduct] = useState<AdvisorProduct>("business-thesis")
+  const [pickedProduct, setPickedProduct] = useState<AdvisorProduct>(
+    fixedProduct ?? "business-thesis"
+  )
   const [busy, setBusy] = useState(false)
   // Removal is confirmed in a warning dialog rather than firing off the icon.
   const [confirmRemove, setConfirmRemove] = useState<AdvisorAssignment | null>(null)
@@ -214,7 +238,9 @@ export function AdvisorStudentsDialog({
         <DialogHeader>
           <DialogTitle>{advisorName(advisor)}&rsquo;s students</DialogTitle>
           <DialogDescription>
-            Assign or remove students this advisor can view.
+            {fixedProduct
+              ? `Assign or remove students whose ${PRODUCT_LABEL[fixedProduct]} this advisor can view.`
+              : "Assign or remove students this advisor can view."}
           </DialogDescription>
         </DialogHeader>
 
@@ -232,14 +258,7 @@ export function AdvisorStudentsDialog({
                     key={a.id}
                     className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50"
                   >
-                    <Avatar className="size-7">
-                      <AvatarImage src={student?.profileImage || undefined} />
-                      <AvatarFallback className="text-xs">
-                        {student
-                          ? `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase()
-                          : "?"}
-                      </AvatarFallback>
-                    </Avatar>
+                    <StudentAvatar student={student} />
                     <span className="min-w-0 flex-1 truncate text-sm font-medium">
                       {student ? studentName(student) : `Student #${a.students_id}`}
                     </span>
@@ -263,25 +282,27 @@ export function AdvisorStudentsDialog({
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={pickedProduct}
-              onValueChange={(v) => {
-                setPickedProduct(v as AdvisorProduct)
-                setPickedStudent(null)
-              }}
-              disabled={busy}
-            >
-              <SelectTrigger className="w-[150px] shrink-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PRODUCTS.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {PRODUCT_LABEL[p]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {!fixedProduct && (
+              <Select
+                value={pickedProduct}
+                onValueChange={(v) => {
+                  setPickedProduct(v as AdvisorProduct)
+                  setPickedStudent(null)
+                }}
+                disabled={busy}
+              >
+                <SelectTrigger className="w-[150px] shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ADVISOR_PRODUCTS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {PRODUCT_LABEL[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Combobox
               items={studentGroups}
               value={pickedStudent}
@@ -293,17 +314,34 @@ export function AdvisorStudentsDialog({
                 placeholder="Search students…"
                 className="min-w-0 flex-1"
                 disabled={busy}
-              />
+              >
+                {/* The picked student's photo sits in the field so the choice reads at a glance. */}
+                {pickedStudent && (
+                  <InputGroupAddon align="inline-start" className="pl-1.5">
+                    <StudentAvatar student={pickedStudent} className="size-6" />
+                  </InputGroupAddon>
+                )}
+              </ComboboxInput>
               <ComboboxContent>
                 <ComboboxEmpty>No students found.</ComboboxEmpty>
-                <ComboboxList>
+                <ComboboxList className="p-0">
                   {(group: StudentGroup) => (
-                    <ComboboxGroup key={group.value} items={group.items}>
-                      <ComboboxLabel>{group.value}</ComboboxLabel>
+                    <ComboboxGroup key={group.value} items={group.items} className="pb-1">
+                      {/* Sticky so the class year stays visible while its students scroll. */}
+                      <ComboboxLabel className="bg-popover sticky top-0 z-10 flex items-center justify-between gap-2 px-3 pt-2 pb-1 text-[0.6875rem] font-medium tracking-wide uppercase">
+                        <span className="truncate">{group.value}</span>
+                        <span className="tabular-nums">{group.items.length}</span>
+                      </ComboboxLabel>
                       <ComboboxCollection>
                         {(s: RosterStudent) => (
-                          <ComboboxItem key={s.id} value={s}>
-                            {studentName(s)}
+                          <ComboboxItem key={s.id} value={s} className="mx-1 w-auto gap-2.5 py-1.5 pr-9">
+                            <StudentAvatar student={s} className="size-8" />
+                            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                              <span className="truncate font-medium">{studentName(s)}</span>
+                              <span className="text-muted-foreground truncate text-xs">
+                                {s.studentEmail}
+                              </span>
+                            </span>
                           </ComboboxItem>
                         )}
                       </ComboboxCollection>

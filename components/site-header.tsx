@@ -163,6 +163,8 @@ function HeaderBreadcrumb() {
     crumbs.push({ label: "Life Map" })
   } else if (pathname.startsWith("/admin/business-thesis")) {
     crumbs.push({ label: "Business Thesis" })
+  } else if (pathname.startsWith("/admin/users") || pathname.startsWith("/admin/advisors")) {
+    crumbs.push({ label: "Users" })
   } else if (pathname.startsWith("/life-map/")) {
     const sectionMatch = pathname.match(/^\/life-map\/([^/]+)/)
     if (sectionMatch) {

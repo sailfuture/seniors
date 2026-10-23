@@ -50,6 +50,7 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { fetchAllProjectLocks, lockProject, unlockProject, type ProjectLockStatus } from "@/lib/project-lock"
 import { cachedFetch } from "@/lib/cached-fetch"
 import {
+  advisorAllowsProduct,
   advisorName,
   assignAdvisor,
   assignmentsFor,
@@ -492,7 +493,8 @@ export function StudentRoster({
             onOpenChange={(o) => { if (!o) setAdvisorDialog(null) }}
             studentName={advisorDialog ? `${advisorDialog.firstName} ${advisorDialog.lastName}` : ""}
             productLabel={advisorProduct === "life-map" ? "Life Map" : "Business Thesis"}
-            advisors={advisors}
+            // Only advisors of this product (or legacy untyped ones) can be picked.
+            advisors={advisors.filter((a) => advisorAllowsProduct(a, advisorProduct))}
             assigned={
               advisorDialog ? assignmentsFor(assignments, advisorDialog.id, advisorProduct) : []
             }

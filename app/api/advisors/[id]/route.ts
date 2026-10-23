@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { clerkClient } from "@clerk/nextjs/server"
 import { getApiSession } from "@/lib/api-auth"
+import { canManageAdvisors } from "@/lib/roles"
 import {
   ADVISORS_ENDPOINT,
   ADVISOR_ASSIGNMENTS_ENDPOINT,
@@ -25,8 +26,8 @@ export async function DELETE(
 ) {
   const user = await getApiSession(req)
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 })
-  if (user.role !== "admin") {
-    return NextResponse.json({ error: "Admins only" }, { status: 403 })
+  if (!canManageAdvisors(user.role)) {
+    return NextResponse.json({ error: "Admins and advisor supervisors only" }, { status: 403 })
   }
 
   const { id } = await params
