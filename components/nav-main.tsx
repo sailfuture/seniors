@@ -97,10 +97,16 @@ function NavCollapsibleItem({ item, pathname, loading }: { item: NavItem; pathna
                         {subItem.separatorBefore && <SidebarSeparator className="my-1.5" />}
                         <SidebarMenuSubItem>
                           {subItem.isLocked ? (
-                            <SidebarMenuSubButton className="cursor-not-allowed opacity-50">
-                              <span className="min-w-0 flex-1 truncate" title={subItem.title}>{subItem.title}</span>
-                              <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="text-muted-foreground ml-auto size-3.5 shrink-0" />
-                            </SidebarMenuSubButton>
+                            // Locked sections stay listed but can't be opened:
+                            // no href, out of the tab order, grayed out.
+                            <div className="cursor-not-allowed" title={`${subItem.title} is locked`}>
+                              <SidebarMenuSubButton asChild>
+                                <span role="link" aria-disabled="true" tabIndex={-1} className="text-muted-foreground select-none">
+                                  <span className="min-w-0 flex-1 truncate">{subItem.title}</span>
+                                  <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="ml-auto size-3.5 shrink-0" />
+                                </span>
+                              </SidebarMenuSubButton>
+                            </div>
                           ) : (
                             <SidebarMenuSubButton asChild className={isActive ? "bg-muted font-semibold" : ""}>
                               <Link href={subItem.url}>

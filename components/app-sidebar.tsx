@@ -683,6 +683,7 @@ function getTeacherStudentNav(
             badgeBlue: sec && readyReviewCounts ? (readyReviewCounts.get(sec.id) ?? 0) : 0,
             badgeRed: sec && revisionCounts ? (revisionCounts.get(sec.id) ?? 0) : 0,
             complete: sec ? (completeSet?.has(sec.id) ?? false) : false,
+            isLocked: sec?.isLocked ?? false,
           }
         }),
       },
@@ -712,6 +713,7 @@ function getTeacherStudentNav(
             badgeBlue: sec && btReadyReviewCounts ? (btReadyReviewCounts.get(sec.id) ?? 0) : 0,
             badgeRed: sec && btRevisionCounts ? (btRevisionCounts.get(sec.id) ?? 0) : 0,
             complete: sec ? (btCompleteSet?.has(sec.id) ?? false) : false,
+            isLocked: sec?.isLocked ?? false,
           }
         }),
       },
