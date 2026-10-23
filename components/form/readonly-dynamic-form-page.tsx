@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useSession } from "@/components/session-provider"
 import { useCanApprove } from "@/hooks/use-can-review"
+import { CARD_TONE_BORDER, cardTone, type CardTone } from "./card-tone"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -721,15 +722,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         // submission.
         const hasReviewableContent = hasResponseContent(response)
         const qIsDimmed = qIsComplete || qNeedsRevision
-        const qTone: CardTone = qIsComplete
-          ? "complete"
-          : qNeedsRevision
-            ? "revision"
-            : isSubmitted
-              ? "ready"
-              : hasReviewableContent
-                ? "draft"
-                : "empty"
+        const qTone = cardTone({ ...response, hasContent: hasReviewableContent })
         const qEvents = events.filter((e) => eventMatchesQuestion(e, q.field_name, q.id, F.templateId))
         // Who sent it back and when, so a request from an advisor is never anonymous.
         const revisionEvent = qNeedsRevision
@@ -1279,18 +1272,6 @@ function PlagiarismScoresInline({ data }: { data: GptZeroResult }) {
 // inside opens with it instead of needing a click on each one.
 const ReadonlyGroupExpandContext = createContext(0)
 
-/** Where a question stands, shown as the card's border so unfinished work
-    stands apart from approved answers at a glance. */
-type CardTone = "complete" | "revision" | "ready" | "draft" | "empty"
-
-const CARD_TONE_CLASS: Record<CardTone, string> = {
-  complete: "border-transparent",
-  revision: "border-red-300 dark:border-red-500/50",
-  ready: "border-blue-300 dark:border-blue-500/50",
-  draft: "border-amber-300 dark:border-amber-500/50",
-  empty: "border-dashed border-gray-300 dark:border-gray-600",
-}
-
 function CollapsibleQuestionCard({
   fieldName,
   colSpan,
@@ -1331,7 +1312,7 @@ function CollapsibleQuestionCard({
   return (
     <div
       data-field-name={fieldName}
-      className={`rounded-lg border bg-gray-50 p-3 dark:bg-muted/30 ${CARD_TONE_CLASS[tone]} ${colSpan} ${isDimmed ? "opacity-75" : ""}`}
+      className={`rounded-lg border bg-gray-50 p-3 dark:bg-muted/30 ${tone === "complete" ? "border-transparent" : CARD_TONE_BORDER[tone]} ${colSpan} ${isDimmed ? "opacity-75" : ""}`}
     >
       <div
         className={`mb-1.5 flex items-start justify-between gap-2 ${isComplete ? "cursor-pointer select-none" : ""}`}

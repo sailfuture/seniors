@@ -1,5 +1,6 @@
 "use client"
 
+import { CARD_TONE_BORDER, cardTone } from "./card-tone"
 import { Loader2 } from "lucide-react"
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
@@ -897,8 +898,9 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
     })
 
     if (flat) return <>{items}</>
+    // Each field is its own bordered card now, so the cards sit closer.
     return (
-      <div className="space-y-8">
+      <div className="space-y-4">
         {items}
       </div>
     )
@@ -1472,9 +1474,13 @@ function DynamicField({
   const hasSourceContent = isSourceType && !!sourceValues?.some(hasSourceEntry)
   const hasContent = isImageType ? hasImage : isSourceType ? !!hasSourceContent : value.trim().length > 0
   const canSubmitForReview = hasContent && meetsMinWords
+  const tone = cardTone({ ...responseStatus, hasContent })
 
   return (
-    <div className="min-w-0 space-y-2" data-field-name={question.field_name}>
+    <div
+      className={`min-w-0 space-y-2 rounded-lg border p-3 ${tone === "complete" ? "" : CARD_TONE_BORDER[tone]}`}
+      data-field-name={question.field_name}
+    >
       {/* The header wraps instead of overflowing: in a narrow column of a
           multi-column group the actions drop under the label, and the
           timestamp shortens to its relative half. */}
