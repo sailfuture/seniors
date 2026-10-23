@@ -55,6 +55,7 @@ interface GroupRecord {
   id: number
   group_name: string
   group_description?: string
+  instructions?: string
   order?: number
   [key: string]: unknown
 }
@@ -67,6 +68,7 @@ interface QuestionRecord {
   isPublished: boolean
   sortOrder: number
   min_words?: number
+  detailed_instructions?: string
   question_types_id?: number | null
   _question_types?: { id: number; type: string }
   [key: string]: unknown
@@ -130,6 +132,7 @@ export function useRubric(product: RubricProduct): { sections: RubricSection[]; 
         const v = q[F.customGroupId]
         return v != null ? Number(v) || null : null
       },
+      typeId: (q) => q.question_types_id ?? q._question_types?.id,
       sectionDescription: (s) => s.section_description || s.description,
       typeName: (q) =>
         q._question_types?.type ??
@@ -188,13 +191,38 @@ export function RubricSectionBody({
   const print = tone === "print"
   return (
     <div className={cn("space-y-6", print && "space-y-5")}>
-      {section.description?.trim() && (
-        <div data-keep>
-          <p className={cn(LABEL, print && "text-gray-500")}>Purpose</p>
-          <Markdown
-            text={section.description}
-            className={cn("mt-1", print ? "text-[11pt] leading-relaxed" : "text-sm")}
-          />
+      {(section.description?.trim() || section.requirements.length > 0) && (
+        <div className={cn("grid gap-4", !print && "md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]")} data-keep>
+          {section.description?.trim() && (
+            <div>
+              <p className={cn(LABEL, print && "text-gray-500")}>Purpose</p>
+              <Markdown
+                text={section.description}
+                className={cn("mt-1", print ? "text-[11pt] leading-relaxed" : "text-sm")}
+              />
+            </div>
+          )}
+          {section.requirements.length > 0 && (
+            <div
+              className={cn(
+                "rounded-lg border px-4 py-3",
+                print ? "border-gray-300 bg-gray-50" : "border-primary/15 bg-primary/5"
+              )}
+            >
+              <p className={cn(LABEL, print && "text-gray-500")}>Requirements</p>
+              <ul className={cn("mt-1.5 space-y-1", print ? "text-[10.5pt]" : "text-sm")}>
+                {section.requirements.map((line) => (
+                  <li key={line} className="flex items-baseline gap-2">
+                    <span
+                      aria-hidden
+                      className={cn("inline-block size-1.5 shrink-0 translate-y-[-1px] rounded-full", print ? "bg-gray-500" : "bg-primary/60")}
+                    />
+                    <span className="leading-snug">{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -227,6 +255,7 @@ function RubricComponentCard({
 }) {
   const words = component.questions.reduce((n, q) => n + (q.minWords ?? 0), 0)
   const description = component.description ? markdownToPlainText(component.description) : ""
+  const total = component.questions.length + component.sources
   return (
     <li
       data-keep
@@ -252,26 +281,43 @@ function RubricComponentCard({
             </p>
           )}
           <p className={cn("mt-1", print ? "text-[9pt] text-gray-500" : "text-muted-foreground/80 text-[11px]")}>
-            {component.questions.length} question{component.questions.length === 1 ? "" : "s"}
+            {total} question{total === 1 ? "" : "s"}
             {words > 0 && ` · ${words.toLocaleString()} words minimum`}
+            {component.sources > 0 && ` · ${component.sources} source${component.sources === 1 ? "" : "s"} to cite`}
           </p>
         </div>
       </div>
 
+      {component.guidelines && (
+        <div className={cn("mt-3 rounded-md px-3 py-2", print ? "bg-gray-50" : "bg-muted/60")}>
+          <p className={cn(LABEL, print && "text-gray-500")}>Guidelines</p>
+          <p className={cn("mt-0.5 leading-snug", print ? "text-[10pt] text-gray-700" : "text-xs")}>{component.guidelines}</p>
+        </div>
+      )}
+
       {component.questions.length > 0 && (
-        <ul className={cn("mt-3 space-y-1.5 border-t pt-3", print ? "border-gray-200" : "border-border/60")}>
+        <ul className={cn("mt-3 space-y-2 border-t pt-3", print ? "border-gray-200" : "border-border/60")}>
           {component.questions.map((q) => (
-            <li key={q.id} className={cn("flex items-baseline gap-2", print ? "text-[10.5pt]" : "text-sm")}>
+            <li key={q.id} className={cn("flex items-start gap-2", print ? "text-[10.5pt]" : "text-sm")}>
               <span
                 aria-hidden
-                className={cn("mt-2 inline-block size-1.5 shrink-0 translate-y-[-1px] rounded-full", print ? "bg-gray-400" : "bg-primary/40")}
+                className={cn("mt-2 inline-block size-1.5 shrink-0 rounded-full", print ? "bg-gray-400" : "bg-primary/40")}
               />
-              <span className="min-w-0 flex-1 leading-snug">{q.label}</span>
-              {(q.minWords ?? 0) > 0 && (
-                <span className={cn("shrink-0 tabular-nums", print ? "text-[9pt] text-gray-500" : "text-muted-foreground text-[11px]")}>
-                  {q.minWords}+ words
-                </span>
-              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="min-w-0 flex-1 leading-snug">{q.label}</span>
+                  {(q.minWords ?? 0) > 0 && (
+                    <span className={cn("shrink-0 tabular-nums", print ? "text-[9pt] text-gray-500" : "text-muted-foreground text-[11px]")}>
+                      {q.minWords}+ words
+                    </span>
+                  )}
+                </div>
+                {q.requirement && (
+                  <p className={cn("mt-0.5 leading-snug", print ? "text-[9.5pt] text-gray-600" : "text-muted-foreground text-xs")}>
+                    {q.requirement}
+                  </p>
+                )}
+              </div>
             </li>
           ))}
         </ul>
