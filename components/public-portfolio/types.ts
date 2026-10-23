@@ -20,6 +20,8 @@ export interface PortfolioResponse {
   isComplete?: boolean
   readyReview?: boolean
   revisionNeeded?: boolean
+  /** Set by a page that shows work in progress: the content renders whatever its review status. */
+  showDraft?: boolean
   source_link?: string
   title_of_source?: string
   author_name_or_publisher?: string
@@ -28,6 +30,20 @@ export interface PortfolioResponse {
 }
 
 export type ResponseMap = Map<number, PortfolioResponse>
+
+/**
+ * Whether an answer's content appears on the page. Approved answers always
+ * do; the rest only when the page marks them `showDraft`, in which case their
+ * status badge says where they stand.
+ */
+export function isShown(r: PortfolioResponse | undefined): r is PortfolioResponse {
+  return !!r && (r.isComplete === true || r.showDraft === true)
+}
+
+/** Marks every response so its content shows regardless of review status. */
+export function withDraftsShown(map: ResponseMap): ResponseMap {
+  return new Map([...map].map(([id, r]) => [id, { ...r, showDraft: true }]))
+}
 
 export const QUESTION_TYPE = {
   LONG_RESPONSE: 1,

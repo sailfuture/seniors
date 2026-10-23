@@ -22,7 +22,7 @@ import {
   groupUnits,
 } from "./sections"
 import { goToChapter } from "./shell"
-import type { PortfolioGroupModel, PortfolioQuestion, PortfolioSectionModel, ResponseMap } from "./types"
+import { isShown, type PortfolioGroupModel, type PortfolioQuestion, type PortfolioSectionModel, type ResponseMap } from "./types"
 
 /**
  * A deck slide: a white 16:9 page (taller when its content needs it) with
@@ -396,7 +396,7 @@ function ReadingPassage({
   const raw = statusOf(response)
   const status = raw === "complete" ? null : raw
   const text = (response?.student_response ?? "").trim()
-  const approved = response?.isComplete === true && !!text
+  const approved = isShown(response) && !!text
 
   if (!approved) {
     if (!status) return null
@@ -410,8 +410,16 @@ function ReadingPassage({
 
   return (
     <div>
-      {showTitle && (
-        <p className="mb-3 text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">{title}</p>
+      {/* Work in progress keeps its status beside the title. */}
+      {(showTitle || status) && (
+        <div className="mb-3 flex items-start justify-between gap-3">
+          {showTitle ? (
+            <p className="text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">{title}</p>
+          ) : (
+            <span />
+          )}
+          <StatusBadge status={status} />
+        </div>
       )}
       {looksLikeRichTextDoc(text) ? (
         <LazyRichTextDisplay raw={text} fullSize className="text-foreground" />

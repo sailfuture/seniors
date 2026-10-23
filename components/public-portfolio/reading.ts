@@ -6,6 +6,7 @@ import {
   type PortfolioGroupModel,
   type PortfolioQuestion,
   type ResponseMap,
+  isShown,
 } from "./types"
 
 /**
@@ -24,7 +25,7 @@ export function isProseQuestion(q: PortfolioQuestion): boolean {
 /** Words in an approved passage; unapproved and non-prose answers count as none. */
 export function approvedWords(q: PortfolioQuestion, responseMap: ResponseMap): number {
   const r = responseMap.get(q.id)
-  if (!r?.isComplete || !isProseQuestion(q)) return 0
+  if (!isShown(r) || !isProseQuestion(q)) return 0
   return richTextWordCount(r.student_response ?? "")
 }
 

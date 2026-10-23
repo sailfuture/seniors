@@ -29,6 +29,7 @@ import {
   type PortfolioResponse,
   type PortfolioSectionModel,
   type ResponseMap,
+  isShown,
 } from "./types"
 import { markdownToPlainText } from "@/lib/markdown-text"
 
@@ -93,8 +94,9 @@ export function buildPortfolioSections<S extends SectionSource, Q extends Portfo
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     const backdrop = all.find(isBackdrop)
     const backdropResp = backdrop ? responseMap.get(backdrop.id) : undefined
-    // A student's own section photo shows once a teacher has approved it.
-    const studentPhoto = backdropResp?.isComplete
+    // A student's own section photo shows once a teacher has approved it, or
+    // right away on a page that shows work in progress.
+    const studentPhoto = isShown(backdropResp)
       ? backdropResp.image_response?.path || backdropResp.image_response?.url
       : undefined
     const content = all.filter((q) => q !== backdrop && !isHidden?.(q))
@@ -454,7 +456,7 @@ function AnswerGrid({
 
 /** An approved photo answer's URL, or "" when there's none to show. */
 function approvedImage(q: PortfolioQuestion, r: PortfolioResponse | undefined): string {
-  if (typeOf(q) !== QUESTION_TYPE.IMAGE_UPLOAD || !r?.isComplete) return ""
+  if (typeOf(q) !== QUESTION_TYPE.IMAGE_UPLOAD || !isShown(r)) return ""
   const src = r.image_response?.path || r.image_response?.url
   return src ? resolveImageUrl(src) : ""
 }
@@ -521,7 +523,7 @@ export function QuestionsBody({
     .filter((q) => typeOf(q) === QUESTION_TYPE.SOURCE)
     .flatMap((q) => {
       const r = responseMap.get(q.id)
-      return r?.isComplete ? sourcesOf(r) : []
+      return isShown(r) ? sourcesOf(r) : []
     })
   return (
     <>

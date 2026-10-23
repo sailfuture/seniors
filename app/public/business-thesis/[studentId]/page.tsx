@@ -16,7 +16,7 @@ import {
   type ChapterLink,
 } from "@/components/public-portfolio/shell"
 import { brandPortfolioTheme } from "@/components/public-portfolio/theme"
-import { QUESTION_TYPE, typeOf, type ResponseMap } from "@/components/public-portfolio/types"
+import { QUESTION_TYPE, typeOf, withDraftsShown, type ResponseMap } from "@/components/public-portfolio/types"
 
 const BT_BASE =
   process.env.NEXT_PUBLIC_XANO_BT_API_BASE ??
@@ -183,8 +183,10 @@ export default function PublicBusinessThesisPage({
     loadData()
   }, [loadData])
 
+  // The thesis page shows everything the student has written so far, each
+  // answer carrying its review status, rather than only approved work.
   const responseMap: ResponseMap = useMemo(
-    () => new Map(responses.map((r) => [rTemplateId(r), r])),
+    () => withDraftsShown(new Map(responses.map((r) => [rTemplateId(r), r]))),
     [responses]
   )
 

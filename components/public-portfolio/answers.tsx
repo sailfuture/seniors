@@ -31,6 +31,7 @@ import {
   type PortfolioQuestion,
   type PortfolioResponse,
   type ResponseMap,
+  isShown,
 } from "./types"
 
 const LABEL = "text-[13px] leading-snug font-medium text-muted-foreground"
@@ -94,7 +95,7 @@ export function Answer({
   const description = sameTitle(rawDescription, title) ? "" : rawDescription
   const raw = statusOf(response)
   const status = raw === "complete" ? null : raw
-  const complete = response?.isComplete === true
+  const complete = isShown(response)
 
   if (typeId === QUESTION_TYPE.IMAGE_UPLOAD) {
     const src = complete ? response?.image_response?.path || response?.image_response?.url : undefined
@@ -364,13 +365,13 @@ export function SourceFooter({
       <ol className="mt-2.5 space-y-2">
         {sources.map((q) => {
           const r = responseMap.get(q.id)
-          const entries = r?.isComplete ? sourcesOf(r) : []
+          const entries = isShown(r) ? sourcesOf(r) : []
           if (entries.length > 0) return entries.map((e, i) => <CitationItem key={`${q.id}-${i}`} r={e} />)
           const title = (q.public_display_title || q.field_label || "Source").trim()
           return (
             <li key={q.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-relaxed text-muted-foreground/60">
               <span>{title}</span>
-              <StatusBadge status={statusOf(r?.isComplete ? undefined : r)} />
+              <StatusBadge status={statusOf(r?.isComplete === true ? undefined : r)} />
             </li>
           )
         })}

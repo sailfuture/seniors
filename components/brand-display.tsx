@@ -388,6 +388,8 @@ interface ThemeSourceResponse {
   student_response?: string
   image_response?: { path?: string; url?: string } | null
   isComplete?: boolean
+  /** A page showing work in progress sets this so unapproved uploads count too. */
+  showDraft?: boolean
 }
 
 export interface BrandContact {
@@ -461,10 +463,11 @@ export function deriveBrandTheme(
     const img = byField(field)?.image_response
     return brandResolveImageUrl(img?.path || img?.url)
   }
-  // Cosmetic uploads (cover banner, logo) only appear once a teacher approves
+  // Cosmetic uploads (cover banner, logo) appear once a teacher approves, or
+  // right away on a page that shows work in progress.
   const approvedImage = (field: string) => {
     const r = byField(field)
-    if (!r?.isComplete) return ""
+    if (!r || (r.isComplete !== true && r.showDraft !== true)) return ""
     return brandResolveImageUrl(r.image_response?.path || r.image_response?.url)
   }
   const color = (field: string): string | null => {

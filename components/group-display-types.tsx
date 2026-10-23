@@ -38,10 +38,16 @@ interface StudentResponse {
   student_response: string
   image_response: { path?: string; url?: string; name?: string; mime?: string } | null
   isComplete?: boolean
+  /** A page showing work in progress sets this so unapproved uploads render too. */
+  showDraft?: boolean
   [key: string]: unknown
 }
 
 const QUESTION_TYPE_IMAGE = 4
+
+function isShown(r: StudentResponse | undefined): r is StudentResponse {
+  return !!r && (r.isComplete === true || r.showDraft === true)
+}
 const QUESTION_TYPE_CURRENCY = 3
 const QUESTION_TYPE_LONG_TEXT = 1
 
@@ -77,8 +83,9 @@ function getImageUrl(
   responseMap: Map<number, StudentResponse>
 ): string {
   const r = getResponse(fieldName, questions, responseMap)
-  // Images only appear on the public page once a teacher approves them
-  if (!r?.isComplete) return ""
+  // Images appear on the public page once a teacher approves them, or when
+  // the page shows work in progress.
+  if (!isShown(r)) return ""
   const src = r?.image_response?.path || r?.image_response?.url
   return src ? resolveImageUrl(src) : ""
 }
@@ -250,8 +257,8 @@ function GalleryDisplay({
 
   const items = slides.map((s) => {
     const imgResponse = responseMap.get(s.imageQ.id)
-    // Only approved images appear on the public page
-    const src = imgResponse?.isComplete
+    // Approved images, or every image when the page shows work in progress.
+    const src = isShown(imgResponse)
       ? imgResponse.image_response?.path || imgResponse.image_response?.url
       : undefined
     return {
