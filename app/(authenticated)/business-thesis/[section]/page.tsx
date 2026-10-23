@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react"
 import { DynamicFormPage } from "@/components/form/dynamic-form-page"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fetchBtSections, findBtSectionBySlug, btSlugToTitle } from "@/lib/businessthesis-sections"
+import { BUSINESS_THESIS_RUBRIC } from "@/lib/rubric-products"
 import { BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 
 export default function BusinessThesisDynamicSectionPage({
@@ -63,7 +64,7 @@ export default function BusinessThesisDynamicSectionPage({
       sectionId={sectionId}
       apiConfig={BUSINESSTHESIS_API_CONFIG}
       backHref="/business-thesis"
-      rubricHref={`/business-thesis/rubric/${section}`}
+      rubric={{ product: BUSINESS_THESIS_RUBRIC, slug: section }}
     />
   )
 }

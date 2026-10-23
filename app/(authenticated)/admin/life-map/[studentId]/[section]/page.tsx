@@ -17,6 +17,8 @@ import {
 } from "@hugeicons/core-free-icons"
 import { fetchSections, findSectionBySlug, slugToTitle, type LifeMapSection } from "@/lib/lifemap-sections"
 import { TeacherComment } from "@/components/form/teacher-comment"
+import { SectionRubricButton } from "@/components/form/rubric"
+import { LIFE_MAP_RUBRIC } from "@/lib/rubric-products"
 import type { Comment } from "@/lib/form-types"
 import { studentFetch } from "@/lib/cached-fetch"
 
@@ -137,6 +139,7 @@ export default function AdminLifeMapSectionPage({
         </Link>
       </Button>
       <div className="flex items-center gap-2">
+        <SectionRubricButton rubric={{ product: LIFE_MAP_RUBRIC, slug: section }} />
         <TeacherComment
           fieldName="_section_comment"
           fieldLabel={label}
@@ -178,7 +181,6 @@ export default function AdminLifeMapSectionPage({
         sectionId={sectionId}
         studentId={studentId}
         headerContent={actionBar}
-        rubricHref={`/life-map/rubric/${section}`}
       />
     )
   }

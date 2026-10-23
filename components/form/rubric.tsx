@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
@@ -38,8 +45,15 @@ export function rubricHref(product: Pick<RubricProduct, "basePath">, slug?: stri
   return slug ? `${product.basePath}/rubric/${slug}` : `${product.basePath}/rubric`
 }
 
-export function rubricPrintHref(product: Pick<RubricProduct, "basePath">): string {
-  return `${product.basePath}/rubric/print`
+export function rubricPrintHref(product: Pick<RubricProduct, "basePath">, slug?: string): string {
+  const base = `${product.basePath}/rubric/print`
+  return slug ? `${base}?section=${encodeURIComponent(slug)}` : base
+}
+
+/** Which section's rubric a form page should offer. */
+export interface SectionRubricRef {
+  product: RubricProduct
+  slug: string
 }
 
 interface SectionRecord {
@@ -175,6 +189,91 @@ export function RubricButton({
 }
 
 const LABEL = "text-muted-foreground text-[11px] font-medium tracking-wide uppercase"
+
+/**
+ * Toolbar button on a section page: opens that section's rubric in a
+ * slide-over, with a print link for just this section and a link to the
+ * full rubric page.
+ */
+export function SectionRubricButton({ rubric, className }: { rubric: SectionRubricRef; className?: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className={cn("gap-2", className)}
+        onClick={() => setOpen(true)}
+        title="Rubric: what this section must cover"
+      >
+        <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
+        Rubric
+      </Button>
+      {open && <SectionRubricSheet rubric={rubric} open onOpenChange={setOpen} />}
+    </>
+  )
+}
+
+/** The slide-over itself; mounted only while open so the template loads on demand. */
+export function SectionRubricSheet({
+  rubric,
+  open,
+  onOpenChange,
+}: {
+  rubric: SectionRubricRef
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { product, slug } = rubric
+  const { sections, loading } = useRubric(product)
+  const section = sections.find((s) => s.slug === slug)
+  const index = section ? sections.indexOf(section) : -1
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-xl">
+        <SheetHeader className="shrink-0 gap-1 border-b px-6 py-5 pr-12">
+          <p className={LABEL}>
+            {product.name} rubric{index >= 0 && ` · Section ${index + 1} of ${sections.length}`}
+          </p>
+          <SheetTitle className="text-lg leading-snug font-semibold">
+            {section?.title ?? (loading ? "Loading…" : "Rubric")}
+          </SheetTitle>
+          <SheetDescription className="text-sm">
+            {section
+              ? `What this section must cover, and the direction for completing it. ${describeRubricSection(section)}.`
+              : "What this section must cover, and the direction for completing it."}
+          </SheetDescription>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-2" asChild>
+              <a href={rubricPrintHref(product, slug)} target="_blank" rel="noopener noreferrer">
+                <HugeiconsIcon icon={PrinterIcon} strokeWidth={2} className="size-4" />
+                Print / PDF
+              </a>
+            </Button>
+            <Button variant="ghost" size="sm" className="gap-2" asChild>
+              <Link href={rubricHref(product, slug)}>Open full rubric</Link>
+            </Button>
+          </div>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {loading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+          ) : section ? (
+            <RubricSectionBody section={section} />
+          ) : (
+            <p className="text-muted-foreground text-sm">This section was not found in the template.</p>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
 
 /**
  * One section's rubric, concise: the section's purpose, what it requires,

@@ -13,6 +13,8 @@ import { ArrowLeft02Icon } from "@hugeicons/core-free-icons"
 import { fetchBtSections, findBtSectionBySlug, btSlugToTitle, type BusinessThesisSection } from "@/lib/businessthesis-sections"
 import { BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 import { TeacherComment } from "@/components/form/teacher-comment"
+import { SectionRubricButton } from "@/components/form/rubric"
+import { BUSINESS_THESIS_RUBRIC } from "@/lib/rubric-products"
 import type { Comment } from "@/lib/form-types"
 import { studentFetch } from "@/lib/cached-fetch"
 
@@ -125,6 +127,7 @@ export default function AdminBusinessThesisSectionPage({
         </Link>
       </Button>
       <div className="flex items-center gap-2">
+        <SectionRubricButton rubric={{ product: BUSINESS_THESIS_RUBRIC, slug: section }} />
         <TeacherComment
           fieldName="_section_comment"
           fieldLabel={label}
@@ -154,7 +157,6 @@ export default function AdminBusinessThesisSectionPage({
         sectionId={sectionId}
         studentId={studentId}
         headerContent={actionBar}
-        rubricHref={`/business-thesis/rubric/${section}`}
         apiConfig={BUSINESSTHESIS_API_CONFIG}
       />
     )

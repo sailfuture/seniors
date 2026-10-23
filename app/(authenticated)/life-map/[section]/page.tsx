@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react"
 import { DynamicFormPage } from "@/components/form/dynamic-form-page"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fetchSections, findSectionBySlug, slugToTitle } from "@/lib/lifemap-sections"
+import { LIFE_MAP_RUBRIC } from "@/lib/rubric-products"
 
 export default function LifeMapDynamicSectionPage({
   params,
@@ -61,7 +62,7 @@ export default function LifeMapDynamicSectionPage({
       subtitle={description}
       sectionId={sectionId}
       backHref="/life-map"
-      rubricHref={`/life-map/rubric/${section}`}
+      rubric={{ product: LIFE_MAP_RUBRIC, slug: section }}
     />
   )
 }

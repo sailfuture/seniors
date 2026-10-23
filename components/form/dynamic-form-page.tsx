@@ -63,7 +63,7 @@ import { MAX_SOURCES, emptySource, hasSourceEntry, parseSources, serializeSource
 import { WordCount } from "./word-count"
 import { CommentBadge } from "./comment-badge"
 import { QuestionInstructions } from "./question-instructions"
-import { RubricButton } from "./rubric"
+import { SectionRubricButton, type SectionRubricRef } from "./rubric"
 import { Markdown } from "@/components/markdown"
 import { groupResolvedThreads } from "./field-activity-stream"
 import { ZoomableImage } from "@/components/zoomable-image"
@@ -188,11 +188,11 @@ interface DynamicFormPageProps {
   sectionId: number
   apiConfig?: FormApiConfig
   backHref?: string
-  /** This section's rubric page; shown as a button beside the title. */
-  rubricHref?: string
+  /** This section's rubric, offered as a slide-over from the toolbar. */
+  rubric?: SectionRubricRef
 }
 
-export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMAP_API_CONFIG, backHref, rubricHref }: DynamicFormPageProps) {
+export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMAP_API_CONFIG, backHref, rubric }: DynamicFormPageProps) {
   const cfg = apiConfig
   const F = cfg.fields
   const searchParams = useSearchParams()
@@ -932,17 +932,21 @@ export function DynamicFormPage({ title, subtitle, sectionId, apiConfig = LIFEMA
               )}
             </button>
           )}
-          {rubricHref && <RubricButton href={rubricHref} />}
         </div>
         {subtitle && <Markdown text={subtitle} className="mt-1 [--tw-prose-body:var(--muted-foreground)]" />}
-        {backHref && (
-          <div className="mt-3">
-            <Button variant="outline" size="sm" asChild className="gap-2">
-              <Link href={backHref}>
-                <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
-                Back
-              </Link>
-            </Button>
+        {(backHref || rubric) && (
+          <div className="mt-3 flex items-center justify-between gap-2">
+            {backHref ? (
+              <Button variant="outline" size="sm" asChild className="gap-2">
+                <Link href={backHref}>
+                  <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
+                  Back
+                </Link>
+              </Button>
+            ) : (
+              <span />
+            )}
+            {rubric && <SectionRubricButton rubric={rubric} />}
           </div>
         )}
         {projectLock && <ProjectLockedBanner className="mt-3" />}

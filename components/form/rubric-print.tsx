@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon, PrinterIcon, SquareLock02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,20 @@ const LABEL = "text-[10px] font-semibold tracking-[0.12em] uppercase text-gray-5
  * previews as a white sheet; the browser's print dialog produces the PDF.
  */
 export function RubricPrint({ product }: { product: RubricProduct }) {
-  const { sections, loading } = useRubric(product)
+  const { sections: all, loading } = useRubric(product)
+
+  // ?section=<slug> prints one section only (the section page's sheet links
+  // here). Read after mount so SSR and the first client render agree.
+  const [onlySlug, setOnlySlug] = useState<string | null>(null)
+  useEffect(() => {
+    setOnlySlug(new URLSearchParams(window.location.search).get("section"))
+  }, [])
+  const sections = useMemo(
+    () => (onlySlug ? all.filter((s) => s.slug === onlySlug) : all),
+    [all, onlySlug]
+  )
+  const single = onlySlug ? sections[0] : undefined
+  const backHref = single ? `${product.basePath}/${single.slug}` : rubricHref(product)
 
   const totals = useMemo(
     () =>
@@ -63,9 +76,9 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
       <div className="sticky top-0 z-20 border-b bg-white/95 backdrop-blur print:hidden">
         <div className="mx-auto flex w-[8.5in] max-w-full items-center justify-between gap-3 px-4 py-2.5">
           <Button variant="outline" size="sm" asChild className="gap-2 bg-white">
-            <a href={rubricHref(product)}>
+            <a href={backHref}>
               <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
-              Back to rubric
+              {single ? "Back to section" : "Back to rubric"}
             </a>
           </Button>
           <p className="text-muted-foreground hidden text-xs sm:block">
@@ -88,7 +101,28 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
               <Skeleton className="h-64 w-full" />
             </div>
           ) : sections.length === 0 ? (
-            <p className="text-sm text-gray-500">No sections have been published yet.</p>
+            <p className="text-sm text-gray-500">
+              {onlySlug ? "This section was not found in the template." : "No sections have been published yet."}
+            </p>
+          ) : single ? (
+            // One section: its own header, then the same body as the page.
+            <>
+              <header className="border-b-2 border-gray-900 pb-5">
+                <p className={LABEL}>
+                  SailFuture Academy · {product.name} rubric · Section {all.indexOf(single) + 1} of {all.length}
+                </p>
+                <h1 className="mt-2 text-[24pt] leading-[1.1] font-bold tracking-tight">{single.title}</h1>
+                <p className="mt-2 text-[10pt] text-gray-500">
+                  {describeRubricSection(single)} · Printed {printedOn}
+                </p>
+              </header>
+              <div className="pt-6">
+                <RubricSectionBody section={single} tone="print" />
+              </div>
+              <footer className="mt-10 border-t border-gray-200 pt-3 text-[8.5pt] text-gray-400">
+                {product.name} Rubric · {single.title} · SailFuture Academy · {printedOn}
+              </footer>
+            </>
           ) : (
             <>
               <header className="border-b-2 border-gray-900 pb-6">
