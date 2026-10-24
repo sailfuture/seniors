@@ -14,7 +14,7 @@ import {
   type ChapterLink,
 } from "@/components/public-portfolio/shell"
 import { SAILFUTURE_THEME } from "@/components/public-portfolio/theme"
-import { QUESTION_TYPE, typeOf, type ResponseMap } from "@/components/public-portfolio/types"
+import { QUESTION_TYPE, typeOf, withDraftsShown, type ResponseMap } from "@/components/public-portfolio/types"
 
 const XANO_BASE =
   process.env.NEXT_PUBLIC_XANO_API_BASE ??
@@ -169,8 +169,10 @@ export default function PublicLifeMapPage({
     loadData()
   }, [loadData])
 
+  // The Life Map page shows everything the student has written so far, each
+  // answer carrying its review status, rather than only approved work.
   const responseMap: ResponseMap = useMemo(
-    () => new Map(responses.map((r) => [r.lifemap_template_id, r])),
+    () => withDraftsShown(new Map(responses.map((r) => [r.lifemap_template_id, r]))),
     [responses]
   )
 

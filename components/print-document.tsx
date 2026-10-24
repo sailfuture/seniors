@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon, PrinterIcon, BookOpen02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
+import { StatusBadge, statusOf } from "@/components/field-status"
 import { parseSources, type SourceEntry } from "@/lib/sources"
 import {
   BrandThemeProvider,
@@ -56,6 +57,10 @@ interface StudentResponse {
   students_id: string
   isArchived?: boolean
   isComplete?: boolean
+  readyReview?: boolean
+  revisionNeeded?: boolean
+  /** Set on every response here: the document prints work in progress with its status. */
+  showDraft?: boolean
   source_link?: string
   title_of_source?: string
   author_name_or_publisher?: string
@@ -490,9 +495,21 @@ function isDecorationQuestion(q: TemplateQuestion): boolean {
   return typeIdOf(q) === QUESTION_TYPE.IMAGE_UPLOAD && /(section|cover)\s*background/i.test(q.field_label)
 }
 
-/** Does this response carry printable, approved content? */
+/** Approved work, or any work on a document that shows drafts. */
+function isShown(r: StudentResponse | undefined): r is StudentResponse {
+  return !!r && (r.isComplete === true || r.showDraft === true)
+}
+
+/** The answer's review state as a small chip; nothing once approved. */
+function PrintStatus({ r }: { r: StudentResponse | undefined }) {
+  const status = statusOf(r)
+  if (status === "complete") return null
+  return <StatusBadge status={status} className="ml-2 align-middle normal-case tracking-normal" />
+}
+
+/** Does this response carry printable content? */
 function hasContent(q: TemplateQuestion, r: StudentResponse | undefined): boolean {
-  if (!r?.isComplete) return false
+  if (!isShown(r)) return false
   const typeId = typeIdOf(q)
   if (typeId === QUESTION_TYPE.IMAGE_UPLOAD) {
     return !!(r.image_response?.path || r.image_response?.url)
@@ -534,8 +551,9 @@ function printableGridQuestions(questions: TemplateQuestion[]): TemplateQuestion
  * Print-first rendering of a full Life Map / Business Thesis as a US-Letter
  * document: a typographic cover with a table of contents, then one page run
  * per section. On screen it previews as white 8.5in sheets; in print the
- * @page rule (globals.css) takes over and the browser paginates. Only
- * teacher-approved content appears, matching the public page.
+ * @page rule (globals.css) takes over and the browser paginates. Every
+ * answer the student has written appears with its review status, matching
+ * the public page.
  */
 export function PrintDocument({
   studentId,
@@ -648,9 +666,11 @@ export function PrintDocument({
     loadData()
   }, [loadData])
 
+  // Like the public pages, the document shows everything written so far,
+  // each answer carrying its review status.
   const responseMap = useMemo(() => {
     const map = new Map<number, StudentResponse>()
-    for (const r of responses) map.set(Number(r[F.templateId]), r)
+    for (const r of responses) map.set(Number(r[F.templateId]), { ...r, showDraft: true })
     return map
   }, [responses, F.templateId])
 
@@ -667,7 +687,7 @@ export function PrintDocument({
       const entries: [number, SheetTab[]][] = []
       for (const q of urlQs) {
         const r = responseMap.get(q.id)
-        const url = (r?.isComplete ? (r.student_response ?? "") : "").trim()
+        const url = (isShown(r) ? (r.student_response ?? "") : "").trim()
         const ref = url ? sheetRefFromUrl(url) : null
         if (!ref) continue
         const tabRefs = (await listSheetTabs(ref.id)).filter((t) => !SHEET_TAB_SKIP.test(t.name)).slice(0, 10)
@@ -720,7 +740,7 @@ export function PrintDocument({
     const q = templates.find((t) => t.field_name === RESUME_FIELD)
     if (!q) return
     const r = responseMap.get(q.id)
-    const url = (r?.isComplete ? (r.student_response ?? "") : "").trim()
+    const url = (isShown(r) ? (r.student_response ?? "") : "").trim()
     const docId = (url.match(/\/document\/d\/([a-zA-Z0-9-_]+)/) || [])[1]
     if (!docId) return
     let cancelled = false
@@ -965,7 +985,7 @@ export function PrintDocument({
 
         {printSectionsAll.length === 0 && (
           <section className="bg-white p-[0.75in] text-center shadow-md ring-1 ring-black/5 print:p-0 print:shadow-none print:ring-0">
-            <p className="text-sm italic text-gray-500">Nothing has been approved for this document yet.</p>
+            <p className="text-sm italic text-gray-500">Nothing has been written for this document yet.</p>
           </section>
         )}
       </div>
@@ -1077,7 +1097,7 @@ function buildGroupPrintBlocks(
     )
     const cards = slides.map((s) => {
       const r = responseMap.get(s.imageQ.id)
-      const src = r?.isComplete ? r.image_response?.path || r.image_response?.url : undefined
+      const src = isShown(r) ? r.image_response?.path || r.image_response?.url : undefined
       const cardTitle = s.titleQ ? (responseMap.get(s.titleQ.id)?.student_response ?? "").trim() : ""
       const desc =
         s.descQs.map((dq) => (responseMap.get(dq.id)?.student_response ?? "").trim()).filter(Boolean)[0] ?? ""
@@ -1494,7 +1514,7 @@ function buildGroupPrintBlocks(
     .filter((q) => typeIdOf(q) === QUESTION_TYPE.SOURCE)
     .flatMap((q) => {
       const r = responseMap.get(q.id)
-      return r?.isComplete ? parseSources(r).map((entry, i) => ({ key: `${q.id}-${i}`, entry })) : []
+      return isShown(r) ? parseSources(r).map((entry, i) => ({ key: `${q.id}-${i}`, entry })) : []
     })
   if (sourceEntries.length > 0) {
     bodies.push({
@@ -1577,6 +1597,7 @@ function QuestionCell({
     <div className={`${half ? "" : "col-span-2"} break-inside-avoid`}>
       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
         {q.public_display_title || q.field_label}
+        <PrintStatus r={r} />
       </p>
       {hasContent(q, r) ? <PrintValue q={q} r={r!} brand={brand} /> : <PlaceholderValue q={q} />}
     </div>
@@ -1684,6 +1705,7 @@ function buildQuestionRows(
               {i === 0 && (
                 <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                   {q.public_display_title || q.field_label}
+                  <PrintStatus r={r} />
                 </p>
               )}
               <RichTextDisplay
@@ -1716,6 +1738,7 @@ function buildQuestionRows(
             {i === 0 && (
               <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 {q.public_display_title || q.field_label}
+                <PrintStatus r={r} />
               </p>
             )}
             <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800">{piece}</p>
@@ -1953,7 +1976,7 @@ function PaginatedSheets({
       if (ungrouped.length === 0 && groupBlocks.length === 0) {
         blocks.push({
           id: `s${section.id}-empty`,
-          node: <p className="text-xs italic text-gray-400">No approved content in this section yet.</p>,
+          node: <p className="text-xs italic text-gray-400">Nothing in this section yet.</p>,
         })
       }
       return { section, blocks }
