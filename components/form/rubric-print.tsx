@@ -135,12 +135,12 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
                 <h1 className="mt-2 text-[28pt] leading-[1.1] font-bold tracking-tight">Rubric</h1>
                 <p className="mt-3 max-w-[5.5in] text-[11pt] leading-relaxed text-gray-700">
                   The {product.name} is built from {sections.length} sections. Each section is a major
-                  component of the finished work. For every section, this rubric lists the key
-                  components it must cover and the questions that need answering.
+                  component of the finished work. For every section, this rubric explains what it
+                  must accomplish and how it is scored from 1 to 4.
                 </p>
                 <dl className="mt-5 grid grid-cols-4 gap-4 text-[10pt]">
                   <Stat label="Sections" value={sections.length} />
-                  <Stat label="Components" value={totals.components} />
+                  <Stat label="Groups" value={totals.components} />
                   <Stat label="Questions" value={totals.questions} />
                   <Stat label="Words minimum" value={totals.words.toLocaleString()} />
                 </dl>

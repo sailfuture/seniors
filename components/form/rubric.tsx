@@ -20,7 +20,6 @@ import {
   SquareLock02Icon,
 } from "@hugeicons/core-free-icons"
 import { Markdown } from "@/components/markdown"
-import { markdownToPlainText } from "@/lib/markdown-text"
 import type { SectionScoring } from "@/lib/rubric-scoring"
 import { RubricScoringTable } from "@/components/form/rubric-scoring-table"
 import { cachedFetch } from "@/lib/cached-fetch"
@@ -30,7 +29,6 @@ import {
   buildRubric,
   describeRubricSection,
   rubricCounts,
-  type RubricComponent,
   type RubricSection,
 } from "@/lib/rubric"
 
@@ -281,10 +279,10 @@ export function SectionRubricSheet({
 }
 
 /**
- * One section's rubric, concise: the section's purpose, what it requires,
- * then each key component summarised — what it is about, the direction the
- * teacher gave, what it covers and what must be produced. Shared by the
- * page and the printed version, which pass their type scale through `tone`.
+ * One section's rubric: what the section is for and how its parts fit
+ * together, the requirements derived from the template, then the 1–4
+ * scoring rubric. Shared by the page, the slide-over and the printed
+ * version, which passes its type scale through `tone`.
  */
 export function RubricSectionBody({
   section,
@@ -294,121 +292,62 @@ export function RubricSectionBody({
   tone?: "screen" | "print"
 }) {
   const print = tone === "print"
+  const summary = section.scoring?.summary
+  const hasAbout = !!section.description?.trim() || !!summary
   return (
     <div className={cn("space-y-6", print && "space-y-5")}>
-      {section.description?.trim() && (
+      {hasAbout && (
         <div data-keep>
-          <p className={cn(LABEL, print && "text-gray-500")}>Purpose</p>
-          <Markdown
-            text={section.description}
-            className={cn("mt-1", print ? "text-[11pt] leading-relaxed" : "text-sm")}
-          />
+          <p className={cn(LABEL, print && "text-gray-500")}>About this section</p>
+          {section.description?.trim() && (
+            <Markdown
+              text={section.description}
+              className={cn("mt-1 font-medium", print ? "text-[11pt] leading-relaxed" : "text-sm")}
+            />
+          )}
+          {summary && (
+            <p
+              className={cn(
+                "mt-2 leading-relaxed",
+                print ? "text-[10.5pt] text-gray-700" : "text-muted-foreground text-sm"
+              )}
+            >
+              {summary}
+            </p>
+          )}
         </div>
       )}
 
       {section.requirements.length > 0 && (
         <div
           data-keep
-          className={cn(
-            "rounded-lg border px-4 py-3",
-            print ? "border-gray-300 bg-gray-50" : "border-primary/15 bg-primary/5"
-          )}
+          className={cn("rounded-lg border px-4 py-3", print ? "border-gray-300 bg-gray-50" : "bg-muted/40")}
         >
           <p className={cn(LABEL, print && "text-gray-500")}>Requirements</p>
-          <ul className={cn("mt-1.5 grid gap-x-6 gap-y-1", !print && "sm:grid-cols-2", print ? "text-[10.5pt]" : "text-sm")}>
+          <ul
+            className={cn(
+              "mt-1.5 grid list-disc gap-x-8 gap-y-1 pl-5 leading-snug",
+              !print && "marker:text-muted-foreground sm:grid-cols-2",
+              print ? "text-[10.5pt]" : "text-sm"
+            )}
+          >
             {section.requirements.map((line) => (
-              <li key={line} className="flex items-baseline gap-2">
-                <span
-                  aria-hidden
-                  className={cn("inline-block size-1.5 shrink-0 translate-y-[-1px] rounded-full", print ? "bg-gray-500" : "bg-primary/60")}
-                />
-                <span className="leading-snug">{line}</span>
-              </li>
+              <li key={line}>{line}</li>
             ))}
           </ul>
         </div>
       )}
 
-      {section.scoring && <RubricScoringTable scoring={section.scoring} print={print} />}
-
-      {section.components.length === 0 ? (
-        <p className={cn("text-muted-foreground text-sm", print && "text-gray-500")}>
-          No questions have been published in this section yet.
-        </p>
+      {section.scoring ? (
+        <RubricScoringTable scoring={section.scoring} print={print} />
       ) : (
-        <div>
-          <p className={cn(LABEL, print && "text-gray-500")}>Key components</p>
-          <ol className="mt-2 space-y-3">
-            {section.components.map((component, i) => (
-              <RubricComponentCard key={component.id ?? "ungrouped"} component={component} index={i} print={print} />
-            ))}
-          </ol>
-        </div>
+        section.components.length === 0 && (
+          <p className={cn("text-muted-foreground text-sm", print && "text-gray-500")}>
+            No questions have been published in this section yet.
+          </p>
+        )
       )}
     </div>
-  )
-}
-
-function RubricComponentCard({
-  component,
-  index,
-  print,
-}: {
-  component: RubricComponent
-  index: number
-  print: boolean
-}) {
-  const description = component.description ? markdownToPlainText(component.description) : ""
-  const total = component.questions.length + component.sources
-  return (
-    <li
-      data-keep
-      className={cn("rounded-lg border", print ? "border-gray-300 px-4 py-3.5" : "bg-card px-4 py-3.5")}
-    >
-      <div className="flex items-start gap-3">
-        <span
-          className={cn(
-            "mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold tabular-nums",
-            print ? "bg-gray-100 text-gray-700" : "bg-primary/10 text-primary"
-          )}
-        >
-          {component.id === null ? "+" : index + 1}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-            <h3 className={cn("leading-snug font-semibold", print ? "text-[12pt]" : "text-sm")}>{component.name}</h3>
-            <p className={cn("shrink-0", print ? "text-[9pt] text-gray-500" : "text-muted-foreground/80 text-[11px]")}>
-              {total} question{total === 1 ? "" : "s"}
-            </p>
-          </div>
-
-          {/* What it is about and the direction the teacher gave. */}
-          {(description || component.guidelines) && (
-            <div className={cn("mt-1.5 space-y-1.5", print ? "text-[10.5pt] text-gray-700" : "text-muted-foreground text-sm")}>
-              {description && <p className="leading-snug">{description}</p>}
-              {component.guidelines && component.guidelines !== description && (
-                <p className="leading-snug">{component.guidelines}</p>
-              )}
-            </div>
-          )}
-
-          <dl className={cn("mt-2.5 space-y-1", print ? "text-[10pt]" : "text-xs")}>
-            {component.covers.length > 0 && (
-              <div className="flex gap-2">
-                <dt className={cn("w-16 shrink-0 font-medium", print ? "text-gray-500" : "text-muted-foreground")}>Covers</dt>
-                <dd className={cn("min-w-0 leading-snug", print ? "text-gray-800" : "text-foreground/90")}>{component.covers.join(" · ")}</dd>
-              </div>
-            )}
-            {component.deliverables.length > 0 && (
-              <div className="flex gap-2">
-                <dt className={cn("w-16 shrink-0 font-medium", print ? "text-gray-500" : "text-muted-foreground")}>Produce</dt>
-                <dd className={cn("min-w-0 leading-snug", print ? "text-gray-800" : "text-foreground/90")}>{component.deliverables.join(" · ")}</dd>
-              </div>
-            )}
-          </dl>
-        </div>
-      </div>
-    </li>
   )
 }
 
@@ -498,8 +437,8 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
           {current
-            ? `What this section must cover, and the questions that need answering. ${describeRubricSection(current)}.`
-            : `Each section is a major component of the ${product.name}. For every section, the key components it must cover and the questions that need answering.`}
+            ? `What this section must cover and how it is scored. ${describeRubricSection(current)}.`
+            : `Each section is a major component of the ${product.name}. For every section, what it must cover and how it is scored from 1 to 4.`}
         </p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <Button variant="outline" size="sm" asChild className="gap-2">

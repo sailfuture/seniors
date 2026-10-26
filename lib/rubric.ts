@@ -285,7 +285,7 @@ export function rubricCounts(section: RubricSection): { components: number; ques
 export function describeRubricSection(section: RubricSection): string {
   const { components, questions } = rubricCounts(section)
   const parts: string[] = []
-  if (components > 0) parts.push(`${components} component${components === 1 ? "" : "s"}`)
+  if (components > 0) parts.push(`${components} group${components === 1 ? "" : "s"}`)
   parts.push(`${questions} question${questions === 1 ? "" : "s"}`)
   return parts.join(" · ")
 }
