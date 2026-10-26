@@ -1,4 +1,5 @@
 import { markdownToPlainText } from "@/lib/markdown-text"
+import type { SectionScoring } from "@/lib/rubric-scoring"
 
 /**
  * The rubric: a high-level outline of a project built from its template.
@@ -45,6 +46,8 @@ export interface RubricSection {
   components: RubricComponent[]
   /** Derived requirements for the whole section, one short line each. */
   requirements: string[]
+  /** The section's 1–4 scoring rubric, when one has been written for it. */
+  scoring?: SectionScoring
 }
 
 export interface RubricSectionSource {

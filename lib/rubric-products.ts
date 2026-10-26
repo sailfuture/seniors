@@ -1,6 +1,7 @@
 import { BUSINESSTHESIS_API_CONFIG, LIFEMAP_API_CONFIG } from "@/lib/form-api-config"
 import { btTitleToSlug } from "@/lib/businessthesis-sections"
 import { titleToSlug } from "@/lib/lifemap-sections"
+import { BUSINESS_THESIS_SCORING } from "@/lib/rubric-scoring"
 import type { RubricProduct } from "@/components/form/rubric"
 
 export const BUSINESS_THESIS_RUBRIC: RubricProduct = {
@@ -8,6 +9,7 @@ export const BUSINESS_THESIS_RUBRIC: RubricProduct = {
   name: "Business Thesis",
   basePath: "/business-thesis",
   slug: btTitleToSlug,
+  scoring: BUSINESS_THESIS_SCORING,
 }
 
 export const LIFE_MAP_RUBRIC: RubricProduct = {

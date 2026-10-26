@@ -21,6 +21,8 @@ import {
 } from "@hugeicons/core-free-icons"
 import { Markdown } from "@/components/markdown"
 import { markdownToPlainText } from "@/lib/markdown-text"
+import type { SectionScoring } from "@/lib/rubric-scoring"
+import { RubricScoringTable } from "@/components/form/rubric-scoring-table"
 import { cachedFetch } from "@/lib/cached-fetch"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import { cn } from "@/lib/utils"
@@ -40,6 +42,8 @@ export interface RubricProduct {
   /** Student route base, e.g. "/business-thesis". */
   basePath: string
   slug: (title: string) => string
+  /** 1–4 scoring rubrics keyed by section slug (see lib/rubric-scoring.ts). */
+  scoring?: Record<string, SectionScoring>
 }
 
 export function rubricHref(product: Pick<RubricProduct, "basePath">, slug?: string): string {
@@ -91,7 +95,7 @@ interface QuestionRecord {
 
 /** Loads a product's template (sections, groups, questions) and shapes it into the rubric. */
 export function useRubric(product: RubricProduct): { sections: RubricSection[]; loading: boolean } {
-  const { apiConfig, slug } = product
+  const { apiConfig, slug, scoring } = product
   const [sections, setSections] = useState<SectionRecord[]>([])
   const [groups, setGroups] = useState<GroupRecord[]>([])
   const [questions, setQuestions] = useState<QuestionRecord[]>([])
@@ -153,8 +157,8 @@ export function useRubric(product: RubricProduct): { sections: RubricSection[]; 
         q._question_types?.type ??
         (q.question_types_id ? questionTypes.find((t) => t.id === q.question_types_id)?.type : undefined),
       slug,
-    })
-  }, [sections, groups, questions, questionTypes, F.sectionId, F.customGroupId, slug])
+    }).map((s) => (scoring?.[s.slug] ? { ...s, scoring: scoring[s.slug] } : s))
+  }, [sections, groups, questions, questionTypes, F.sectionId, F.customGroupId, slug, scoring])
 
   return { sections: rubric, loading }
 }
@@ -232,7 +236,7 @@ export function SectionRubricSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-xl">
+      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-2xl">
         <SheetHeader className="shrink-0 gap-1 border-b px-6 py-5 pr-12">
           <p className={LABEL}>
             {product.name} rubric{index >= 0 && ` · Section ${index + 1} of ${sections.length}`}
@@ -324,6 +328,8 @@ export function RubricSectionBody({
           </ul>
         </div>
       )}
+
+      {section.scoring && <RubricScoringTable scoring={section.scoring} print={print} />}
 
       {section.components.length === 0 ? (
         <p className={cn("text-muted-foreground text-sm", print && "text-gray-500")}>
