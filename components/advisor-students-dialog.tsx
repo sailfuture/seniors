@@ -121,6 +121,7 @@ export function AdvisorStudentsDialog({
   onOpenChange,
   onAssigned,
   onUnassigned,
+  products = ADVISOR_PRODUCTS,
 }: {
   advisor: Advisor
   assignments: AdvisorAssignment[]
@@ -129,11 +130,14 @@ export function AdvisorStudentsDialog({
   onOpenChange: (open: boolean) => void
   onAssigned: (a: AdvisorAssignment) => void
   onUnassigned: (assignmentId: number) => void
+  /** The products the signed-in staff member works with. Thesis supervisors
+   *  pass only the business thesis, so Life Map assignments stay hidden. */
+  products?: AdvisorProduct[]
 }) {
   // A typed advisor (business thesis or life map) can only be assigned to
   // their own product; the product picker shows only for legacy advisors
-  // whose type was never set.
-  const fixedProduct = advisorProduct(advisor)
+  // whose type was never set, and only to staff who work with both.
+  const fixedProduct = advisorProduct(advisor) ?? (products.length === 1 ? products[0] : null)
   // The student list drops down from the whole picker row, not just the
   // search field, so it spans the dialog.
   const pickerAnchor = useComboboxAnchor()
@@ -157,13 +161,13 @@ export function AdvisorStudentsDialog({
   const mine = useMemo(
     () =>
       assignments
-        .filter((a) => a.advisors_id === advisor.id)
+        .filter((a) => a.advisors_id === advisor.id && products.includes(a.type as AdvisorProduct))
         .sort((x, y) => {
           const sx = studentsById.get(String(x.students_id))
           const sy = studentsById.get(String(y.students_id))
           return (sx ? studentName(sx) : "").localeCompare(sy ? studentName(sy) : "")
         }),
-    [assignments, advisor.id, studentsById]
+    [assignments, advisor.id, studentsById, products]
   )
 
   // A student can be picked again for the other product, just not duplicated.

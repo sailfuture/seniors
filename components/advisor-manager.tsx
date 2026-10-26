@@ -65,6 +65,7 @@ import {
   ADVISOR_PRODUCTS,
   PRODUCT_LABEL,
   PRODUCT_SHORT,
+  advisorAllowsProduct,
   advisorInitials,
   advisorName,
   advisorProduct,
@@ -83,7 +84,7 @@ import {
   type AdvisorAccess,
   type AdvisorAccessResponse,
 } from "@/lib/advisor-invitations"
-import { canManageStaff } from "@/lib/roles"
+import { canAccessLifeMap, canManageStaff } from "@/lib/roles"
 import { studentName, type RosterStudent } from "@/lib/students"
 import {
   queryKeys,
@@ -338,6 +339,14 @@ export function AdvisorManager() {
   const myRole = (session?.user as Record<string, unknown> | undefined)?.role
   // Deleting also removes a sign-in account; supervisors can do everything else.
   const canDelete = canManageStaff(myRole)
+  // Thesis supervisors only work with business thesis advisors: Life Map
+  // advisors and Life Map assignments stay out of their directory.
+  const lifeMapOk = canAccessLifeMap(myRole)
+  const products = useMemo<AdvisorProduct[]>(
+    () => (lifeMapOk ? ADVISOR_PRODUCTS : ["business-thesis"]),
+    [lifeMapOk]
+  )
+  const emptyForm: AdvisorForm = lifeMapOk ? EMPTY_FORM : { ...EMPTY_FORM, product: "business-thesis" }
 
   // Shared caches: the same three tables the rosters and dialogs read, fetched
   // once app-wide instead of once per surface.
@@ -345,8 +354,20 @@ export function AdvisorManager() {
   const assignmentsQuery = useAdvisorAssignments()
   // Active and graduated: assignments can outlive a student's graduation.
   const studentsQuery = useAllStudents()
-  const advisors = advisorsQuery.data ?? []
-  const assignments = assignmentsQuery.data ?? []
+  const advisors = useMemo(
+    () =>
+      (advisorsQuery.data ?? []).filter((a) =>
+        products.some((p) => advisorAllowsProduct(a, p))
+      ),
+    [advisorsQuery.data, products]
+  )
+  const assignments = useMemo(
+    () =>
+      (assignmentsQuery.data ?? []).filter((a) =>
+        products.includes(a.type as AdvisorProduct)
+      ),
+    [assignmentsQuery.data, products]
+  )
   const students = studentsQuery.data ?? []
   const loading =
     advisorsQuery.isPending || assignmentsQuery.isPending || studentsQuery.isPending
@@ -404,7 +425,7 @@ export function AdvisorManager() {
 
   const openAdd = () => {
     setEditing(null)
-    setForm(EMPTY_FORM)
+    setForm(emptyForm)
     setDialogOpen(true)
   }
 
@@ -414,7 +435,7 @@ export function AdvisorManager() {
       firstName: a.firstName ?? "",
       lastName: a.lastName ?? "",
       email: a.email ?? "",
-      product: advisorProduct(a) ?? "",
+      product: advisorProduct(a) ?? (products.length === 1 ? products[0] : ""),
     })
     setDialogOpen(true)
   }
@@ -727,6 +748,7 @@ export function AdvisorManager() {
           onOpenChange={(o) => { if (!o) setManaging(null) }}
           onAssigned={cache.assignmentCreated}
           onUnassigned={cache.assignmentRemoved}
+          products={products}
         />
       )}
 
@@ -817,7 +839,7 @@ export function AdvisorManager() {
                   <SelectValue placeholder="Choose a type…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ADVISOR_PRODUCTS.map((p) => (
+                  {products.map((p) => (
                     <SelectItem key={p} value={p}>
                       {PRODUCT_LABEL[p]} advisor
                     </SelectItem>

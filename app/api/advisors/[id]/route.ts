@@ -28,7 +28,7 @@ export async function DELETE(
   const user = await getApiSession(req)
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 })
   if (!canManageAdvisors(user.role)) {
-    return NextResponse.json({ error: "Admins and advisor supervisors only" }, { status: 403 })
+    return NextResponse.json({ error: "Admins and thesis supervisors only" }, { status: 403 })
   }
 
   const { id } = await params

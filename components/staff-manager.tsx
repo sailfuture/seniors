@@ -50,7 +50,7 @@ const STAFF_ROLES: StaffRole[] = ["admin", "teacher", "supervisor"]
 const ROLE_HELP: Record<StaffRole, string> = {
   admin: "Everything, including this page.",
   teacher: "Student rosters, reviews, and the two templates.",
-  supervisor: "Student rosters, reviews, and the thesis advisors — no template editing.",
+  supervisor: "The Business Thesis roster, reviews, and the thesis advisors — no Life Map or template editing.",
 }
 
 interface StaffForm {

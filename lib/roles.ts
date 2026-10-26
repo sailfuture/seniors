@@ -6,8 +6,9 @@
  *
  *  - admin: everything, including the Users page (staff roles + advisors).
  *  - teacher: rosters, reviews, and the two templates.
- *  - supervisor: oversees the thesis advisors — rosters, reviews, and the
- *    advisor directory, but never the templates.
+ *  - supervisor: oversees the business thesis advisors and their students —
+ *    the Business Thesis roster and reviews plus the advisor directory, but
+ *    never the templates and never the Life Map.
  *  - advisor: an outside thesis advisor; sees only their assigned students'
  *    work for the one product they advise on (business thesis or life map).
  */
@@ -18,11 +19,18 @@ export type StaffRole = "admin" | "teacher" | "supervisor"
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   admin: "Admin",
   teacher: "Teacher",
-  supervisor: "Advisor supervisor",
+  supervisor: "Thesis supervisor",
 }
 
 export function isStaffRole(role: unknown): role is StaffRole {
   return role === "admin" || role === "teacher" || role === "supervisor"
+}
+
+/** The Life Map in every form: the staff roster, a student's Life Map, its
+ *  review page, and Life Map advisors. Thesis supervisors only oversee the
+ *  business thesis. */
+export function canAccessLifeMap(role: unknown): boolean {
+  return role !== "supervisor"
 }
 
 /** Life Map / Business Thesis template editors. */

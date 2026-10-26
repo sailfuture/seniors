@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
-import { canEditTemplates, canManageAdvisors, isStaffRole } from "@/lib/roles"
+import { canAccessLifeMap, canEditTemplates, canManageAdvisors, isStaffRole } from "@/lib/roles"
 
 const isProtectedRoute = createRouteMatcher([
   "/dashboard(.*)",
@@ -31,29 +31,42 @@ const isStudentWorkRoute = createRouteMatcher([
 // The Users page (staff roles + the thesis-advisor directory).
 const isUsersRoute = createRouteMatcher(["/admin/users(.*)", "/admin/advisors(.*)"])
 
+// Every Life Map page: the student's own, the staff roster and a student's
+// work, and the template. Thesis supervisors never see the Life Map.
+const isLifeMapRoute = createRouteMatcher(["/life-map(.*)", "/admin/life-map(.*)"])
+
+/** The roster role the session token carries, when it's configured to. */
+function roleFromClaims(sessionClaims: unknown): string | undefined {
+  const metadata = (sessionClaims as Record<string, unknown> | null)?.metadata
+  const role =
+    metadata && typeof metadata === "object"
+      ? (metadata as Record<string, unknown>).role
+      : undefined
+  return typeof role === "string" ? role : undefined
+}
+
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
     // Send signed-out visitors to the home page's sign-in, not Clerk's hosted page.
-    await auth.protect({
+    const { sessionClaims } = await auth.protect({
       unauthenticatedUrl: new URL("/", req.url).toString(),
     })
+    if (isLifeMapRoute(req) && !canAccessLifeMap(roleFromClaims(sessionClaims))) {
+      return Response.redirect(new URL("/dashboard", req.url))
+    }
   }
 
   // Keep students and advisors out of the staff surface (advisors may open
-  // their assigned students' work), supervisors out of the templates, and
-  // teachers out of the Users page. Only enforceable when the session token
+  // their assigned students' work), supervisors out of the templates (and,
+  // above, the Life Map), and teachers out of the Users page. Only enforceable when the session token
   // is configured to carry publicMetadata; without that claim we let the
   // request through rather than lock staff out.
   if (isAdminRoute(req)) {
     const { sessionClaims } = await auth.protect({
       unauthenticatedUrl: new URL("/", req.url).toString(),
     })
-    const metadata = (sessionClaims as Record<string, unknown> | null)?.metadata
-    const role =
-      metadata && typeof metadata === "object"
-        ? (metadata as Record<string, unknown>).role
-        : undefined
-    if (typeof role !== "string") return
+    const role = roleFromClaims(sessionClaims)
+    if (role === undefined) return
     if (role === "advisor" && isStudentWorkRoute(req)) return
     if (!isStaffRole(role)) {
       return Response.redirect(new URL("/dashboard", req.url))

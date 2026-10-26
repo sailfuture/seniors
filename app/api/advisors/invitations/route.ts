@@ -21,7 +21,7 @@ export const runtime = "nodejs"
  *   email, create a fresh one, and mail the link in the branded template.
  * - DELETE { advisorId }: cancel the live invitation.
  *
- * Only signed-in admins and advisor supervisors may call any of these, so the
+ * Only signed-in admins and thesis supervisors may call any of these, so the
  * route can't be used to spam or to probe who has an account.
  */
 
@@ -33,7 +33,7 @@ async function authorize(req: NextRequest) {
   if (!canManageAdvisors(user.role)) {
     return {
       error: NextResponse.json(
-        { error: "Admins and advisor supervisors only" },
+        { error: "Admins and thesis supervisors only" },
         { status: 403 }
       ),
     }

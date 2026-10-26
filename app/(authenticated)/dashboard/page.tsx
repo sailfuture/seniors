@@ -10,6 +10,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { MapsIcon, BookOpen02Icon, SquareLock01Icon } from "@hugeicons/core-free-icons"
 import { TeacherDashboard } from "@/components/teacher-dashboard"
 import { AdvisorDashboard } from "@/components/advisor-dashboard"
+import { SupervisorDashboard } from "@/components/supervisor-dashboard"
 import { ProductStatusCard } from "@/components/status-overview"
 import { fetchSections, titleToSlug } from "@/lib/lifemap-sections"
 import { btTitleToSlug } from "@/lib/businessthesis-sections"
@@ -147,6 +148,11 @@ function LockedBadge() {
 export default function DashboardPage() {
   const { data: session } = useSession()
   const role = (session?.user as Record<string, unknown>)?.role as string | undefined
+
+  // Thesis supervisors get their advisors and students, not the Life Map.
+  if (role === "supervisor") {
+    return <SupervisorDashboard />
+  }
 
   if (isStaffRole(role)) {
     return <TeacherDashboard />

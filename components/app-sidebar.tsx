@@ -36,7 +36,7 @@ import Link from "next/link"
 import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import { fetchBtSections, invalidateBtSectionsCache, btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
 import { useRefreshKey } from "@/lib/refresh-context"
-import { canEditTemplates, canManageAdvisors, isStaffRole } from "@/lib/roles"
+import { canAccessLifeMap, canEditTemplates, canManageAdvisors, isStaffRole } from "@/lib/roles"
 import { useAllStudents, useStudents } from "@/lib/queries"
 import { classYearOf, currentClassYear } from "@/lib/students"
 import type { Comment } from "@/lib/form-types"
@@ -569,9 +569,11 @@ function buildStudentNav(
   return groups
 }
 
-/** Which staff-only groups this role gets: templates (admins and teachers)
-    and the Users page (admins and advisor supervisors). */
+/** Which staff-only groups this role gets: the Life Map (everyone but thesis
+    supervisors), templates (admins and teachers) and the Users page (admins
+    and thesis supervisors). */
 interface StaffNavAccess {
+  lifeMap: boolean
   templates: boolean
   users: boolean
 }
@@ -585,16 +587,21 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
   const onBusiness = !onBtTemplate && (pathname === "/admin/business-thesis" || pathname.startsWith("/admin/business-thesis/"))
 
   return [
-    {
-      title: "Life Map",
-      url: "/admin/life-map",
-      icon: <HugeiconsIcon icon={MapsIcon} strokeWidth={2} />,
-      isActive: onLifeMap,
-      items: students.map((s) => ({
-        title: s.name,
-        url: `/admin/life-map/${s.id}`,
-      })),
-    },
+    // Thesis supervisors only oversee the business thesis.
+    ...(access.lifeMap
+      ? [
+          {
+            title: "Life Map",
+            url: "/admin/life-map",
+            icon: <HugeiconsIcon icon={MapsIcon} strokeWidth={2} />,
+            isActive: onLifeMap,
+            items: students.map((s) => ({
+              title: s.name,
+              url: `/admin/life-map/${s.id}`,
+            })),
+          },
+        ]
+      : []),
     {
       title: "Business Thesis",
       url: "/admin/business-thesis",
@@ -605,7 +612,7 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
         url: `/admin/business-thesis/${s.id}`,
       })),
     },
-    // Advisor supervisors never edit the templates.
+    // Thesis supervisors never edit the templates.
     ...(access.templates
       ? [
           {
@@ -631,7 +638,7 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
           },
         ]
       : []),
-    // Admins and advisor supervisors manage users; teachers see everything else.
+    // Admins and thesis supervisors manage users; teachers see everything else.
     ...(access.users
       ? [
           {
@@ -773,7 +780,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Advisors read their assigned students' work through the staff pages.
   const isAdvisor = role === "advisor"
   const isReviewer = isStaff || isAdvisor
+  // Thesis supervisors get their own dashboard, so they keep a Home link.
+  const isSupervisor = role === "supervisor"
   const staffAccess: StaffNavAccess = {
+    lifeMap: canAccessLifeMap(role),
     templates: canEditTemplates(role),
     users: canManageAdvisors(role),
   }
@@ -851,7 +861,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </>
       )}
       <SidebarContent>
-        {!isStaff && !adminStudentId && (
+        {(!isStaff || isSupervisor) && !adminStudentId && (
           <SidebarGroup className="pb-0">
             <SidebarMenu>
               <SidebarMenuItem>
@@ -955,14 +965,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroup>
             <SidebarGroupLabel>Public Pages</SidebarGroupLabel>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Life Map">
-                  <a href={`/public/life-map/${adminStudentId}`} target="_blank" rel="noopener noreferrer">
-                    <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
-                    <span>Life Map</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {staffAccess.lifeMap && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Life Map">
+                    <a href={`/public/life-map/${adminStudentId}`} target="_blank" rel="noopener noreferrer">
+                      <HugeiconsIcon icon={Link01Icon} strokeWidth={2} />
+                      <span>Life Map</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip="Business Thesis">
                   <a href={`/public/business-thesis/${adminStudentId}`} target="_blank" rel="noopener noreferrer">
