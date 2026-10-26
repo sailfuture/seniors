@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  ArrowRight01Icon,
   Calendar03Icon,
   CalendarBlock01Icon,
   CheckmarkCircle02Icon,
@@ -24,7 +25,14 @@ import {
   type FormApiConfig,
 } from "@/lib/form-api-config"
 import { cachedFetch } from "@/lib/cached-fetch"
-import { reviewCountsByStudent, type ReviewCounts } from "@/lib/review-counts"
+import {
+  reviewCountsBySection,
+  reviewCountsByStudent,
+  sectionCountsKey,
+  type ReviewCounts,
+} from "@/lib/review-counts"
+import { btTitleToSlug } from "@/lib/businessthesis-sections"
+import { titleToSlug } from "@/lib/lifemap-sections"
 import {
   CLASS_MEETING,
   formatCalendarDate,
@@ -48,21 +56,26 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 const API_CONFIG: Record<AdvisorProduct, FormApiConfig> = {
   "business-thesis": BUSINESSTHESIS_API_CONFIG,
   "life-map": LIFEMAP_API_CONFIG,
 }
 
-/** How far ahead the schedule card looks for days school is closed. */
+/** How far ahead the schedule table looks. */
 const OUTLOOK_WEEKS = 8
 
 /** As many columns as fit at 24rem+, so a short list spreads across the
     full width of the schedule band below and a long one packs three to a row. */
 const STUDENT_GRID = "grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))]"
-
-/** Closure tiles: as many across as fit at 15rem+, never stretched wide. */
-const CONFLICT_GRID = "mt-3 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15rem),1fr))]"
 
 /** The staff view of a student's work: every response, comment thread,
     revision, and version, read-only for review status. */
@@ -84,17 +97,41 @@ type CountsByKey = Map<string, ReviewCounts>
 
 const countsKey = (product: AdvisorProduct, studentId: string) => `${product}:${studentId}`
 
+/** A section students can work on now (unlocked), in template order. */
+interface OpenSection {
+  id: number
+  title: string
+  slug: string
+}
+
+interface AdvisorReviewData {
+  /** Per student, keyed by countsKey. */
+  counts: CountsByKey
+  /** Per student section, keyed by `${product}:${sectionCountsKey(studentId, sectionId)}`. */
+  bySection: CountsByKey
+  openSections: Partial<Record<AdvisorProduct, OpenSection[]>>
+}
+
+const SECTION_SLUG: Record<AdvisorProduct, (title: string) => string> = {
+  "business-thesis": btTitleToSlug,
+  "life-map": titleToSlug,
+}
+
+function sectionReviewHref(product: AdvisorProduct, studentId: string, slug: string) {
+  return `/admin/${product}/${studentId}/${slug}`
+}
+
 /**
  * One review-queue read per product the advisor covers (the queue holds only
  * rows awaiting action, so it's small), reduced to counts per student. A
  * product whose read fails just shows no counts; the rest still render.
  */
 function useReviewCounts(products: AdvisorProduct[]) {
-  return useQuery<CountsByKey>({
+  return useQuery<AdvisorReviewData>({
     queryKey: ["advisor-review-counts", products],
     enabled: products.length > 0,
     queryFn: async () => {
-      const result: CountsByKey = new Map()
+      const result: AdvisorReviewData = { counts: new Map(), bySection: new Map(), openSections: {} }
       await Promise.all(
         products.map(async (product) => {
           const cfg = API_CONFIG[product]
@@ -111,7 +148,18 @@ function useReviewCounts(products: AdvisorProduct[]) {
               queueRes.json(),
             ])
             for (const [studentId, counts] of reviewCountsByStudent(rows, template, sections, cfg.fields)) {
-              result.set(countsKey(product, studentId), counts)
+              result.counts.set(countsKey(product, studentId), counts)
+            }
+            for (const [key, counts] of reviewCountsBySection(rows, template, sections, cfg.fields)) {
+              result.bySection.set(`${product}:${key}`, counts)
+            }
+            if (Array.isArray(sections)) {
+              result.openSections[product] = (
+                sections as { id: number; section_title: string; isLocked?: boolean; order?: number }[]
+              )
+                .filter((sec) => !sec.isLocked)
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                .map((sec) => ({ id: sec.id, title: sec.section_title, slug: SECTION_SLUG[product](sec.section_title) }))
             }
           } catch {
             /* leave this product without counts */
@@ -231,7 +279,7 @@ export function AdvisorDashboard() {
                   key={student.id}
                   student={student}
                   products={products}
-                  counts={countsQuery.data}
+                  data={countsQuery.data}
                   countsLoading={products.length > 0 && countsQuery.isPending}
                 />
               ))}
@@ -247,14 +295,15 @@ export function AdvisorDashboard() {
 function StudentCard({
   student,
   products,
-  counts,
+  data,
   countsLoading,
 }: {
   student: RosterStudent
   products: AdvisorProduct[]
-  counts: CountsByKey | undefined
+  data: AdvisorReviewData | undefined
   countsLoading: boolean
 }) {
+  const counts = data?.counts
   const initials = `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase()
   const detail =
     [student.yearGroup, student.crewName].filter(Boolean).join(" · ") || student.studentEmail
@@ -303,6 +352,7 @@ function StudentCard({
                   dot="bg-red-500"
                 />
               </div>
+              <OpenSections product={product} studentId={student.id} data={data} loading={countsLoading} />
             </div>
           )
         })}
@@ -330,6 +380,71 @@ function StudentCard({
         </CardFooter>
       )}
     </Card>
+  )
+}
+
+/**
+ * The sections the student can work on right now, each a link straight to
+ * that section's review page, with what is waiting on a reviewer there.
+ */
+function OpenSections({
+  product,
+  studentId,
+  data,
+  loading,
+}: {
+  product: AdvisorProduct
+  studentId: string
+  data: AdvisorReviewData | undefined
+  loading: boolean
+}) {
+  const sections = data?.openSections[product]
+  return (
+    <div className="mt-2">
+      <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Open sections</p>
+      {loading ? (
+        <div className="mt-1.5 space-y-1.5">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 rounded-md" />
+          ))}
+        </div>
+      ) : !sections ? (
+        <p className="text-muted-foreground mt-1.5 text-sm">Sections couldn&rsquo;t be loaded.</p>
+      ) : sections.length === 0 ? (
+        <p className="text-muted-foreground mt-1.5 text-sm">No sections are open right now.</p>
+      ) : (
+        <ul className="mt-1.5 divide-y overflow-hidden rounded-lg border">
+          {sections.map((sec) => {
+            const c = data?.bySection.get(`${product}:${sectionCountsKey(studentId, sec.id)}`)
+            return (
+              <li key={sec.id}>
+                <Link
+                  href={sectionReviewHref(product, studentId, sec.slug)}
+                  className="hover:bg-muted/50 flex items-center gap-3 px-3 py-2 text-sm transition-colors"
+                >
+                  <span className="min-w-0 flex-1 truncate font-medium">{sec.title}</span>
+                  {!!c?.pending && (
+                    <span className="shrink-0 text-xs text-blue-600 tabular-nums dark:text-blue-400">
+                      {c.pending} to review
+                    </span>
+                  )}
+                  {!!c?.revisions && (
+                    <span className="shrink-0 text-xs text-red-600 tabular-nums dark:text-red-400">
+                      {c.revisions} in revision
+                    </span>
+                  )}
+                  <HugeiconsIcon
+                    icon={ArrowRight01Icon}
+                    strokeWidth={2}
+                    className="text-muted-foreground size-4 shrink-0"
+                  />
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -367,8 +482,9 @@ function StatTile({
 }
 
 /**
- * When the senior class meets, and which of the coming Thursday/Friday
- * sessions the school calendar rules out (holidays, breaks, closures).
+ * When the senior class meets: every Thursday and Friday session over the
+ * coming weeks as a table, with the ones the school calendar rules out
+ * (holidays, breaks, closures) marked and explained.
  */
 function ScheduleCard({
   days,
@@ -378,6 +494,7 @@ function ScheduleCard({
   status: "pending" | "error" | "success"
 }) {
   const outlook = useMemo(() => (days ? meetingOutlook(days, OUTLOOK_WEEKS) : null), [days])
+  const time = `${CLASS_MEETING.startLabel} – ${CLASS_MEETING.endLabel}`
 
   return (
     <Card>
@@ -389,95 +506,108 @@ function ScheduleCard({
           <div>
             <CardTitle>Class schedule</CardTitle>
             <CardDescription>
-              When the senior class meets and you can join, and the coming sessions the school
-              calendar rules out.
+              The senior class meets Thursdays and Fridays, {time} Eastern, at SailFuture Academy.
+              Sessions over the next {OUTLOOK_WEEKS} weeks, from the school calendar.
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <div className="bg-muted/40 self-start rounded-lg border p-4">
-          <p className="text-sm font-medium">Thursdays &amp; Fridays</p>
-          <p className="text-2xl font-semibold tabular-nums">
-            {CLASS_MEETING.startLabel} – {CLASS_MEETING.endLabel}
+      <CardContent className="space-y-3">
+        {outlook?.nextSession && (
+          <p className="text-sm">
+            Next session:{" "}
+            <span className="font-medium">
+              {outlook.nextSession.isToday ? "today" : formatCalendarDate(outlook.nextSession.date)}, {time}
+            </span>
           </p>
-          <p className="text-muted-foreground mt-1 text-xs">Eastern time, at SailFuture Academy.</p>
-          {outlook?.nextSession && (
-            <p className="mt-3 text-sm">
-              Next session:{" "}
-              <span className="font-medium">
-                {outlook.nextSession.isToday ? "today" : formatCalendarDate(outlook.nextSession.date)}
-              </span>
-            </p>
-          )}
-        </div>
+        )}
 
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">Sessions that won&rsquo;t happen</h3>
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            Days school is closed over the next {OUTLOOK_WEEKS} weeks, from the school calendar.
+        {status === "pending" ? (
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 rounded-md" />
+            ))}
+          </div>
+        ) : status === "error" || !outlook ? (
+          <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
+            The school calendar couldn&rsquo;t be loaded. Check back later, or confirm a session
+            with SailFuture Academy staff.
           </p>
-
-          {status === "pending" ? (
-            <div className={CONFLICT_GRID}>
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-16 rounded-lg" />
-              ))}
-            </div>
-          ) : status === "error" || !outlook ? (
-            <p className="text-muted-foreground mt-3 rounded-lg border border-dashed p-3 text-sm">
-              The school calendar couldn&rsquo;t be loaded. Check back later, or confirm a session
-              with SailFuture Academy staff.
-            </p>
-          ) : !outlook.coversWindow && outlook.conflicts.length === 0 && !outlook.nextSession ? (
-            <p className="text-muted-foreground mt-3 rounded-lg border border-dashed p-3 text-sm">
-              The school calendar hasn&rsquo;t been published for these weeks yet.
-            </p>
-          ) : (
-            <>
-              {outlook.conflicts.length === 0 ? (
-                <p className="mt-3 flex items-start gap-2 rounded-lg border border-dashed p-3 text-sm">
-                  <HugeiconsIcon
-                    icon={CheckmarkCircle02Icon}
-                    strokeWidth={2}
-                    className="mt-0.5 size-4 shrink-0 text-emerald-600"
-                  />
-                  <span>No closures: every Thursday and Friday session is on.</span>
-                </p>
-              ) : (
-                <ul className={CONFLICT_GRID}>
-                  {outlook.conflicts.map((c) => (
-                    <li key={c.date} className="flex items-start gap-3 rounded-lg border px-3 py-2.5">
-                      <HugeiconsIcon
-                        icon={CalendarBlock01Icon}
-                        strokeWidth={2}
-                        className="mt-0.5 size-4 shrink-0 text-amber-600"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">
-                          {formatCalendarDate(c.date)}
-                          {c.date === outlook.from && (
-                            <span className="text-muted-foreground font-normal"> · today</span>
+        ) : outlook.sessions.length === 0 ? (
+          <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
+            No sessions in the next {OUTLOOK_WEEKS} weeks.
+          </p>
+        ) : (
+          <>
+            <div className="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableHead className="w-[38%] pl-4">Date</TableHead>
+                    <TableHead className="w-[24%]">Time</TableHead>
+                    <TableHead className="pr-4">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {outlook.sessions.map((session) => {
+                    const isNext = outlook.nextSession?.date === session.date
+                    return (
+                      <TableRow
+                        key={session.date}
+                        className={cn(
+                          session.status === "off" && "bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-500/5"
+                        )}
+                      >
+                        <TableCell className="pl-4 font-medium">
+                          {formatCalendarDate(session.date)}
+                          {session.isToday && <span className="text-muted-foreground font-normal"> · today</span>}
+                        </TableCell>
+                        <TableCell
+                          className={cn("tabular-nums", session.status === "off" && "text-muted-foreground line-through")}
+                        >
+                          {time}
+                        </TableCell>
+                        <TableCell className="pr-4 whitespace-normal">
+                          {session.status === "off" ? (
+                            <span className="flex items-start gap-2">
+                              <HugeiconsIcon
+                                icon={CalendarBlock01Icon}
+                                strokeWidth={2}
+                                className="mt-0.5 size-4 shrink-0 text-amber-600"
+                              />
+                              <span>
+                                <span className="font-medium">No class</span>
+                                <span className="text-muted-foreground"> · {session.title}</span>
+                              </span>
+                            </span>
+                          ) : session.status === "unknown" ? (
+                            <span className="text-muted-foreground">Not on the school calendar yet</span>
+                          ) : (
+                            <span className="flex items-center gap-2">
+                              <HugeiconsIcon
+                                icon={CheckmarkCircle02Icon}
+                                strokeWidth={2}
+                                className="size-4 shrink-0 text-emerald-600"
+                              />
+                              Class meets
+                              {isNext && <Badge variant="secondary">Next</Badge>}
+                            </span>
                           )}
-                        </p>
-                        <p className="text-muted-foreground text-xs">{c.title}</p>
-                        <Badge variant="secondary" className="mt-1.5">
-                          {c.session}
-                        </Badge>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {!outlook.coversWindow && outlook.calendarThrough && (
-                <p className="text-muted-foreground mt-2 text-xs">
-                  The calendar is published through {formatCalendarDate(outlook.calendarThrough)};
-                  later weeks aren&rsquo;t known yet.
-                </p>
-              )}
-            </>
-          )}
-        </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {!outlook.coversWindow && outlook.calendarThrough && (
+              <p className="text-muted-foreground text-xs">
+                The calendar is published through {formatCalendarDate(outlook.calendarThrough)};
+                sessions after that aren&rsquo;t confirmed yet.
+              </p>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   )

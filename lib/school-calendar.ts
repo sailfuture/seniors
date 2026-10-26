@@ -124,10 +124,26 @@ export function closureOf(day: SchoolCalendarDay): { kind: ClosureKind; title: s
   return null
 }
 
+/** One Thursday or Friday class session in the window and whether it happens. */
+export interface MeetingSession {
+  date: string
+  /** "Thursday session" or "Friday session". */
+  session: string
+  isToday: boolean
+  /** "on" (a school day), "off" (school is closed) or "unknown" (not on the calendar yet). */
+  status: "on" | "off" | "unknown"
+  /** Why there's no class, for an "off" session. */
+  title?: string
+  kind?: ClosureKind
+}
+
 export interface MeetingOutlook {
   /** First and last date looked at, inclusive. */
   from: string
   through: string
+  /** Every class session in the window, in date order. Today's is left out
+      once it has ended. */
+  sessions: MeetingSession[]
   /** Class sessions in the window that fall on a day school is closed. */
   conflicts: MeetingConflict[]
   /** The next session that is on (today's, until it ends), or null when the
@@ -154,6 +170,7 @@ export function meetingOutlook(
   const span = weeks * 7
   const through = addDays(from, span - 1)
   const conflicts: MeetingConflict[] = []
+  const sessions: MeetingSession[] = []
   let nextSession: MeetingOutlook["nextSession"] = null
   let listed = 0
 
@@ -162,13 +179,21 @@ export function meetingOutlook(
     const day = byDate.get(date)
     if (day) listed++
     const weekday = weekdayOf(date)
-    if (!CLASS_MEETING.weekdays.includes(weekday) || !day) continue
+    if (!CLASS_MEETING.weekdays.includes(weekday)) continue
     const session = `${WEEKDAY_NAME[weekday]} session`
+    // Today's session drops off the list once it has ended.
+    const ended = i === 0 && now.minutes >= CLASS_MEETING.endMinutes
+    if (!day) {
+      if (!ended) sessions.push({ date, session, isToday: i === 0, status: "unknown" })
+      continue
+    }
     const closure = closureOf(day)
     if (closure) {
       conflicts.push({ date, session, ...closure })
+      if (!ended) sessions.push({ date, session, isToday: i === 0, status: "off", ...closure })
       continue
     }
+    if (!ended) sessions.push({ date, session, isToday: i === 0, status: "on" })
     // Today's session still counts as upcoming until it has ended.
     if (!nextSession && (i > 0 || now.minutes < CLASS_MEETING.endMinutes)) {
       nextSession = { date, session, isToday: i === 0 }
@@ -178,6 +203,7 @@ export function meetingOutlook(
   return {
     from,
     through,
+    sessions,
     conflicts,
     nextSession,
     calendarThrough: days.length ? days[days.length - 1].date : null,
