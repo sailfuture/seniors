@@ -27,8 +27,10 @@ import {
   LIFEMAP_API_CONFIG,
   type FormApiConfig,
 } from "@/lib/form-api-config"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
+import { StatusCount } from "@/components/status-count"
 import {
+  openCommentsBySection,
   reviewCountsBySection,
   reviewCountsByStudent,
   sectionCountsKey,
@@ -113,6 +115,8 @@ interface AdvisorReviewData {
   counts: CountsByKey
   /** Per student section, keyed by `${product}:${sectionCountsKey(studentId, sectionId)}`. */
   bySection: CountsByKey
+  /** Open comments per student section, same keys as bySection. */
+  comments: Map<string, number>
   openSections: Partial<Record<AdvisorProduct, OpenSection[]>>
 }
 
@@ -130,12 +134,12 @@ function sectionReviewHref(product: AdvisorProduct, studentId: string, slug: str
  * rows awaiting action, so it's small), reduced to counts per student. A
  * product whose read fails just shows no counts; the rest still render.
  */
-function useReviewCounts(products: AdvisorProduct[]) {
+function useReviewCounts(products: AdvisorProduct[], studentsByProduct: Partial<Record<AdvisorProduct, string[]>>) {
   return useQuery<AdvisorReviewData>({
-    queryKey: ["advisor-review-counts", products],
+    queryKey: ["advisor-review-counts", products, studentsByProduct],
     enabled: products.length > 0,
     queryFn: async () => {
-      const result: AdvisorReviewData = { counts: new Map(), bySection: new Map(), openSections: {} }
+      const result: AdvisorReviewData = { counts: new Map(), bySection: new Map(), comments: new Map(), openSections: {} }
       await Promise.all(
         products.map(async (product) => {
           const cfg = API_CONFIG[product]
@@ -157,6 +161,25 @@ function useReviewCounts(products: AdvisorProduct[]) {
             for (const [key, counts] of reviewCountsBySection(rows, template, sections, cfg.fields)) {
               result.bySection.set(`${product}:${key}`, counts)
             }
+            // Open comments per section, from each student's comments (the
+            // same shared request their review pages use).
+            await Promise.all(
+              (studentsByProduct[product] ?? []).map(async (studentId) => {
+                try {
+                  const res = await studentFetch(`${cfg.commentsEndpoint}?students_id=${studentId}`)
+                  if (!res.ok) return
+                  const rows = await res.json()
+                  const mine = Array.isArray(rows)
+                    ? rows.filter((c: { students_id?: unknown }) => String(c.students_id) === String(studentId))
+                    : []
+                  for (const [sectionId, n] of openCommentsBySection(mine, template, sections, cfg.fields)) {
+                    result.comments.set(`${product}:${sectionCountsKey(studentId, sectionId)}`, n)
+                  }
+                } catch {
+                  /* this student just shows no comment counts */
+                }
+              })
+            )
             if (Array.isArray(sections)) {
               result.openSections[product] = (
                 sections as { id: number; section_title: string; isLocked?: boolean; order?: number }[]
@@ -246,7 +269,14 @@ export function AdvisorDashboard() {
     for (const entry of advised ?? []) entry.products.forEach((p) => set.add(p))
     return [...set]
   }, [advised])
-  const countsQuery = useReviewCounts(products)
+  const studentsByProduct = useMemo(() => {
+    const map: Partial<Record<AdvisorProduct, string[]>> = {}
+    for (const entry of advised ?? []) {
+      for (const product of entry.products) (map[product] ??= []).push(String(entry.student.id))
+    }
+    return map
+  }, [advised])
+  const countsQuery = useReviewCounts(products, studentsByProduct)
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -309,7 +339,6 @@ function StudentCard({
   data: AdvisorReviewData | undefined
   countsLoading: boolean
 }) {
-  const counts = data?.counts
   const initials = `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase()
   const detail =
     [student.yearGroup, student.crewName].filter(Boolean).join(" · ") || student.studentEmail
@@ -332,36 +361,16 @@ function StudentCard({
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4">
         {products.length === 0 && <Badge variant="secondary">No projects assigned</Badge>}
-        {products.map((product) => {
-          const c = counts?.get(countsKey(product, student.id))
-          // The queue only lists students with something waiting, so a
-          // missing entry after loading means nothing is waiting.
-          const loaded = counts !== undefined
-          return (
-            <div key={product} className="flex flex-col gap-2">
-              {products.length > 1 && (
-                <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                  {PRODUCT_LABEL[product]}
-                </p>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <StatTile
-                  label="Ready for review"
-                  value={loaded ? (c?.pending ?? 0) : undefined}
-                  loading={countsLoading}
-                  dot="bg-blue-500"
-                />
-                <StatTile
-                  label="Revisions open"
-                  value={loaded ? (c?.revisions ?? 0) : undefined}
-                  loading={countsLoading}
-                  dot="bg-red-500"
-                />
-              </div>
-              <OpenSections product={product} studentId={student.id} data={data} loading={countsLoading} />
-            </div>
-          )
-        })}
+        {products.map((product) => (
+          <div key={product} className="flex flex-col gap-2">
+            {products.length > 1 && (
+              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                {PRODUCT_LABEL[product]}
+              </p>
+            )}
+            <OpenSections product={product} studentId={student.id} data={data} loading={countsLoading} />
+          </div>
+        ))}
       </CardContent>
       {products.length > 0 && (
         <CardFooter className="flex flex-wrap gap-2">
@@ -369,7 +378,7 @@ function StudentCard({
             <Fragment key={product}>
               <Button asChild>
                 <Link href={reviewHref(product, student.id)}>
-                  Review {PRODUCT_LABEL[product]}
+                  View {PRODUCT_LABEL[product]}
                 </Link>
               </Button>
               <Button asChild variant="outline">
@@ -406,7 +415,7 @@ function OpenSections({
 }) {
   const sections = data?.openSections[product]
   return (
-    <div className="mt-2">
+    <div>
       <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Open sections</p>
       {loading ? (
         <div className="mt-1.5 space-y-1.5">
@@ -421,24 +430,19 @@ function OpenSections({
       ) : (
         <ul className="mt-1.5 divide-y overflow-hidden rounded-lg border">
           {sections.map((sec) => {
-            const c = data?.bySection.get(`${product}:${sectionCountsKey(studentId, sec.id)}`)
+            const key = `${product}:${sectionCountsKey(studentId, sec.id)}`
+            const c = data?.bySection.get(key)
+            const commentCount = data?.comments.get(key) ?? 0
             return (
               <li key={sec.id}>
                 <Link
                   href={sectionReviewHref(product, studentId, sec.slug)}
-                  className="hover:bg-muted/50 flex items-center gap-3 px-3 py-2 text-sm transition-colors"
+                  className="hover:bg-muted/50 flex items-center gap-2 px-3 py-2 text-sm transition-colors"
                 >
                   <span className="min-w-0 flex-1 truncate font-medium">{sec.title}</span>
-                  {!!c?.pending && (
-                    <span className="shrink-0 text-xs text-blue-600 tabular-nums dark:text-blue-400">
-                      {c.pending} to review
-                    </span>
-                  )}
-                  {!!c?.revisions && (
-                    <span className="shrink-0 text-xs text-red-600 tabular-nums dark:text-red-400">
-                      {c.revisions} in revision
-                    </span>
-                  )}
+                  <StatusCount kind="ready" count={c?.pending ?? 0} size="sm" />
+                  <StatusCount kind="revision" count={c?.revisions ?? 0} size="sm" />
+                  <StatusCount kind="comment" count={commentCount} size="sm" />
                   <HugeiconsIcon
                     icon={ArrowRight01Icon}
                     strokeWidth={2}
@@ -450,39 +454,6 @@ function OpenSections({
           })}
         </ul>
       )}
-    </div>
-  )
-}
-
-function StatTile({
-  label,
-  value,
-  loading,
-  dot,
-}: {
-  label: string
-  value: number | undefined
-  loading: boolean
-  dot: string
-}) {
-  return (
-    <div className="bg-muted/40 rounded-lg border px-3 py-2.5">
-      {loading ? (
-        <Skeleton className="h-7 w-10" />
-      ) : (
-        <p
-          className={cn(
-            "text-2xl leading-7 font-semibold tabular-nums",
-            value === 0 && "text-muted-foreground"
-          )}
-        >
-          {value ?? "–"}
-        </p>
-      )}
-      <p className="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
-        <span className={cn("size-1.5 shrink-0 rounded-full", dot)} />
-        {label}
-      </p>
     </div>
   )
 }

@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation"
 import { useSession } from "@/components/session-provider"
 import { useCanApprove } from "@/hooks/use-can-review"
 import { CARD_TONE_BORDER, cardTone, type CardTone } from "./card-tone"
-import { cn } from "@/lib/utils"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,7 +14,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CheckmarkCircle02Icon,
-  CircleIcon,
   SentIcon,
   AlertCircleIcon,
   ArrowTurnBackwardIcon,
@@ -70,6 +68,7 @@ import { dateTime, relativeTime as relativeFrom, toMillis } from "@/lib/format-t
 import { markdownToPlainText } from "@/lib/markdown-text"
 import { Markdown } from "@/components/markdown"
 import { SectionRubricButton, type SectionRubricRef } from "./rubric"
+import { StatusCount } from "@/components/status-count"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -1343,28 +1342,6 @@ function CollapsibleQuestionCard({
           {displayValue}
         </div>
       </div>
-    </div>
-  )
-}
-
-const STATUS_COUNT = {
-  complete: { icon: CheckmarkCircle02Icon, strokeWidth: 2, iconClass: "text-green-600", label: "complete" },
-  ready: { icon: SentIcon, strokeWidth: 2, iconClass: "text-blue-500", label: "ready for review" },
-  revision: { icon: AlertCircleIcon, strokeWidth: 2, iconClass: "text-red-500", label: "need revision" },
-  blank: { icon: CircleIcon, strokeWidth: 1.5, iconClass: "text-muted-foreground/50", label: "not started" },
-} as const
-
-/** A status tally for a group's questions: the icon with its count beside it. Nothing at zero. */
-function StatusCount({ kind, count }: { kind: keyof typeof STATUS_COUNT; count: number }) {
-  if (count <= 0) return null
-  const k = STATUS_COUNT[kind]
-  return (
-    <div
-      className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold tabular-nums"
-      title={`${count} ${k.label}`}
-    >
-      <HugeiconsIcon icon={k.icon} strokeWidth={k.strokeWidth} className={cn("size-4", k.iconClass)} />
-      {count}
     </div>
   )
 }
