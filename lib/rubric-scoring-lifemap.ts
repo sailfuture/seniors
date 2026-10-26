@@ -2,8 +2,8 @@ import type { SectionScoring } from "@/lib/rubric-scoring"
 
 /**
  * Life Map scoring rubrics: for each section, a summary of what it must
- * accomplish, then criteria scored on a 1–4 scale with things to look for,
- * coaching notes for advisors and level descriptions. Level 3 (Meets
+ * accomplish, then criteria scored on a 1–4 scale, each with a short
+ * paragraph on what success looks like and level descriptions. Level 3 (Meets
  * expectations) is the bar for complete.
  *
  * Written from the Life Map template: each section's purpose, its groups,
@@ -19,15 +19,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Personal statement",
         covers: "150+ words",
-        coaching:
-          "Ask the student to tell you about a moment that changed how they see themselves; that story is often the heart of the statement. Help them move from listing traits to showing them in action.",
-        lookFor: [
-          "Opens with who the student is, not what they plan to do",
-          "Includes a specific experience or story",
-          "Names values or qualities and shows them in action",
-          "Connects to where the student is headed",
-          "150+ words",
-        ],
+        expectations:
+          "The personal statement introduces who the student is before what they plan to do. It names their values and qualities and shows them through a specific experience or story, then connects to where they are headed, in at least 150 words.",
         levels: [
           "Personal statement not submitted.",
           "Under 150 words, or only lists post-graduation plans or traits without saying who the student is.",
@@ -38,12 +31,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Personal information",
         covers: "Birth date, graduation date, location, school, program",
-        coaching: "Check each field against school records. Small errors here undermine the whole document.",
-        lookFor: [
-          "Date of birth and expected graduation date are correct",
-          "Current city and state",
-          "Current school and program named in full",
-        ],
+        expectations:
+          "Every detail is correct and complete: date of birth, expected graduation date, current city and state, and the current school and program named in full.",
         levels: [
           "Personal details not filled in.",
           "Some details missing or incorrect.",
@@ -61,14 +50,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Pathway choice and reasoning",
         covers: "Pathway, images, why I chose it (75+ words), other pathways considered",
-        coaching:
-          "Ask what else the student considered and why they ruled it out; a choice made without alternatives isn't really a choice. Images should show the actual program, base or workplace.",
-        lookFor: [
-          "A pathway selected",
-          "Two images of the actual pathway",
-          "Why it was chosen, in 75+ words",
-          "At least two alternatives and why they were ruled out",
-        ],
+        expectations:
+          "The chosen pathway is supported by two images of the actual program, base or workplace and at least 75 words on why it was chosen. At least two other options are described along with why they were ruled out, which shows the choice was deliberate.",
         levels: [
           "No pathway selected.",
           "A pathway is chosen but the reasoning is vague, or no other options were considered.",
@@ -79,14 +62,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Timeline and requirements",
         covers: "Dates, milestones, entry steps, documents, total cost, sources",
-        coaching:
-          "Build the timeline backward from the start date with the student. For each step, ask how they will know it's done and where they found the requirement.",
-        lookFor: [
-          "Commitment date and target start date",
-          "Milestones in order, with deadlines",
-          "Entry steps and required documents listed",
-          "Total cost estimated, with sources",
-        ],
+        expectations:
+          "The timeline runs from the commitment date to the target start date, with milestones in order and deadlines attached. Entry steps, required documents and an estimated total cost are listed, each with a source, so someone else could follow the plan.",
         levels: [
           "Timeline and requirements not filled in.",
           "Dates, milestones or entry steps missing, or the cost estimate is unsupported.",
@@ -97,14 +74,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Connection to the Life Map",
         covers: "Link to career (100+ words), support, doubters",
-        coaching:
-          "The pathway must lead to the role named in the Career section. Ask the student to describe each step from the first day of the pathway to the first day of the job.",
-        lookFor: [
-          "Names the exact career role and the pathway",
-          "Explains how one leads to the other, in 100+ words",
-          "Names the person who supports them most",
-          "Addresses a doubter fairly",
-        ],
+        expectations:
+          "The pathway clearly leads to the exact role named in the Career section, explained step by step in at least 100 words. The person who supports the student most is named, and a doubter's concern is described fairly along with how the student is handling it.",
         levels: [
           "Connection not explained.",
           "Doesn't name the career or explain how the pathway leads to it; support people missing.",
@@ -115,14 +86,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Risk and backup plan",
         covers: "Biggest risk (30+ words), Plan B (100+ words)",
-        coaching:
-          "Ask: what is the one thing most likely to stop this plan? Then: if it happens, what would you do the next day? That answer is Plan B.",
-        lookFor: [
-          "One specific, honest risk",
-          "Plan B responds directly to that risk",
-          "Plan B could start right away",
-          "Names the people or resources involved",
-        ],
+        expectations:
+          "One specific, honest risk is named (\"failure\" or \"nothing\" don't count), and the Plan B responds directly to it. Plan B is a real plan that could start right away, naming the people and resources involved.",
         levels: [
           "Risk and backup plan not submitted.",
           "The risk is vague (\"failure\", \"nothing\") or the Plan B is a wish rather than a plan.",
@@ -140,14 +105,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Personality and self-knowledge",
         covers: "Assessment, top traits, summaries",
-        coaching:
-          "Look at the assessment results with the student and ask which parts feel true and which don't. Their reasoning matters more than the label.",
-        lookFor: [
-          "Assessment name and personality type",
-          "Top two traits from the results",
-          "Why the type fits, with examples",
-          "A personality summary drawn from real experience",
-        ],
+        expectations:
+          "The assessment name, personality type and top two traits are listed, with an explanation of why they fit using real examples. The personality summary draws on the student's own experiences, not just the test results.",
         levels: [
           "Personality section not filled in.",
           "Results listed without reflection, or summaries under their word minimums.",
@@ -158,14 +117,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Values, strengths and growth",
         covers: "4 core values, 4 strengths, 2 areas for growth (50+ words each)",
-        coaching:
-          "Ask for an example of each value or strength in action. Growth areas should be honest and paired with a concrete step to improve.",
-        lookFor: [
-          "Four core values, each described",
-          "Four personal strengths, each described",
-          "Two areas for growth, each 50+ words",
-          "Each growth area includes a way to improve",
-        ],
+        expectations:
+          "Four core values and four strengths are each described in the student's own words, ideally with an example of each in action. Two areas for growth, at least 50 words each, are honest and include a concrete way to improve.",
         levels: [
           "Values and strengths not filled in.",
           "Fewer than four values or strengths, one-word answers, or growth areas missing.",
@@ -176,13 +129,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Skills and interests",
         covers: "5 hard skills, 5 soft skills, 3 hobbies, 3 subjects",
-        coaching:
-          "Hard skills are things the student can do (tools, software, trades); soft skills are how they work with people. Ask where each was learned or used.",
-        lookFor: [
-          "Five hard skills and five soft skills, each described",
-          "Three hobbies and three favorite subjects",
-          "Each entry says where it shows up",
-        ],
+        expectations:
+          "Five hard skills (things the student can do, such as tools, software or trades), five soft skills (how they work with people), three hobbies and three favorite subjects are each briefly described, including where each one shows up.",
         levels: [
           "Skills and interests not filled in.",
           "Lists incomplete, or single words without description.",
@@ -193,14 +141,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Personal goals",
         covers: "Short (200+), medium (400+) and long-term (600+ words)",
-        coaching:
-          "Check that the three goals line up: the short-term goal should be a step toward the medium-term goal, which leads to the long-term one. Ask for steps and dates.",
-        lookFor: [
-          "Short, medium and long-term goals, each at its word minimum",
-          "Each says what, why and the steps to get there",
-          "The goals build on each other",
-          "Goals match the pathway and career",
-        ],
+        expectations:
+          "Short, medium and long-term goals each meet their word minimum (200, 400 and 600) and explain what the goal is, why it matters and the steps to reach it. The goals build on each other and match the pathway and career elsewhere in the Life Map.",
         levels: [
           "Goals not submitted.",
           "Goals missing, under their word minimums, or vague with no steps.",
@@ -218,14 +160,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Career path and fit",
         covers: "Role, summary, environment, why this career (200+ words), skills match",
-        coaching:
-          "Ask the student to describe a normal workday in the role. If they can't, they need more research. The \"why\" should connect to their profile: values, strengths and interests.",
-        lookFor: [
-          "A specific role title, not just a field",
-          "What the work involves day to day",
-          "Why it fits the student, in 200+ words",
-          "Skills they have and skills still to develop",
-        ],
+        expectations:
+          "A specific role title is named, not just a field, with a clear picture of the daily work and work environment. At least 200 words explain why it fits the student's values, strengths and interests, along with the skills they already have and the ones they still need to develop.",
         levels: [
           "Career path not submitted.",
           "The role is named but the summary, environment or reasons are vague or under their minimums.",
@@ -236,14 +172,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Industry and labor market research",
         covers: "Industry, outlook, growth, openings, median pay, with sources",
-        coaching:
-          "Start the student on the Bureau of Labor Statistics Occupational Outlook Handbook page for their role; most of these figures are there. Ask what the numbers mean for them personally.",
-        lookFor: [
-          "Industry description and future outlook",
-          "Growth rate, new jobs and annual openings",
-          "Median annual and hourly pay",
-          "A credible source for each figure",
-        ],
+        expectations:
+          "Industry description, future outlook, growth rate, new jobs, annual openings, and median annual and hourly pay are all included, each with a credible source. The Bureau of Labor Statistics Occupational Outlook Handbook is a strong starting point.",
         levels: [
           "Industry research not filled in.",
           "Figures missing or unsourced, or the industry description is generic.",
@@ -254,14 +184,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Training, qualifications and skills",
         covers: "How to become one (100+ words), education, certifications, licenses, key skills",
-        coaching:
-          "Have the student trace the route from high school to the first day on the job, step by step. Each requirement should come from a real source and match the Pathway and Education plans.",
-        lookFor: [
-          "Step-by-step route into the role, 100+ words",
-          "Required education, certifications and licenses",
-          "Four key skills and four key responsibilities",
-          "Sources for each requirement",
-        ],
+        expectations:
+          "The route into the role is traced step by step from high school to the first day on the job, in at least 100 words. Required education, certifications and licenses are listed with sources, along with four key skills, four key responsibilities and the key knowledge the role needs, all consistent with the Pathway and Education sections.",
         levels: [
           "Training and skills not filled in.",
           "The route into the role is unclear, or education, certification or skill lists are incomplete or unsourced.",
@@ -272,14 +196,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Employers of interest",
         covers: "3 employers: name, logo, website, why (40+ words)",
-        coaching:
-          "Ask the student to find real employers hiring for the role near where they plan to live. The \"why\" should mention something specific to each employer.",
-        lookFor: [
-          "Three real employers hiring for the role",
-          "Logo and website for each",
-          "40+ words on why each one",
-          "Reasons specific to each employer",
-        ],
+        expectations:
+          "Three real employers that hire for the role, ideally near where the student plans to live, are listed with logo and website. At least 40 words for each explain why that employer in particular interests the student.",
         levels: [
           "No employers listed.",
           "Fewer than three employers, or logos, websites or reasons missing.",
@@ -297,14 +215,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "School and program choice",
         covers: "School overview, features (150+), why this program (250+), differentiators (250+)",
-        coaching:
-          "Ask what this program offers that the others they looked at don't. The answer should be specific: a lab, an internship, a certification, a job placement rate.",
-        lookFor: [
-          "School name, location, website and photos",
-          "Key program features and special opportunities",
-          "Why this program over others, 250+ words",
-          "What makes it different, with specifics",
-        ],
+        expectations:
+          "School name, location, website and photos are included, with the program's key features and special opportunities. At least 250 words explain why this program was chosen over the alternatives, and the differentiators point to specifics such as a lab, internship, certification or job placement rate.",
         levels: [
           "School and program not submitted.",
           "The school is named, but the program, its features or the reasons for choosing it are thin or under their minimums.",
@@ -315,14 +227,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Entry requirements and timeline",
         covers: "Application dates, prerequisites, GPA, transcript, tests",
-        coaching:
-          "Have the student list each admission requirement next to where they stand today. Anything not yet met becomes a milestone in the Pathway timeline.",
-        lookFor: [
-          "Application open and deadline dates, with a source",
-          "Prerequisites and test minimums",
-          "Current GPA and a transcript link",
-          "Other application requirements",
-        ],
+        expectations:
+          "Application open and deadline dates are listed with a source, along with prerequisites, test minimums, other requirements, the student's current GPA and a transcript link. It is clear where the student stands against each requirement.",
         levels: [
           "Requirements and dates not filled in.",
           "Some requirements, test scores or application dates missing or unsourced.",
@@ -333,14 +239,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Cost and financial aid",
         covers: "Annual costs, aid totals, aid info (200+), funds timeline, remaining balance (200+)",
-        coaching:
-          "Do the math together: total annual cost minus total aid equals the remaining balance. Then ask how each dollar of that balance will be covered, and what each scholarship requires to renew.",
-        lookFor: [
-          "Itemized annual costs that add up to the total",
-          "Aid by type (grants, scholarships, loans)",
-          "How and when funds arrive, and renewal rules",
-          "Remaining balance and a 200+ word plan to cover it",
-        ],
+        expectations:
+          "Annual costs are itemized and add up to the total, and aid is listed by type: grants, scholarships and loans. The section explains how and when funds arrive and how renewal rules will be tracked, then shows the remaining balance and a plan of at least 200 words to cover it.",
         levels: [
           "Costs and aid not filled in.",
           "Costs or aid incomplete, totals don't add up, or no plan for the remaining balance.",
@@ -351,13 +251,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Field of study and career connection",
         covers: "Program type, credentials, length, how it meets career goals (200+)",
-        coaching:
-          "Ask the student which credential from this program the employer in their Career section will look for. That link is the heart of this criterion.",
-        lookFor: [
-          "Program type, field and length",
-          "Completion requirements and credentials earned",
-          "How the program leads to the career, 200+ words",
-        ],
+        expectations:
+          "Program type, field, length, completion requirements and credentials earned are listed. At least 200 words explain how the program leads to the role in the Career section, ideally naming the credential employers will look for.",
         levels: [
           "Field of study not filled in.",
           "Program details incomplete, or the connection to the career is unclear.",
@@ -375,14 +270,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Transportation plan",
         covers: "Method, how it's used (50+), distance, commute, why (300+ words)",
-        coaching:
-          "Map the commute with the student using the actual housing and school or work addresses. Ask what happens if the main method fails for a day.",
-        lookFor: [
-          "A primary method chosen",
-          "Distance and commute time from home",
-          "How it will be used day to day",
-          "Why it was chosen, 300+ words",
-        ],
+        expectations:
+          "A primary transportation method is chosen, with the distance and commute time between the student's actual housing and school or work. It explains how the method will be used day to day and, in at least 300 words, why it was chosen over other options.",
         levels: [
           "Transportation plan not submitted.",
           "Method chosen, but the reasoning, distance or commute time is missing or under its minimums.",
@@ -393,14 +282,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Vehicle, license and insurance",
         covers: "Vehicle, license status, insurance quote and source",
-        coaching:
-          "Have the student get a real insurance quote for their age and ZIP code and find an actual vehicle listing in their budget. Check license status and expiry.",
-        lookFor: [
-          "Vehicle make, model and image, with a listing",
-          "License type, status and expiry",
-          "Insurance provider and coverage type",
-          "A real quote with monthly and upfront cost",
-        ],
+        expectations:
+          "Vehicle make, model and image are included with a real listing, plus license type, status and expiry. Insurance shows the provider, coverage type and a real quote for the student's age and ZIP code, with monthly and upfront cost.",
         levels: [
           "Vehicle, license and insurance not filled in.",
           "Vehicle, license or insurance details incomplete, or the quote has no source.",
@@ -411,12 +294,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Transportation costs",
         covers: "Monthly and one-time expenses",
-        coaching: "Check the totals add up, then check they appear unchanged in the Finance budget.",
-        lookFor: [
-          "Monthly costs: insurance, gas, maintenance",
-          "One-time costs: tax, title, license, initial insurance",
-          "Correct totals",
-        ],
+        expectations:
+          "Monthly costs (insurance, gas, maintenance) and one-time costs (tax, title, license, initial insurance) are listed with correct totals, and the same totals appear in the Finance budget.",
         levels: [
           "Costs not filled in.",
           "Some costs missing or totals don't add up.",
@@ -434,14 +313,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Housing choice",
         covers: "Housing details and photos, why I chose it (300+ words)",
-        coaching:
-          "Ask the student to show you the actual listing. Check the address, rooms and distance, and that the reasons go beyond \"it looks nice\" to cost, location and safety.",
-        lookFor: [
-          "Housing type and full address",
-          "Floor plan or listing link and photos",
-          "Rooms, distance and roommates",
-          "Why it was chosen, 300+ words",
-        ],
+        expectations:
+          "The chosen home is backed by a real listing: housing type, full address, floor plan or listing link, photos, rooms, distance to school or work, and roommates. At least 300 words explain why it was chosen, going beyond appearance to cost, location and safety.",
         levels: [
           "Housing choice not submitted.",
           "Housing named, but details are missing or the reasoning is under 300 words.",
@@ -452,13 +325,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Alternatives and fit",
         covers: "Alternative considered (225+), how it meets my needs (300+)",
-        coaching:
-          "Ask what the student gave up by choosing this home. A good answer names real trade-offs and still explains why it fits best.",
-        lookFor: [
-          "At least one real alternative, 225+ words",
-          "Why the alternative was ruled out",
-          "How the choice meets practical and personal needs, 300+ words",
-        ],
+        expectations:
+          "At least one real alternative is described in 225+ words along with why it was ruled out. A further 300+ words explain how the chosen home meets the student's practical and personal needs, including any honest trade-offs.",
         levels: [
           "Alternatives and needs not addressed.",
           "No real alternative, or needs described generally rather than specifically.",
@@ -469,12 +337,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Housing costs",
         covers: "Rent, deposit, utilities, internet, move-in date, lease",
-        coaching: "Check each cost against the listing, then check the monthly total appears unchanged in the Finance budget.",
-        lookFor: [
-          "Monthly rent, utilities and internet",
-          "Deposit",
-          "Move-in date and lease term",
-        ],
+        expectations:
+          "Monthly rent, utilities and internet, the deposit, move-in date and lease term are all listed from the actual listing, and the monthly total appears unchanged in the Finance budget.",
         levels: [
           "Housing costs not filled in.",
           "Some costs missing or not realistic for the location.",
@@ -492,13 +356,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Savings goals",
         covers: "12-month goals (100+), savings total, target amount and date",
-        coaching:
-          "Turn the savings target into a monthly amount together, then check that amount appears in the budget.",
-        lookFor: [
-          "12-month savings goals, 100+ words",
-          "Current savings and what they are for",
-          "An exact target amount and date",
-        ],
+        expectations:
+          "Savings goals for the next 12 months are described in at least 100 words, along with current savings, what the savings are for, and an exact target amount and date. The target works out to a monthly amount that appears in the budget.",
         levels: [
           "Savings goals not submitted.",
           "Goals are vague, or no target amount and date.",
@@ -509,14 +368,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Monthly budget",
         covers: "Budget sheet link, written summary (200+ words)",
-        coaching:
-          "Open the budget sheet together and check it is viewable by link. Read the summary against it, and check the housing, transportation and education costs match their sections.",
-        lookFor: [
-          "Budget sheet link opens without a sign-in",
-          "Income, expenses and one-time costs explained",
-          "Ends in a surplus or deficit, with what that means",
-          "Costs match the Housing, Transportation and Education sections",
-        ],
+        expectations:
+          "The budget spreadsheet is linked and opens for anyone with the link. The 200+ word summary explains income, expenses and one-time costs, says whether the budget ends in a surplus or deficit and what that means, and uses the same costs as the Housing, Transportation and Education sections.",
         levels: [
           "No budget sheet or summary.",
           "Sheet missing or not viewable, or the summary lists numbers without explaining them.",
@@ -527,14 +380,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Income",
         covers: "Employer, position, type, W-4, wage, source",
-        coaching:
-          "The wage should be what this employer actually pays for this position; check the careers page. Then check income times hours covers the budget.",
-        lookFor: [
-          "Employer and position",
-          "Employment type and W-4 choice",
-          "Hourly wage",
-          "An application or careers page link",
-        ],
+        expectations:
+          "Employer, position, employment type, W-4 choice and hourly wage are listed, with a link to the application or careers page. The wage is what this employer actually pays for the position, and it is enough to support the budget.",
         levels: [
           "Income not filled in.",
           "Employer, position or wage missing or unrealistic.",
@@ -545,14 +392,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Financial habits and support",
         covers: "Purpose of budgeting, challenges, trade-offs, support system (150+)",
-        coaching:
-          "Ask which app or method the student will actually use to track spending, and who they would call in a money emergency.",
-        lookFor: [
-          "Why budgeting matters to them",
-          "Expected challenges and largest expense",
-          "How they will separate needs from wants",
-          "A support system, 150+ words",
-        ],
+        expectations:
+          "The student explains why budgeting matters to them, the challenges they expect and their largest expense, and how they will separate needs from wants, naming the method or app they will use. A support system of at least 150 words names the people and resources they would turn to for advice or in a money emergency.",
         levels: [
           "Reflections not submitted.",
           "Reflections are generic or under their word minimums.",
@@ -570,12 +411,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Personal contact and resume",
         covers: "Personal email, phone, address, resume link",
-        coaching: "Check the email isn't a school address and the resume link opens without a sign-in.",
-        lookFor: [
-          "Personal email (not SFA)",
-          "Phone and current address",
-          "Resume link that opens for anyone",
-        ],
+        expectations:
+          "A personal email (not an SFA address), phone number and current address are listed, along with a resume link that opens for anyone.",
         levels: [
           "Contact details not filled in.",
           "Uses a school email, or details or the resume link are missing.",
@@ -586,12 +423,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "References",
         covers: "Employer reference and academic reference",
-        coaching: "Confirm the student has asked each reference for permission before listing them.",
-        lookFor: [
-          "An employer reference with company, website, phone and email",
-          "An academic reference with position, phone and email",
-          "Both have agreed to be listed",
-        ],
+        expectations:
+          "An employer reference (with company, website, phone and email) and an academic reference (with position, phone and email) are listed, and both have agreed to be named.",
         levels: [
           "No references listed.",
           "Only one reference, or names, contact details or websites missing.",
@@ -602,8 +435,8 @@ export const LIFE_MAP_SCORING: Record<string, SectionScoring> = {
       {
         name: "Professional presence",
         covers: "LinkedIn profile",
-        coaching: "Sit with the student and fill in any empty LinkedIn sections using their resume.",
-        lookFor: ["LinkedIn link", "Photo and headline", "Education and experience filled in"],
+        expectations:
+          "The LinkedIn profile is linked and filled in, with a photo, headline, education and experience that match the resume.",
         levels: [
           "No LinkedIn profile.",
           "Profile link missing or the profile is mostly empty.",

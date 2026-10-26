@@ -1,8 +1,9 @@
 /**
  * Scoring rubrics: for each primary section, a summary of what the section
  * must accomplish, then the criteria a reviewer scores on a 1–4 scale.
- * Each criterion carries the specific things to look for, coaching notes
- * for advisors, and what each level looks like. Level 3 (Meets
+ * Each criterion carries a short paragraph on what success looks like,
+ * written for anyone (student, teacher, advisor), and what each level
+ * looks like. Level 3 (Meets
  * expectations) is the bar for a section to count as complete.
  *
  * Criteria are written from the template: each section's purpose, its
@@ -27,10 +28,8 @@ export interface ScoringCriterion {
   name: string
   /** Which fields the criterion looks at, in a few words. */
   covers?: string
-  /** For advisors: what this criterion is really about and how to help. */
-  coaching?: string
-  /** Specific, checkable things a complete answer includes. */
-  lookFor?: string[]
+  /** A short paragraph, for students and staff alike, on what success looks like. */
+  expectations?: string
   /** What each level looks like, in order 1 to 4. */
   levels: [string, string, string, string]
 }
@@ -49,15 +48,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Business concept and opportunity",
         covers: "Executive Summary essay, 500+ words",
-        coaching:
-          "This is the most important essay in the thesis, and the easiest to write too early. Ask the student to pitch the business out loud in 60 seconds, then check the essay covers the same points. Push for specifics borrowed from later sections: a real market figure, a named competitor, a price and a margin.",
-        lookFor: [
-          "Names the product or service and the customer in the first paragraph",
-          "States the problem and how the business solves it",
-          "Uses at least one figure from Market Analysis or the Financial Plan",
-          "Explains what sets the business apart from competitors",
-          "Closes with where the business is headed or what it needs",
-        ],
+        expectations:
+          "A successful executive summary gives a complete picture of the business in essay form. The first paragraph names the product or service and the customer; the essay then states the problem and how the business solves it, explains what sets it apart from competitors, and uses at least one real figure from the Market Analysis or Financial Plan. It closes with where the business is headed or what it needs, and is best revised last so it reflects the finished thesis.",
         levels: [
           "No executive summary submitted.",
           "Under 500 words, or reads as an introduction rather than a summary: the customer, the problem, the competitive edge or the money side is missing.",
@@ -68,14 +60,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Writing and clarity",
         covers: "Organization, voice, mechanics",
-        coaching:
-          "Read one paragraph aloud with the student; wherever they stumble, the writing needs work. Encourage one idea per paragraph, and a final pass with spell check turned on. Sentence starters are a scaffold, so the finished essay should read in the student's own words.",
-        lookFor: [
-          "Each paragraph makes one point, in a logical order",
-          "Professional voice without slang or filler",
-          "Few spelling, grammar or capitalization errors",
-          "Sentence starters reworked into the student's own words",
-        ],
+        expectations:
+          "The essay reads as the student's own professional writing: each paragraph makes one point in a logical order, the voice is confident and free of slang or filler, and spelling, grammar and capitalization are clean. Sentence starters are a scaffold, so the finished text should not read like a template. Reading it aloud is a quick way to find sentences that need work.",
         levels: [
           "Nothing to assess.",
           "Reads as notes or a list, repeats itself, or has frequent errors that distract the reader.",
@@ -86,14 +72,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Company information",
         covers: "Name, tagline, phone, email, address",
-        coaching:
-          "Quick to fill in but easy to get wrong. Check the address against the location in the financial spreadsheet and that the email actually works. A tagline deserves a short brainstorm: ask for five options and pick the strongest together.",
-        lookFor: [
-          "Company name is the same everywhere in the thesis",
-          "Tagline is short and says what the brand stands for",
-          "Business email and phone are real and professional",
-          "Street address, city, state and ZIP match the Financial Plan location",
-        ],
+        expectations:
+          "Every detail is real, complete and consistent with the rest of the thesis. The company name matches every section, the tagline is a short phrase that captures what the brand stands for, the email and phone actually work, and the street address, city, state and ZIP match the location used in the Financial Plan.",
         levels: [
           "Company details not filled in.",
           "Details missing, placeholder values, or the address doesn't match the financial plan.",
@@ -104,13 +84,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Visual presentation",
         covers: "Cover and section background images",
-        coaching:
-          "These images are the first impression on the public page. Steer the student toward wide, sharp photos of the product, the setting or the customer rather than generic stock art, and check how they look cropped to 16:9.",
-        lookFor: [
-          "Cover image is wide (landscape) and sharp",
-          "Images relate to the business, not generic stock",
-          "Both images still read well cropped to 16:9",
-        ],
+        expectations:
+          "The cover and section images are the first impression on the public page. They are wide, sharp photos of the product, the setting or the customer rather than generic stock art, and still look good cropped to a 16:9 banner.",
         levels: [
           "No images uploaded.",
           "An image missing, blurry, badly cropped or unrelated to the business.",
@@ -128,15 +103,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Problem and evidence",
         covers: "Problem statement and evidence, 150+ words each, 3 sources",
-        coaching:
-          "Start by asking who has this problem and how they deal with it today. The problem should belong to a specific group of people, not \"people need X.\" Evidence must prove the problem exists, not that the student's business is good; check each source is credible and actually says what the student claims.",
-        lookFor: [
-          "Names who has the problem and when it happens",
-          "Explains the cost or frustration the problem causes",
-          "Evidence uses statistics, reviews or research, not opinion",
-          "Three credible sources, each cited",
-          "Problem statement and evidence each 150+ words",
-        ],
+        expectations:
+          "The problem belongs to a specific group of people and is explained clearly enough that a reader feels why it matters. The evidence then proves the problem exists, not that the business is good, using statistics, customer reviews or research from three credible, cited sources. Each part is at least 150 words.",
         levels: [
           "Problem statement and evidence not submitted.",
           "The problem is broad or opinion-based, the evidence argues for the business instead of the problem, or fewer than 3 credible sources.",
@@ -147,14 +115,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Solution and unique value",
         covers: "Solution Overview 150+ words, UVP 100+ words",
-        coaching:
-          "Ask the student to finish the sentence \"Customers will choose us instead of ___ because ___.\" That answer is the UVP. The solution overview explains how the business works; the UVP explains why it wins. If the two read the same, help the student separate them.",
-        lookFor: [
-          "Solution answers the exact problem stated above",
-          "Explains how the business works, step by step",
-          "UVP names what customers would otherwise use",
-          "UVP is one clear differentiator, not a list of adjectives",
-        ],
+        expectations:
+          "The solution explains, step by step, how the business solves the exact problem described above. The unique value proposition is different: it names what customers would otherwise use and gives one clear reason they would choose this business instead. A useful test is finishing the sentence \"Customers will choose us instead of ___ because ___.\"",
         levels: [
           "Solution and UVP not submitted.",
           "Describes the business but not how it solves the stated problem, or the UVP is generic (\"better quality, great service\").",
@@ -165,14 +127,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Products and services",
         covers: "Two products: name, photo, description",
-        coaching:
-          "A reader should be able to picture buying each product. Ask what it includes, what it costs and who it is for. Photos should show the student's own product wherever possible.",
-        lookFor: [
-          "Two distinct products or service packages",
-          "Each has a clear name and a real photo",
-          "Each description says what it is, what's included and who it's for",
-          "Products match the solution described above",
-        ],
+        expectations:
+          "A reader can picture buying each product. Two distinct products or service packages each have a clear name, a real photo (ideally of the student's own product) and a description of what it is, what is included and who it is for, and both match the solution described above.",
         levels: [
           "No products listed.",
           "Only one product, or names, photos or descriptions missing or vague.",
@@ -183,15 +139,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Prototype and process",
         covers: "Procedure 100+ words, 6 described images",
-        coaching:
-          "This is the proof the student can make or deliver what they sell. Ask them to walk through the process as if training a new employee. Photos should show the student doing the work, in order, each described.",
-        lookFor: [
-          "Procedure runs step by step from start to finish",
-          "Mentions materials, tools and how long steps take",
-          "Six photos of the student doing the work",
-          "Each photo has a detailed description",
-          "Someone else could repeat the process",
-        ],
+        expectations:
+          "This proves the student can actually make or deliver what they sell. The procedure walks through the process from start to finish as if training a new employee, including materials, tools and timing, and six photos show the student doing the work in order, each with a detailed description. Someone else could repeat the process from it.",
         levels: [
           "No procedure or prototype images.",
           "Procedure is vague or under 100 words, or fewer than 6 photos, missing descriptions or photos that don't show the student working.",
@@ -209,14 +158,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Industry definition",
         covers: "125+ words",
-        coaching:
-          "Ask the student to name their industry the way a government website or news article would (for example \"test preparation and tutoring\"), then say where their business fits inside it. Market numbers don't belong here yet.",
-        lookFor: [
-          "Names the industry in standard terms",
-          "Explains what the industry provides and to whom",
-          "Places the business in a specific niche",
-          "Leaves statistics and trends for the later parts",
-        ],
+        expectations:
+          "The industry is named in the standard terms a government site or news article would use, with an explanation of what it provides, who it serves and where the business fits within a specific niche. Statistics and trends belong in the next two parts, not here.",
         levels: [
           "Industry definition not submitted.",
           "Names the industry without explaining it, describes only the business, or mixes in market data and trends.",
@@ -227,14 +170,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Market size and growth",
         covers: "125+ words, 2 sources",
-        coaching:
-          "Help the student find two credible numbers: the size of the market (in dollars or customers) and its growth rate. Industry reports, government data and reputable news work well. Then ask what the numbers mean for their business, not just what they are.",
-        lookFor: [
-          "Market size as a number with a year",
-          "Whether the market is growing, shrinking or stable, with a rate",
-          "Two credible sources cited",
-          "Explains what the figures mean for the business",
-        ],
+        expectations:
+          "Two credible numbers carry this part: the size of the market, in dollars or customers with a year, and whether it is growing, shrinking or stable, with a rate. Both are cited from credible sources such as industry reports, government data or reputable news, and the writing explains what the figures mean for this business.",
         levels: [
           "Market size and growth not submitted.",
           "Claims without real numbers, numbers without a year or source, or sources that aren't credible.",
@@ -245,14 +182,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Market trends",
         covers: "150+ words, 2 sources",
-        coaching:
-          "Trends are what is changing now: technology, customer habits, prices, regulations. Ask which change helps the business most and which could hurt it; both make the analysis more credible.",
-        lookFor: [
-          "Describes current or near-future changes, not history",
-          "At least two distinct trends",
-          "Each trend is linked to customers or the business",
-          "Two credible sources cited",
-        ],
+        expectations:
+          "Trends are what is changing now or soon (technology, customer habits, prices, regulations), not the industry's history. At least two distinct trends are described, each linked to the customers or the business and supported by two credible sources. Naming a trend that could hurt the business makes the analysis more credible.",
         levels: [
           "Market trends not submitted.",
           "Describes history rather than current trends, or trends are unsupported.",
@@ -270,14 +201,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Competitor selection",
         covers: "3 competitors plus your company, with logos",
-        coaching:
-          "Ask: if your business didn't exist, where would your customer go instead? Those are the competitors. At least one should sell the same thing directly.",
-        lookFor: [
-          "Three real businesses a customer would actually consider",
-          "At least one direct competitor",
-          "A logo for each, plus the student's own",
-          "Names spelled correctly",
-        ],
+        expectations:
+          "Competitors are the real businesses a customer would turn to if this one didn't exist. Three are chosen, including at least one direct competitor selling the same thing, and each is shown with its logo alongside the student's own company.",
         levels: [
           "No competitors identified.",
           "Fewer than 3 competitors, businesses that aren't real or relevant, or logos missing.",
@@ -288,14 +213,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Map axes",
         covers: "X and Y axis labels",
-        coaching:
-          "Good axes are things customers weigh when choosing: price, quality, speed, convenience, specialization. Have the student sketch the map on paper first; if all four businesses cluster together, swap an axis.",
-        lookFor: [
-          "Two different dimensions, not two versions of the same one",
-          "Both matter to the target customer",
-          "The axes spread the businesses across the map",
-          "The student's business sits in a distinct position",
-        ],
+        expectations:
+          "The two axes are things customers actually weigh when choosing, such as price, quality, speed, convenience or specialization, and they measure different things. Good axes spread the four businesses across the map and leave the student's business in a distinct position; if everyone clusters together, an axis needs changing.",
         levels: [
           "No axes chosen.",
           "Axes are vague, overlap, or leave every business clustered together.",
@@ -306,14 +225,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Scores and positioning",
         covers: "1–100 scores and a positioning summary for each business",
-        coaching:
-          "Every score needs a reason. Ask the student to show you the price, review or fact behind each number, and check their own scores are believable rather than perfect on both axes.",
-        lookFor: [
-          "X and Y scores (1–100) for all four businesses",
-          "A positioning summary for each business",
-          "Each summary cites specific evidence",
-          "The student's own placement is honest",
-        ],
+        expectations:
+          "Each business gets an X and Y score from 1 to 100, and every score is justified in a positioning summary with evidence the student can point to, such as prices, reviews or hours. The student's own placement is honest; a business that wins on both axes isn't believable.",
         levels: [
           "No scores or positioning summaries.",
           "Scores given without evidence, or positioning summaries missing.",
@@ -331,14 +244,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Budget and cost structure",
         covers: "Budget sheet link, summary 200+ words, cost structure 125+ words",
-        coaching:
-          "Open the spreadsheet with the student and check it is shared so anyone with the link can view it. Then read the summary against the sheet line by line. The cost structure should list every expense that goes into one unit.",
-        lookFor: [
-          "Budget sheet link opens without a sign-in",
-          "Summary covers startup costs, monthly costs, pricing and weekly hours",
-          "Cost structure itemizes the per-unit costs",
-          "Figures match the spreadsheet",
-        ],
+        expectations:
+          "The budget spreadsheet is linked and opens for anyone with the link. The written summary walks a reader through startup costs, monthly operating costs, pricing and weekly hours, and the cost structure itemizes every expense that goes into one unit. The figures in the writing match the spreadsheet.",
         levels: [
           "No budget sheet or summary.",
           "Sheet missing or not viewable, or the summary lists numbers without explaining them.",
@@ -349,14 +256,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Unit cost breakdown",
         covers: "Per-unit costs, total, price, margin",
-        coaching:
-          "Walk through making one unit together and list every cost: materials, labor, packaging, fees. Then check the math: total unit cost, sale price, and margin as price minus cost.",
-        lookFor: [
-          "A row for each per-unit cost",
-          "Total unit cost adds up",
-          "Sale price listed",
-          "Margin calculated correctly",
-        ],
+        expectations:
+          "The table lists every cost that goes into one product or service (materials, labor, packaging, fees) as its own row, followed by the total unit cost, the sale price and the margin. The totals add up, with margin equal to price minus unit cost.",
         levels: [
           "Unit cost table not filled in.",
           "Some costs listed, but the total unit cost, sale price or margin is missing or wrong.",
@@ -367,14 +268,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Funding and break-even",
         covers: "Startup expenses 150+ words, break-even 125+ words",
-        coaching:
-          "Break-even is startup costs divided by profit per unit. Do the calculation together, then ask whether that many sales is realistic and how long it would take.",
-        lookFor: [
-          "Startup costs listed with a total",
-          "Where the starting money came from",
-          "Break-even in units or sales, with the math shown",
-          "How long it will take to recover the investment",
-        ],
+        expectations:
+          "This part explains what it cost to start the business, where that money came from, and how many sales it takes to earn it back. Break-even is worked out and shown (startup costs divided by profit per unit), along with how long reaching it will realistically take.",
         levels: [
           "Funding and break-even not submitted.",
           "Startup costs or break-even stated without numbers or explanation.",
@@ -385,14 +280,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Pricing strategy",
         covers: "125+ words",
-        coaching:
-          "Ask the student to compare their price with two competitors: is theirs higher, lower or the same, and why? The price must also cover the unit cost with a healthy margin.",
-        lookFor: [
-          "A price for each product",
-          "How each price was set",
-          "Comparison with competitor prices",
-          "Prices cover costs with a margin",
-        ],
+        expectations:
+          "Each price is listed with how it was set and why it makes sense: it covers the unit cost with a healthy margin and compares sensibly with at least two competitors' prices for the customers being served.",
         levels: [
           "Pricing strategy not submitted.",
           "Lists prices without the reasoning behind them.",
@@ -410,14 +299,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Marketing objective",
         covers: "Primary marketing objective",
-        coaching:
-          "Ask what the student wants marketing to make people do: follow, visit, book, buy. A good objective names the audience and that action, ideally with a number and a timeframe.",
-        lookFor: [
-          "Names who the marketing will reach",
-          "States the action or feeling it should produce",
-          "Specific enough to guide decisions",
-          "Ideally measurable, with a target and timeframe",
-        ],
+        expectations:
+          "One clear objective says who the marketing will reach and what they should do or feel as a result, such as follow, visit, book or buy. Ideally it includes a number and a timeframe, and it is specific enough to guide every channel and content choice that follows.",
         levels: [
           "No objective stated.",
           "A business goal (such as \"make more money\") or too vague to guide decisions.",
@@ -428,14 +311,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Target audience and persona",
         covers: "Audience 150+ words, demographics, persona with tech usage",
-        coaching:
-          "Push past \"everyone.\" Ask the student to describe one real customer they have sold to or could sell to; the persona should look like that person, and every demographic field should agree with the audience description.",
-        lookFor: [
-          "Audience defined by age, location and occupation",
-          "Interests and lifestyle are specific",
-          "Persona has a name, photo, age and story",
-          "Tech usage says where the persona spends time online",
-        ],
+        expectations:
+          "The audience is a focused group, not \"everyone,\" defined by age, location, occupation, interests and lifestyle. The persona turns that audience into one believable person with a name, photo, age, story and tech habits, and every detail agrees with the audience description.",
         levels: [
           "Audience and persona not submitted.",
           "Audience is broad (\"anyone\"), or demographics or persona details are incomplete or contradict each other.",
@@ -446,14 +323,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Brand identity",
         covers: "Logos, colors, fonts, imagery guideline, reference images",
-        coaching:
-          "Check the logo on both a white and a dark background, and that each color has a hex code. Ask why the colors and fonts suit the audience. The imagery guideline should be specific enough that someone else could pick photos from it.",
-        lookFor: [
-          "Logo versions for light and dark backgrounds",
-          "Six colors named with hex codes",
-          "Primary and secondary fonts named",
-          "An imagery guideline and 5 reference images",
-        ],
+        expectations:
+          "The brand identity is complete and consistent: a logo that works on light and dark backgrounds, six colors named with hex codes, primary and secondary fonts, an imagery guideline specific enough for someone else to choose photos from, and five reference images. The choices clearly suit the audience and the product.",
         levels: [
           "No brand elements submitted.",
           "Missing a logo version, hex codes, fonts, the imagery guideline or reference images.",
@@ -464,14 +335,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Messaging locations",
         covers: "Out-of-home, social media, digital, summary",
-        coaching:
-          "For each channel ask: does the persona actually see this, where exactly, and what should they do next? Ad mockups should look like the real placement.",
-        lookFor: [
-          "Out-of-home, social and digital channels each described",
-          "Each placement is specific (where, which platform)",
-          "An ad mockup for each channel",
-          "Summary explains how the channels work together",
-        ],
+        expectations:
+          "Out-of-home, social media and digital channels are each described with a specific placement (where a flyer goes, which platform is used), an ad mockup, and what the viewer should do next. The summary explains how the three work together, and every channel is somewhere the persona actually spends time.",
         levels: [
           "No messaging locations described.",
           "Channels named without explanation, or ad mockups missing.",
@@ -482,14 +347,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Content strategy",
         covers: "Two strategies 100+ words each, summary 100+ words",
-        coaching:
-          "Each strategy should be a series people would recognize: a name, a theme, a platform, how often it posts, and what viewers should do afterwards.",
-        lookFor: [
-          "Two named strategies",
-          "Each has a theme, platform and posting frequency",
-          "Each states a goal tied to the objective",
-          "Summary shows how the two work together",
-        ],
+        expectations:
+          "Each content strategy reads like a series people would recognize: a name, a theme, a platform, how often it posts and what viewers should do afterward. The two strategies complement each other, and the summary ties them back to the marketing objective.",
         levels: [
           "No content strategy submitted.",
           "Content ideas are vague or not tied to a platform or goal.",
@@ -507,15 +366,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Vision and case for support",
         covers: "Closing Statement, 150+ words",
-        coaching:
-          "Ask the student: in five years, what does your business look like, and why do you care? Use their answer as the spine of the statement, and make sure it ends with a clear ask.",
-        lookFor: [
-          "Looks forward rather than summarizing",
-          "Says why the business matters to the student",
-          "Describes where the business is headed",
-          "Ends with a clear call to invest, support or partner",
-          "150+ words",
-        ],
+        expectations:
+          "The closing statement looks forward rather than summarizing: why the business matters to the student, where it is going, and why they are the right person to build it. It ends with a clear call to invest, support or partner, in at least 150 words.",
         levels: [
           "Closing statement not submitted.",
           "Under 150 words, or only summarizes earlier sections without a forward-looking vision.",
@@ -526,9 +378,8 @@ export const BUSINESS_THESIS_SCORING: Record<string, SectionScoring> = {
       {
         name: "Presentation",
         covers: "Proofreading and section image",
-        coaching:
-          "Read the statement aloud together as a final proofread. The image should feel like a closing shot: the product, the team or the vision.",
-        lookFor: ["Proofread, with few errors", "Matches the brand's voice", "A fitting section image"],
+        expectations:
+          "The writing is proofread and matches the brand's voice, and the section image works as a closing shot of the product, the team or the vision.",
         levels: [
           "Nothing to assess.",
           "Noticeable spelling or grammar errors, or the section image is missing.",

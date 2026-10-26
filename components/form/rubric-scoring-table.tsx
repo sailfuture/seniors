@@ -1,6 +1,5 @@
 "use client"
 
-import { useSession } from "@/components/session-provider"
 import { cn } from "@/lib/utils"
 import { COMPLETE_AT, SCORE_LEVELS, type ScoringCriterion, type SectionScoring } from "@/lib/rubric-scoring"
 
@@ -9,9 +8,9 @@ const LABEL = "text-muted-foreground text-[11px] font-medium tracking-wide upper
 const completeLabel = SCORE_LEVELS.find((l) => l.score === COMPLETE_AT)?.label ?? ""
 
 /**
- * A section's 1–4 scoring rubric. Each criterion shows what it covers, the
- * specific things to look for, and the four levels. Coaching notes are for
- * staff and advisors, so students don't see them. On screen the four levels
+ * A section's 1–4 scoring rubric. Each criterion shows what it covers, a
+ * short paragraph on what success looks like (written for anyone reading:
+ * student, teacher or advisor), and the four levels. On screen the levels
  * sit side by side when there is room and stack in the slide-over; in print
  * each criterion is a block with a four-column level table.
  */
@@ -22,10 +21,6 @@ export function RubricScoringTable({
   scoring: SectionScoring
   print?: boolean
 }) {
-  const { data: session } = useSession()
-  const role = session?.user.role
-  const showCoaching = !!role && role !== "student"
-
   return (
     <div className={cn(!print && "@container")}>
       <p className={cn(LABEL, print && "text-gray-500")}>Scoring rubric</p>
@@ -36,9 +31,9 @@ export function RubricScoringTable({
       <ol className={cn("mt-3", print ? "space-y-5" : "space-y-4")}>
         {scoring.criteria.map((c, i) =>
           print ? (
-            <PrintCriterion key={c.name} criterion={c} index={i} showCoaching={showCoaching} />
+            <PrintCriterion key={c.name} criterion={c} index={i} />
           ) : (
-            <ScreenCriterion key={c.name} criterion={c} index={i} showCoaching={showCoaching} />
+            <ScreenCriterion key={c.name} criterion={c} index={i} />
           )
         )}
       </ol>
@@ -46,43 +41,16 @@ export function RubricScoringTable({
   )
 }
 
-function ScreenCriterion({
-  criterion: c,
-  index,
-  showCoaching,
-}: {
-  criterion: ScoringCriterion
-  index: number
-  showCoaching: boolean
-}) {
+function ScreenCriterion({ criterion: c, index }: { criterion: ScoringCriterion; index: number }) {
   return (
     <li className="bg-card overflow-hidden rounded-lg border">
-      <div className="space-y-3 px-4 py-3.5">
-        <div>
-          <p className="text-sm leading-snug font-semibold">
-            <span className="text-muted-foreground mr-1.5 tabular-nums">{index + 1}.</span>
-            {c.name}
-          </p>
-          {c.covers && <p className="text-muted-foreground mt-0.5 text-xs">{c.covers}</p>}
-        </div>
-
-        {showCoaching && c.coaching && (
-          <div className="bg-muted/50 rounded-md px-3 py-2.5">
-            <p className={LABEL}>Coaching</p>
-            <p className="mt-1 text-sm leading-relaxed">{c.coaching}</p>
-          </div>
-        )}
-
-        {c.lookFor && c.lookFor.length > 0 && (
-          <div>
-            <p className={LABEL}>Look for</p>
-            <ul className="marker:text-muted-foreground mt-1 list-disc space-y-0.5 pl-5 text-sm leading-snug">
-              {c.lookFor.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+      <div className="px-4 py-3.5">
+        <p className="text-sm leading-snug font-semibold">
+          <span className="text-muted-foreground mr-1.5 tabular-nums">{index + 1}.</span>
+          {c.name}
+        </p>
+        {c.covers && <p className="text-muted-foreground mt-0.5 text-xs">{c.covers}</p>}
+        {c.expectations && <p className="mt-2.5 text-sm leading-relaxed">{c.expectations}</p>}
       </div>
 
       <div className="grid divide-y border-t @2xl:grid-cols-4 @2xl:divide-x @2xl:divide-y-0">
@@ -103,40 +71,17 @@ function ScreenCriterion({
   )
 }
 
-function PrintCriterion({
-  criterion: c,
-  index,
-  showCoaching,
-}: {
-  criterion: ScoringCriterion
-  index: number
-  showCoaching: boolean
-}) {
+function PrintCriterion({ criterion: c, index }: { criterion: ScoringCriterion; index: number }) {
   return (
     <li data-keep className="rounded border border-gray-300">
-      <div className="space-y-2 px-3 py-2.5">
-        <div>
-          <p className="text-[11pt] leading-snug font-semibold text-gray-900">
-            <span className="mr-1.5 tabular-nums text-gray-400">{index + 1}.</span>
-            {c.name}
-          </p>
-          {c.covers && <p className="mt-0.5 text-[9pt] text-gray-500">{c.covers}</p>}
-        </div>
-        {showCoaching && c.coaching && (
-          <div className="bg-gray-50 px-2.5 py-2">
-            <p className="text-[8.5pt] font-semibold tracking-wide text-gray-500 uppercase">Coaching</p>
-            <p className="mt-0.5 text-[9.5pt] leading-relaxed text-gray-800">{c.coaching}</p>
-          </div>
-        )}
-        {c.lookFor && c.lookFor.length > 0 && (
-          <div>
-            <p className="text-[8.5pt] font-semibold tracking-wide text-gray-500 uppercase">Look for</p>
-            <ul className="mt-0.5 list-disc space-y-px pl-4 text-[9.5pt] leading-snug text-gray-800">
-              {c.lookFor.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
+      <div className="px-3 py-2.5">
+        <p className="text-[11pt] leading-snug font-semibold text-gray-900">
+          <span className="mr-1.5 tabular-nums text-gray-400">{index + 1}.</span>
+          {c.name}
+        </p>
+        {c.covers && <p className="mt-0.5 text-[9pt] text-gray-500">{c.covers}</p>}
+        {c.expectations && (
+          <p className="mt-1.5 text-[9.5pt] leading-relaxed text-gray-800">{c.expectations}</p>
         )}
       </div>
       <table className="w-full table-fixed border-collapse border-t border-gray-300 text-left text-[8.5pt] leading-snug">
