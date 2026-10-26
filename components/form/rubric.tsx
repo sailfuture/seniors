@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -405,13 +406,48 @@ function RubricComponentCard({
   )
 }
 
+/** The section a rubric URL points at: `<basePath>/rubric/<slug>`, or none for the full rubric. */
+function activeRubricSlug(pathname: string | null, product: RubricProduct, fallback?: string): string | undefined {
+  const prefix = `${product.basePath}/rubric`
+  if (!pathname) return fallback
+  if (pathname === prefix) return undefined
+  if (pathname.startsWith(`${prefix}/`)) {
+    const rest = pathname.slice(prefix.length + 1).split("/")[0]
+    return rest ? decodeURIComponent(rest) : undefined
+  }
+  return fallback
+}
+
+/**
+ * Chip click: rewrite the URL in place instead of a router navigation. Next
+ * keeps usePathname in sync with history.pushState, so the page re-renders
+ * on the new section from data it already holds, and Back/Forward walk the
+ * visited sections. Modified clicks (new tab, etc.) behave as normal links.
+ */
+function switchSection(e: React.MouseEvent<HTMLAnchorElement>) {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+  e.preventDefault()
+  const href = e.currentTarget.getAttribute("href")
+  if (!href || href === window.location.pathname) return
+  window.history.pushState(null, "", href)
+  // Signed-in pages scroll inside the app shell's main column, not the window.
+  document.querySelector('[data-slot="sidebar-inset"]')?.scrollTo({ top: 0 })
+  window.scrollTo({ top: 0 })
+}
+
 /**
  * The standalone rubric page: one section when `slug` is given, otherwise
  * every section in order. Chips switch sections; the print link opens the
  * paginated version.
  */
-export function RubricPage({ product, slug }: { product: RubricProduct; slug?: string }) {
+export function RubricPage({ product, slug: routeSlug }: { product: RubricProduct; slug?: string }) {
   const { sections, loading } = useRubric(product)
+  // The section comes from the address bar, not just the route params:
+  // switching chips rewrites the URL in place (see switchSection), so every
+  // section is reachable without a server round trip once the template has
+  // loaded. Reloading or sharing the URL still lands on the same section.
+  const pathname = usePathname()
+  const slug = activeRubricSlug(pathname, product, routeSlug)
   const current = slug ? sections.find((s) => s.slug === slug) : undefined
   const shown = current ? [current] : sections
   const backHref = current ? `${product.basePath}/${current.slug}` : product.basePath
@@ -477,21 +513,25 @@ export function RubricPage({ product, slug }: { product: RubricProduct; slug?: s
 
       {/* Section switcher */}
       <nav aria-label="Sections" className="flex flex-wrap gap-1.5">
-        <Link
+        <a
           href={rubricHref(product)}
+          onClick={switchSection}
+          aria-current={current ? undefined : "page"}
           className={cn(
             "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
             current ? "text-muted-foreground hover:bg-accent hover:text-foreground" : "bg-primary text-primary-foreground border-primary"
           )}
         >
           All sections
-        </Link>
+        </a>
         {sections.map((s) => {
           const active = current?.id === s.id
           return (
-            <Link
+            <a
               key={s.id}
               href={rubricHref(product, s.slug)}
+              onClick={switchSection}
+              aria-current={active ? "page" : undefined}
               className={cn(
                 "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
                 active
@@ -503,7 +543,7 @@ export function RubricPage({ product, slug }: { product: RubricProduct; slug?: s
             >
               {s.locked && <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="size-3" />}
               {s.title}
-            </Link>
+            </a>
           )
         })}
       </nav>

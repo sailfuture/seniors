@@ -57,8 +57,8 @@ const API_CONFIG: Record<AdvisorProduct, FormApiConfig> = {
 /** How far ahead the schedule card looks for days school is closed. */
 const OUTLOOK_WEEKS = 8
 
-/** As many columns as fit at 24rem+, so a short list spreads into wide
-    cards (capped per card) and a long one packs three to a row. */
+/** As many columns as fit at 24rem+, so a short list spreads across the
+    full width of the schedule band below and a long one packs three to a row. */
 const STUDENT_GRID = "grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))]"
 
 /** Closure tiles: as many across as fit at 15rem+, never stretched wide. */
@@ -211,7 +211,7 @@ export function AdvisorDashboard() {
           {advised === null ? (
             <div className={STUDENT_GRID}>
               {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-64 max-w-2xl rounded-xl" />
+                <Skeleton key={i} className="h-64 rounded-xl" />
               ))}
             </div>
           ) : advised.length === 0 ? (
@@ -260,7 +260,7 @@ function StudentCard({
     [student.yearGroup, student.crewName].filter(Boolean).join(" · ") || student.studentEmail
 
   return (
-    <Card className="h-full max-w-2xl">
+    <Card className="h-full">
       <CardHeader>
         <div className="flex items-center gap-4">
           <Avatar className="size-16 text-lg">
