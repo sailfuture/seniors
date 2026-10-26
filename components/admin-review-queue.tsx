@@ -12,21 +12,12 @@ import type { FormApiConfig } from "@/lib/form-api-config"
 import { extractPlainText, isRichTextQuestion, looksLikeRichTextDoc } from "@/lib/rich-text"
 import { isLineItemsQuestion } from "@/lib/line-items"
 import { ResponseReviewSheet, type ReviewTarget } from "@/components/form/response-review-sheet"
-import { cachedFetch } from "@/lib/cached-fetch"
+import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
+import { useAllStudents, useStudents } from "@/lib/queries"
 import { formatWhen as formatWhenExact } from "@/lib/format-time"
 import { looksLikeSourcesDoc, parseSources, sourceSummary } from "@/lib/sources"
 
-const STUDENTS_ENDPOINT =
-  "https://xsc3-mvx7-r86m.n7e.xano.io/api:fJsHVIeC/get_active_students_email"
-
 const IMAGE_UPLOAD = 4
-
-interface Student {
-  id: string
-  firstName: string
-  lastName: string
-  profileImage?: string
-}
 
 interface TemplateQuestion {
   id: number
@@ -159,6 +150,15 @@ export function AdminReviewQueue({
 
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState<Record<GroupKey, QueueRow[]>>({ pending: [], revisions: [] })
+
+  // Names and photos come from the shared roster cache the sidebar also reads,
+  // so the page never downloads the roster a second time. One student's page
+  // reads the full roster (graduates included, as the sidebar does); the
+  // all-students queue keeps to current students.
+  const allRoster = useAllStudents({ enabled: !!onlyStudentId })
+  const activeRoster = useStudents({ enabled: !onlyStudentId })
+  const roster = onlyStudentId ? allRoster.data : activeRoster.data
+  const rosterById = useMemo(() => new Map((roster ?? []).map((st) => [String(st.id), st])), [roster])
   const [expanded, setExpanded] = useState<Set<GroupKey>>(new Set())
   const [sheetTarget, setSheetTarget] = useState<ReviewTarget | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -167,24 +167,21 @@ export function AdminReviewQueue({
     let cancelled = false
     const load = async () => {
       try {
-        const [studentsRes, sectionsRes, templateRes, responsesRes] = await Promise.all([
-          cachedFetch(STUDENTS_ENDPOINT),
+        const [sectionsRes, templateRes, responsesRes] = await Promise.all([
           cachedFetch(cfg.sectionsEndpoint),
           cachedFetch(cfg.templateEndpoint),
-          // Only rows awaiting review or revision — not every response ever written.
-          fetch(
-            onlyStudentId
-              ? `${cfg.reviewQueueEndpoint}?students_id=${onlyStudentId}`
-              : cfg.reviewQueueEndpoint
-          ),
+          // One student's page reads that student's responses through the same
+          // shared request the sidebar's badges use, so both arrive together.
+          // The all-students queue reads only rows awaiting review or revision.
+          onlyStudentId
+            ? studentFetch(`${cfg.responsesEndpoint}?students_id=${onlyStudentId}`)
+            : fetch(cfg.reviewQueueEndpoint),
         ])
-        const students: Student[] = studentsRes.ok ? await studentsRes.json() : []
         const sections: SectionInfo[] = sectionsRes.ok ? await sectionsRes.json() : []
         const template: TemplateQuestion[] = templateRes.ok ? await templateRes.json() : []
         const responses: StudentResponse[] = responsesRes.ok ? await responsesRes.json() : []
         if (cancelled) return
 
-        const studentById = new Map(students.map((s) => [String(s.id), s]))
         const sectionById = new Map(sections.map((s) => [s.id, s]))
         const liveQuestions = new Map<number, TemplateQuestion>()
         for (const q of template) {
@@ -197,15 +194,13 @@ export function AdminReviewQueue({
           if (!q) return null
           const section = sectionById.get(Number(q[F.sectionId]))
           if (!section || section.isLocked) return null
-          const student = studentById.get(String(r.students_id))
-          if (!student) return null
-          const studentName = `${student.firstName} ${student.lastName}`.trim()
+          // Names are filled in from the roster at render time (see shownGroups).
+          const studentName = ""
           const isEssay = isRichTextQuestion(q) || looksLikeRichTextDoc(r.student_response ?? "")
           return {
             key: `${group}-${r.id}`,
             responseId: r.id,
             studentName,
-            studentImage: student.profileImage,
             questionLabel: q.field_label,
             sectionTitle: section.section_title,
             preview: previewOf(q, r),
@@ -260,6 +255,20 @@ export function AdminReviewQueue({
     }
   }, [cfg, F, slugify, onlyStudentId])
 
+  const shownGroups = useMemo<Record<GroupKey, QueueRow[]>>(() => {
+    const fill = (rows: QueueRow[]): QueueRow[] =>
+      rows.flatMap((row) => {
+        const st = rosterById.get(String(row.target.response.students_id))
+        // A single student's rows never wait on the roster; the all-students
+        // queue lists only students on the current roster.
+        if (!st) return onlyStudentId ? [row] : []
+        const name = `${st.firstName} ${st.lastName}`.trim()
+        return [{ ...row, studentName: name, studentImage: st.profileImage, target: { ...row.target, studentName: name } }]
+      })
+    return { pending: fill(groups.pending), revisions: fill(groups.revisions) }
+  }, [groups, rosterById, onlyStudentId])
+  const showLoading = loading || (!onlyStudentId && !roster)
+
   const openRow = (row: QueueRow) => {
     // A rich-text essay opens as a full document so the teacher can comment
     // inline; everything else reviews in the side sheet.
@@ -300,9 +309,9 @@ export function AdminReviewQueue({
         <ReviewCard
           key={key}
           meta={GROUP_META[key]}
-          rows={groups[key]}
+          rows={shownGroups[key]}
           groupBy={onlyStudentId ? "section" : "student"}
-          loading={loading}
+          loading={showLoading}
           expanded={defaultExpanded || expanded.has(key)}
           canToggle={!defaultExpanded}
           onToggle={() => toggle(key)}
