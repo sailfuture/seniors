@@ -26,19 +26,19 @@ export function RubricScoringTable({
 }) {
   return (
     <div className={cn(!print && "@container")}>
-      <p className={cn(LABEL, print && "text-gray-500")}>{levels ? "Scoring rubric" : "What success looks like"}</p>
+      <p className={cn(LABEL, print && "text-gray-500")}>{levels ? "Rubric" : "What success looks like"}</p>
       {levels && (
         <p className={cn("mt-1", print ? "text-[9.5pt] text-gray-600" : "text-muted-foreground text-xs")}>
-          Score each criterion from 1 to 4. The section is complete when every criterion scores {COMPLETE_AT} (
-          {completeLabel}) or higher.
+          Each criterion is rated Not started, Needs improvement, Meets expectations or Exceeds expectations.
+          The section is complete when every criterion reaches {completeLabel} or higher.
         </p>
       )}
       <ol className={cn("mt-3", print ? "space-y-5" : "space-y-4")}>
-        {scoring.criteria.map((c, i) =>
+        {scoring.criteria.map((c) =>
           print ? (
-            <PrintCriterion key={c.name} criterion={c} index={i} />
+            <PrintCriterion key={c.name} criterion={c} />
           ) : (
-            <ScreenCriterion key={c.name} criterion={c} index={i} levels={levels} />
+            <ScreenCriterion key={c.name} criterion={c} levels={levels} />
           )
         )}
       </ol>
@@ -46,22 +46,11 @@ export function RubricScoringTable({
   )
 }
 
-function ScreenCriterion({
-  criterion: c,
-  index,
-  levels,
-}: {
-  criterion: ScoringCriterion
-  index: number
-  levels: boolean
-}) {
+function ScreenCriterion({ criterion: c, levels }: { criterion: ScoringCriterion; levels: boolean }) {
   return (
     <li className="bg-card overflow-hidden rounded-lg border">
       <div className="px-4 py-3.5">
-        <p className="text-sm leading-snug font-semibold">
-          <span className="text-muted-foreground mr-1.5 tabular-nums">{index + 1}.</span>
-          {c.name}
-        </p>
+        <h3 className="text-base leading-snug font-semibold">{c.name}</h3>
         {c.covers && <p className="text-muted-foreground mt-0.5 text-xs">{c.covers}</p>}
         {c.expectations && <p className="mt-2.5 text-sm leading-relaxed">{c.expectations}</p>}
       </div>
@@ -72,10 +61,7 @@ function ScreenCriterion({
           const level = SCORE_LEVELS[li]
           return (
             <div key={level.score} className="px-4 py-2.5">
-              <p className="text-[11px] font-semibold">
-                <span className="tabular-nums">{level.score}</span>
-                <span className="text-muted-foreground ml-1.5 font-medium">{level.label}</span>
-              </p>
+              <h4 className="text-xs font-semibold">{level.label}</h4>
               <p className="text-foreground/85 mt-1 text-xs leading-snug">{text}</p>
             </div>
           )
@@ -86,14 +72,11 @@ function ScreenCriterion({
   )
 }
 
-function PrintCriterion({ criterion: c, index }: { criterion: ScoringCriterion; index: number }) {
+function PrintCriterion({ criterion: c }: { criterion: ScoringCriterion }) {
   return (
     <li data-keep className="rounded border border-gray-300">
       <div className="px-3 py-2.5">
-        <p className="text-[11pt] leading-snug font-semibold text-gray-900">
-          <span className="mr-1.5 tabular-nums text-gray-400">{index + 1}.</span>
-          {c.name}
-        </p>
+        <h3 className="text-[11.5pt] leading-snug font-semibold text-gray-900">{c.name}</h3>
         {c.covers && <p className="mt-0.5 text-[9pt] text-gray-500">{c.covers}</p>}
         {c.expectations && (
           <p className="mt-1.5 text-[9.5pt] leading-relaxed text-gray-800">{c.expectations}</p>
@@ -107,7 +90,7 @@ function PrintCriterion({ criterion: c, index }: { criterion: ScoringCriterion; 
                 key={l.score}
                 className="border-r border-gray-300 bg-gray-100 px-2 py-1 font-semibold last:border-r-0"
               >
-                {l.score} · {l.label}
+                {l.label}
               </th>
             ))}
           </tr>
