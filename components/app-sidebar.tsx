@@ -18,6 +18,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   BookOpen02Icon,
@@ -816,27 +817,41 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       className="top-(--header-height) h-[calc(100svh-var(--header-height))]!"
       {...props}
     >
-      {studentInfo && (
+      {/* A student's header holds its place from the first paint (skeleton
+          until the roster arrives), so the menu below never jumps down. */}
+      {adminStudentId && (
         <>
           <SidebarHeader className="gap-0 px-0 py-0">
             <div className="flex items-center gap-3 px-4 py-4">
-              <Avatar className="size-9">
-                <AvatarImage src={studentInfo.image} alt={studentInfo.name} />
-                <AvatarFallback className="text-xs">{studentInfo.initials}</AvatarFallback>
-              </Avatar>
-              <div className="flex min-w-0 flex-col">
-                <span className="text-sm font-semibold">{studentInfo.name}</span>
-                {studentInfo.email && (
-                  <span className="text-muted-foreground truncate text-xs">{studentInfo.email}</span>
-                )}
-              </div>
+              {studentInfo ? (
+                <>
+                  <Avatar className="size-9">
+                    <AvatarImage src={studentInfo.image} alt={studentInfo.name} />
+                    <AvatarFallback className="text-xs">{studentInfo.initials}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex min-w-0 flex-col">
+                    <span className="text-sm font-semibold">{studentInfo.name}</span>
+                    {studentInfo.email && (
+                      <span className="text-muted-foreground truncate text-xs">{studentInfo.email}</span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Skeleton className="size-9 shrink-0 rounded-full" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <Skeleton className="h-3.5 w-28" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                </>
+              )}
             </div>
           </SidebarHeader>
           <Separator />
         </>
       )}
       <SidebarContent>
-        {!isStaff && !studentInfo && (
+        {!isStaff && !adminStudentId && (
           <SidebarGroup className="pb-0">
             <SidebarMenu>
               <SidebarMenuItem>
@@ -850,7 +865,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroup>
         )}
-        {studentInfo && (
+        {adminStudentId && (
           <SidebarGroup className="pb-0">
             <SidebarMenu>
               <SidebarMenuItem>
@@ -864,7 +879,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroup>
         )}
-        <NavMain items={navItems} hideLabel={!!studentInfo} loading={sidebarLoading} />
+        <NavMain items={navItems} hideLabel={!!adminStudentId} loading={sidebarLoading} />
         {!isReviewer && (
           <SidebarGroup>
             <SidebarGroupLabel>Tools</SidebarGroupLabel>

@@ -254,14 +254,19 @@ export default function AdminStudentBusinessThesisOverviewPage({
       setRows(result)
     } catch {
       toast.error("Failed to load data")
-    } finally {
-      setLoading(false)
     }
   }, [studentId])
 
   useEffect(() => {
-    loadData()
-    loadComments()
+    // The table and its comment badges appear together, so nothing shifts
+    // in after the skeleton.
+    let cancelled = false
+    Promise.all([loadData(), loadComments()]).finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [loadData, loadComments])
 
   const { register, unregister } = useRefreshRegister()
@@ -269,6 +274,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
     const fn = async () => {
       setLoading(true)
       await Promise.all([loadData(), loadComments()])
+      setLoading(false)
     }
     register(fn)
     return () => unregister()
