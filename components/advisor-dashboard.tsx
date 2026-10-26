@@ -6,7 +6,10 @@ import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowRight01Icon,
+  Call02Icon,
   Calendar03Icon,
+  ContactBookIcon,
+  Mail01Icon,
   CalendarBlock01Icon,
   CheckmarkCircle02Icon,
 } from "@hugeicons/core-free-icons"
@@ -40,6 +43,7 @@ import {
   type SchoolCalendarDay,
 } from "@/lib/school-calendar"
 import { cn } from "@/lib/utils"
+import { ADVISOR_CONTACTS, telHref } from "@/lib/advisor-contacts"
 import {
   Avatar,
   AvatarFallback,
@@ -287,6 +291,8 @@ export function AdvisorDashboard() {
           )}
       </section>
 
+      <ContactsCard />
+
       <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} />
     </div>
   )
@@ -478,6 +484,45 @@ function StatTile({
         {label}
       </p>
     </div>
+  )
+}
+
+/** Who advisors reach at SailFuture Academy, with email and phone links. */
+function ContactsCard() {
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary/10 flex size-10 shrink-0 items-center justify-center rounded-lg">
+            <HugeiconsIcon icon={ContactBookIcon} strokeWidth={2} className="text-primary size-5" />
+          </div>
+          <div>
+            <CardTitle>Contacts</CardTitle>
+            <CardDescription>Questions about a student, the thesis or scheduling? Reach out directly.</CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-2">
+        {ADVISOR_CONTACTS.map((c) => (
+          <div key={c.email} className="rounded-lg border px-4 py-3">
+            <p className="text-sm font-semibold">{c.name}</p>
+            <p className="text-muted-foreground text-xs">{c.title}</p>
+            <div className="mt-2.5 space-y-1.5 text-sm">
+              <a href={`mailto:${c.email}`} className="hover:text-primary flex items-center gap-2 break-all transition-colors">
+                <HugeiconsIcon icon={Mail01Icon} strokeWidth={2} className="text-muted-foreground size-4 shrink-0" />
+                {c.email}
+              </a>
+              {c.phone && (
+                <a href={telHref(c.phone)} className="hover:text-primary flex items-center gap-2 tabular-nums transition-colors">
+                  <HugeiconsIcon icon={Call02Icon} strokeWidth={2} className="text-muted-foreground size-4 shrink-0" />
+                  {c.phone}
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   )
 }
 
