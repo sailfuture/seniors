@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useSyncExternalStore } from "react"
+import { useMemo, useSyncExternalStore, type ReactNode } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon, PrinterIcon, SquareLock02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
@@ -67,6 +67,9 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
         @media print {
           .rubric-print [data-page] {
             break-before: page;
+            page-break-before: always;
+            margin-top: 0 !important;
+            padding-top: 0 !important;
           }
           .rubric-print [data-keep] {
             break-inside: avoid;
@@ -96,40 +99,48 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
         </div>
       </div>
 
-      <div className="mx-auto w-[8.5in] max-w-full py-8 text-gray-900 print:w-auto print:max-w-none print:py-0">
-        <div className="bg-white p-[0.75in] shadow-md ring-1 ring-black/5 print:p-0 print:shadow-none print:ring-0">
-          {loading ? (
+      {/* One sheet per section. On screen the sheets stack with a gap; in
+          print they lay out as plain blocks (WebKit ignores forced breaks on
+          flex items) with no padding or margin, so nothing carries over a
+          page break and every section starts at the top of its page. */}
+      <div className="mx-auto flex w-[8.5in] max-w-full flex-col gap-6 py-8 text-gray-900 print:block print:w-auto print:max-w-none print:py-0">
+        {loading ? (
+          <Sheet>
             <div className="space-y-4">
               <Skeleton className="h-4 w-32" />
               <Skeleton className="h-10 w-3/4" />
               <Skeleton className="h-20 w-full" />
               <Skeleton className="h-64 w-full" />
             </div>
-          ) : sections.length === 0 ? (
+          </Sheet>
+        ) : sections.length === 0 ? (
+          <Sheet>
             <p className="text-sm text-gray-500">
               {onlySlug ? "This section was not found in the template." : "No sections have been published yet."}
             </p>
-          ) : single ? (
-            // One section: its own header, then the same body as the page.
-            <>
-              <header className="border-b-2 border-gray-900 pb-5">
-                <p className={LABEL}>
-                  SailFuture Academy · {product.name} rubric · Section {all.indexOf(single) + 1} of {all.length}
-                </p>
-                <h1 className="mt-2 text-[24pt] leading-[1.1] font-bold tracking-tight">{single.title}</h1>
-                <p className="mt-2 text-[10pt] text-gray-500">
-                  {describeRubricSection(single)} · Printed {printedOn}
-                </p>
-              </header>
-              <div className="pt-6">
-                <RubricSectionBody section={single} tone="print" />
-              </div>
-              <footer className="mt-10 border-t border-gray-200 pt-3 text-[8.5pt] text-gray-400">
-                {product.name} Rubric · {single.title} · SailFuture Academy · {printedOn}
-              </footer>
-            </>
-          ) : (
-            <>
+          </Sheet>
+        ) : single ? (
+          // One section: its own header, then the same body as the page.
+          <Sheet>
+            <header className="border-b-2 border-gray-900 pb-5">
+              <p className={LABEL}>
+                SailFuture Academy · {product.name} rubric · Section {all.indexOf(single) + 1} of {all.length}
+              </p>
+              <h1 className="mt-2 text-[24pt] leading-[1.1] font-bold tracking-tight">{single.title}</h1>
+              <p className="mt-2 text-[10pt] text-gray-500">
+                {describeRubricSection(single)} · Printed {printedOn}
+              </p>
+            </header>
+            <div className="pt-6">
+              <RubricSectionBody section={single} tone="print" />
+            </div>
+            <footer className="mt-10 border-t border-gray-200 pt-3 text-[8.5pt] text-gray-400">
+              {product.name} Rubric · {single.title} · SailFuture Academy · {printedOn}
+            </footer>
+          </Sheet>
+        ) : (
+          <>
+            <Sheet>
               <header className="border-b-2 border-gray-900 pb-6">
                 <p className={LABEL}>SailFuture Academy · {product.name}</p>
                 <h1 className="mt-2 text-[28pt] leading-[1.1] font-bold tracking-tight">Rubric</h1>
@@ -147,7 +158,7 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
                 <p className="mt-4 text-[9pt] text-gray-500">Printed {printedOn}</p>
               </header>
 
-              <section className="pt-6">
+              <div className="pt-6">
                 <h2 className={LABEL}>Contents</h2>
                 <ol className="mt-3 divide-y divide-gray-200">
                   {sections.map((s, i) => (
@@ -161,30 +172,47 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
                     </li>
                   ))}
                 </ol>
-              </section>
+              </div>
+            </Sheet>
 
-              {sections.map((section, index) => (
-                <section key={section.id} data-page className="mt-10 print:mt-0">
-                  <div className="mb-5 border-b-2 border-gray-900 pb-4">
-                    <p className={LABEL}>
-                      Section {index + 1} of {sections.length}
-                      {section.locked && " · Locked"}
-                    </p>
-                    <h2 className="mt-1 text-[20pt] leading-tight font-bold tracking-tight">{section.title}</h2>
-                    <p className="mt-1 text-[9.5pt] text-gray-500">{describeRubricSection(section)}</p>
-                  </div>
-                  <RubricSectionBody section={section} tone="print" />
-                </section>
-              ))}
-
-              <footer className="mt-10 border-t border-gray-200 pt-3 text-[8.5pt] text-gray-400">
-                {product.name} Rubric · SailFuture Academy · {printedOn}
-              </footer>
-            </>
-          )}
-        </div>
+            {sections.map((section, index) => (
+              <Sheet key={section.id} newPage>
+                <div className="mb-5 border-b-2 border-gray-900 pb-4">
+                  <p className={LABEL}>
+                    Section {index + 1} of {sections.length}
+                    {section.locked && " · Locked"}
+                  </p>
+                  <h2 className="mt-1 text-[20pt] leading-tight font-bold tracking-tight">{section.title}</h2>
+                  <p className="mt-1 text-[9.5pt] text-gray-500">{describeRubricSection(section)}</p>
+                </div>
+                <RubricSectionBody section={section} tone="print" />
+                {index === sections.length - 1 && (
+                  <footer className="mt-10 border-t border-gray-200 pt-3 text-[8.5pt] text-gray-400">
+                    {product.name} Rubric · SailFuture Academy · {printedOn}
+                  </footer>
+                )}
+              </Sheet>
+            ))}
+          </>
+        )}
       </div>
     </div>
+  )
+}
+
+/**
+ * One white Letter sheet on screen. In print it has no padding or shadow
+ * (the @page margin supplies the margins); `newPage` starts it on a fresh
+ * printed page.
+ */
+function Sheet({ children, newPage = false }: { children: ReactNode; newPage?: boolean }) {
+  return (
+    <section
+      data-page={newPage ? "" : undefined}
+      className="bg-white p-[0.75in] shadow-md ring-1 ring-black/5 print:p-0 print:shadow-none print:ring-0"
+    >
+      {children}
+    </section>
   )
 }
 
