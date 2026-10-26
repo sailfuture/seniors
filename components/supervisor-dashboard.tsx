@@ -56,7 +56,7 @@ const PRODUCT: AdvisorProduct = "business-thesis"
 const CFG = BUSINESSTHESIS_API_CONFIG
 
 const ROSTER_HREF = "/admin/business-thesis"
-const ADVISORS_HREF = "/admin/users?tab=advisors"
+const ADVISORS_HREF = "/admin/advisors"
 
 /** Work waiting on a reviewer longer than this reads as overdue. */
 const OVERDUE_DAYS = 7

@@ -167,7 +167,9 @@ function HeaderBreadcrumb() {
   } else if (pathname.startsWith("/admin/business-thesis")) {
     crumbs.push({ label: "Business Thesis" })
   } else if (pathname.startsWith("/admin/users") || pathname.startsWith("/admin/advisors")) {
-    crumbs.push({ label: "Users" })
+    // Thesis supervisors only see the advisor directory.
+    const role = (session?.user as Record<string, unknown> | undefined)?.role
+    crumbs.push({ label: role === "admin" ? "Users" : "Advisors" })
   } else if (pathname.startsWith("/life-map/")) {
     const sectionMatch = pathname.match(/^\/life-map\/([^/]+)/)
     if (sectionMatch) {

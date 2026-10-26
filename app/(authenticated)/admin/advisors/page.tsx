@@ -2,7 +2,8 @@
 
 import { UsersPage } from "@/components/users-page"
 
-/** Old address of the advisor directory; it now lives on the Users page. */
+/** The advisor directory: a tab of the Users page for admins, the whole
+    page for thesis supervisors. */
 export default function AdminAdvisorsPage() {
   return <UsersPage defaultTab="advisors" />
 }

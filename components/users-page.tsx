@@ -2,6 +2,8 @@
 
 import { Suspense } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useSession } from "@/components/session-provider"
+import { canManageStaff } from "@/lib/roles"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AdvisorManager } from "@/components/advisor-manager"
 import { StaffManager } from "@/components/staff-manager"
@@ -14,6 +16,25 @@ type UsersTab = "staff" | "advisors"
  * current tab lives in the URL (?tab=) so links can open either directly.
  */
 export function UsersPage({ defaultTab = "staff" }: { defaultTab?: UsersTab }) {
+  const { data: session } = useSession()
+  const role = (session?.user as Record<string, unknown> | undefined)?.role
+
+  // Only admins see staff. Thesis supervisors get the advisor directory on
+  // its own, under its own name.
+  if (!canManageStaff(role)) {
+    return (
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+        <div>
+          <h1 className="text-2xl font-bold">Advisors</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            The outside thesis advisors, their sign-in access, and the students each one advises.
+          </p>
+        </div>
+        <AdvisorManager />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div>

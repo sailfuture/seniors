@@ -36,7 +36,7 @@ import Link from "next/link"
 import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSection } from "@/lib/lifemap-sections"
 import { fetchBtSections, invalidateBtSectionsCache, btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
 import { useRefreshKey } from "@/lib/refresh-context"
-import { canAccessLifeMap, canEditTemplates, canManageAdvisors, isStaffRole } from "@/lib/roles"
+import { canAccessLifeMap, canEditTemplates, canManageAdvisors, canManageStaff, isStaffRole } from "@/lib/roles"
 import { useAllStudents, useStudents } from "@/lib/queries"
 import { classYearOf, currentClassYear } from "@/lib/students"
 import type { Comment } from "@/lib/form-types"
@@ -576,6 +576,8 @@ interface StaffNavAccess {
   lifeMap: boolean
   templates: boolean
   users: boolean
+  /** Admins see staff and advisors ("Users"); supervisors only advisors. */
+  staff: boolean
 }
 
 function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThesisSection[], pathname: string, students: StudentListItem[], access: StaffNavAccess) {
@@ -642,8 +644,8 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
     ...(access.users
       ? [
           {
-            title: "Users",
-            url: "/admin/users",
+            title: access.staff ? "Users" : "Advisors",
+            url: access.staff ? "/admin/users" : "/admin/advisors",
             icon: <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} />,
             isActive: pathname.startsWith("/admin/users") || pathname.startsWith("/admin/advisors"),
             separatorBefore: !access.templates,
@@ -786,6 +788,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     lifeMap: canAccessLifeMap(role),
     templates: canEditTemplates(role),
     users: canManageAdvisors(role),
+    staff: canManageStaff(role),
   }
   const refreshKey = useRefreshKey()
   const { sections, loading: sectionsLoading } = useLifeMapSections(refreshKey)

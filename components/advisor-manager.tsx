@@ -570,9 +570,11 @@ export function AdvisorManager() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-muted-foreground max-w-2xl text-sm">
           Outside advisors who can view and comment on their assigned students&apos; work.
-          A business thesis advisor only ever sees business theses; a life map advisor
-          only life maps. New advisors are emailed an invitation link to create their
-          account; Access shows whether they&apos;ve accepted it.
+          {lifeMapOk
+            ? " A business thesis advisor only ever sees business theses; a life map advisor only life maps."
+            : " Each one sees only the business theses of the students assigned to them."}{" "}
+          New advisors are emailed an invitation link to create their account; Access shows
+          whether they&apos;ve accepted it.
         </p>
         <Button size="sm" className="shrink-0 gap-2" onClick={openAdd}>
           <HugeiconsIcon icon={UserAdd01Icon} strokeWidth={2} className="size-4" />

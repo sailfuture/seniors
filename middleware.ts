@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
-import { canAccessLifeMap, canEditTemplates, canManageAdvisors, isStaffRole } from "@/lib/roles"
+import { canAccessLifeMap, canEditTemplates, canManageAdvisors, canManageStaff, isStaffRole } from "@/lib/roles"
 
 const isProtectedRoute = createRouteMatcher([
   "/dashboard(.*)",
@@ -30,6 +30,9 @@ const isStudentWorkRoute = createRouteMatcher([
 
 // The Users page (staff roles + the thesis-advisor directory).
 const isUsersRoute = createRouteMatcher(["/admin/users(.*)", "/admin/advisors(.*)"])
+
+// The Users page proper, with the Staff tab. Admins only.
+const isStaffUsersRoute = createRouteMatcher(["/admin/users(.*)"])
 
 // Every Life Map page: the student's own, the staff roster and a student's
 // work, and the template. Thesis supervisors never see the Life Map.
@@ -76,6 +79,10 @@ export default clerkMiddleware(async (auth, req) => {
     }
     if (isUsersRoute(req) && !canManageAdvisors(role)) {
       return Response.redirect(new URL("/dashboard", req.url))
+    }
+    // Thesis supervisors never see staff: their page is the advisors one.
+    if (isStaffUsersRoute(req) && !canManageStaff(role)) {
+      return Response.redirect(new URL("/admin/advisors", req.url))
     }
   }
 })
