@@ -6,6 +6,7 @@
  * Criteria are written from the template: each section's purpose, its
  * groups, and the word minimums, source counts and instructions on its
  * questions. Edit the wording here; sections are keyed by their URL slug.
+ * The Life Map's rubrics live in lib/rubric-scoring-lifemap.ts.
  */
 
 export type ScoreLevel = 1 | 2 | 3 | 4
