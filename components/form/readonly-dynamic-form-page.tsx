@@ -1300,13 +1300,14 @@ function CollapsibleQuestionCard({
   return (
     <div
       data-field-name={fieldName}
-      className={`rounded-lg border bg-gray-50 p-3 dark:bg-muted/30 ${tone === "complete" ? "border-transparent" : CARD_TONE_BORDER[tone]} ${colSpan} ${isDimmed ? "opacity-75" : ""}`}
+      className={`@container rounded-lg border bg-gray-50 p-3 dark:bg-muted/30 ${tone === "complete" ? "border-transparent" : CARD_TONE_BORDER[tone]} ${colSpan} ${isDimmed ? "opacity-75" : ""}`}
     >
-      {/* Two fixed rows: the title (truncated if long) with its collapse arrow
-          on top, and the timestamp, icons and actions on a line beneath it, so
-          nothing is ever laid over the title in narrow (4-column) cards. */}
+      {/* A wide card puts the timestamp, icons and actions in its upper right,
+          beside the title. A narrow card (a 4-column grid) stacks them on a
+          line beneath the title so nothing is ever laid over it. The switch
+          follows the card's own width, not the screen's. */}
       <div
-        className={`mb-1.5 flex flex-col gap-1.5 ${isComplete ? "cursor-pointer select-none" : ""}`}
+        className={`mb-1.5 flex flex-col gap-1.5 @xl:flex-row @xl:items-center @xl:justify-between @xl:gap-4 ${isComplete ? "cursor-pointer select-none" : ""}`}
         onClick={
           isComplete
             ? (e) => {
@@ -1332,7 +1333,7 @@ function CollapsibleQuestionCard({
           </div>
           {labelAction && <div onClick={(e) => e.stopPropagation()}>{labelAction}</div>}
         </div>
-        <div className="flex min-w-0 items-center" onClick={(e) => e.stopPropagation()}>
+        <div className="flex min-w-0 items-center @xl:shrink-0 @xl:justify-end" onClick={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>

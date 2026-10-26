@@ -244,8 +244,8 @@ export function SectionRubricSheet({
           </SheetTitle>
           <SheetDescription className="text-sm">
             {section
-              ? `What this section must cover, and the direction for completing it. ${describeRubricSection(section)}.`
-              : "What this section must cover, and the direction for completing it."}
+              ? `What this section must cover and what success looks like. ${describeRubricSection(section)}.`
+              : "What this section must cover and what success looks like."}
           </SheetDescription>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" className="gap-2" asChild>
@@ -254,8 +254,11 @@ export function SectionRubricSheet({
                 Print / PDF
               </a>
             </Button>
-            <Button variant="ghost" size="sm" className="gap-2" asChild>
-              <Link href={rubricHref(product, slug)}>Open full rubric</Link>
+            <Button variant="outline" size="sm" className="gap-2" asChild>
+              <Link href={rubricHref(product, slug)}>
+                <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
+                Open full rubric
+              </Link>
             </Button>
           </div>
         </SheetHeader>
@@ -268,7 +271,7 @@ export function SectionRubricSheet({
               <Skeleton className="h-32 w-full" />
             </div>
           ) : section ? (
-            <RubricSectionBody section={section} />
+            <RubricSectionBody section={section} levels={false} />
           ) : (
             <p className="text-muted-foreground text-sm">This section was not found in the template.</p>
           )}
@@ -287,9 +290,12 @@ export function SectionRubricSheet({
 export function RubricSectionBody({
   section,
   tone = "screen",
+  levels = true,
 }: {
   section: RubricSection
   tone?: "screen" | "print"
+  /** Off in the section slide-over: criteria and their overviews, no 1–4 levels. */
+  levels?: boolean
 }) {
   const print = tone === "print"
   const summary = section.scoring?.summary
@@ -326,8 +332,8 @@ export function RubricSectionBody({
           <p className={cn(LABEL, print && "text-gray-500")}>Requirements</p>
           <ul
             className={cn(
-              "mt-1.5 grid list-disc gap-x-8 gap-y-1 pl-5 leading-snug",
-              !print && "marker:text-muted-foreground sm:grid-cols-2",
+              "mt-1.5 list-disc space-y-1 pl-5 leading-snug",
+              !print && "marker:text-muted-foreground",
               print ? "text-[10.5pt]" : "text-sm"
             )}
           >
@@ -339,7 +345,7 @@ export function RubricSectionBody({
       )}
 
       {section.scoring ? (
-        <RubricScoringTable scoring={section.scoring} print={print} />
+        <RubricScoringTable scoring={section.scoring} print={print} levels={levels} />
       ) : (
         section.components.length === 0 && (
           <p className={cn("text-muted-foreground text-sm", print && "text-gray-500")}>

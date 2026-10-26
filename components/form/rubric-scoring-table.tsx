@@ -11,29 +11,34 @@ const completeLabel = SCORE_LEVELS.find((l) => l.score === COMPLETE_AT)?.label ?
  * A section's 1–4 scoring rubric. Each criterion shows what it covers, a
  * short paragraph on what success looks like (written for anyone reading:
  * student, teacher or advisor), and the four levels. On screen the levels
- * sit side by side when there is room and stack in the slide-over; in print
- * each criterion is a block with a four-column level table.
+ * sit side by side when there is room; in print each criterion is a block
+ * with a four-column level table. With `levels` off (the section
+ * slide-over) it is just the overview: each criterion and its paragraph.
  */
 export function RubricScoringTable({
   scoring,
   print = false,
+  levels = true,
 }: {
   scoring: SectionScoring
   print?: boolean
+  levels?: boolean
 }) {
   return (
     <div className={cn(!print && "@container")}>
-      <p className={cn(LABEL, print && "text-gray-500")}>Scoring rubric</p>
-      <p className={cn("mt-1", print ? "text-[9.5pt] text-gray-600" : "text-muted-foreground text-xs")}>
-        Score each criterion from 1 to 4. The section is complete when every criterion scores {COMPLETE_AT} (
-        {completeLabel}) or higher.
-      </p>
+      <p className={cn(LABEL, print && "text-gray-500")}>{levels ? "Scoring rubric" : "What success looks like"}</p>
+      {levels && (
+        <p className={cn("mt-1", print ? "text-[9.5pt] text-gray-600" : "text-muted-foreground text-xs")}>
+          Score each criterion from 1 to 4. The section is complete when every criterion scores {COMPLETE_AT} (
+          {completeLabel}) or higher.
+        </p>
+      )}
       <ol className={cn("mt-3", print ? "space-y-5" : "space-y-4")}>
         {scoring.criteria.map((c, i) =>
           print ? (
             <PrintCriterion key={c.name} criterion={c} index={i} />
           ) : (
-            <ScreenCriterion key={c.name} criterion={c} index={i} />
+            <ScreenCriterion key={c.name} criterion={c} index={i} levels={levels} />
           )
         )}
       </ol>
@@ -41,7 +46,15 @@ export function RubricScoringTable({
   )
 }
 
-function ScreenCriterion({ criterion: c, index }: { criterion: ScoringCriterion; index: number }) {
+function ScreenCriterion({
+  criterion: c,
+  index,
+  levels,
+}: {
+  criterion: ScoringCriterion
+  index: number
+  levels: boolean
+}) {
   return (
     <li className="bg-card overflow-hidden rounded-lg border">
       <div className="px-4 py-3.5">
@@ -53,6 +66,7 @@ function ScreenCriterion({ criterion: c, index }: { criterion: ScoringCriterion;
         {c.expectations && <p className="mt-2.5 text-sm leading-relaxed">{c.expectations}</p>}
       </div>
 
+      {levels && (
       <div className="grid divide-y border-t @2xl:grid-cols-4 @2xl:divide-x @2xl:divide-y-0">
         {c.levels.map((text, li) => {
           const level = SCORE_LEVELS[li]
@@ -67,6 +81,7 @@ function ScreenCriterion({ criterion: c, index }: { criterion: ScoringCriterion;
           )
         })}
       </div>
+      )}
     </li>
   )
 }
