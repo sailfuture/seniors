@@ -157,6 +157,7 @@ export default function AdminBusinessThesisSectionPage({
         sectionId={sectionId}
         studentId={studentId}
         headerContent={actionBar}
+        rubric={{ product: BUSINESS_THESIS_RUBRIC, slug: section }}
         apiConfig={BUSINESSTHESIS_API_CONFIG}
       />
     )

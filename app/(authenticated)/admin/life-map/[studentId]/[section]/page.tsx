@@ -181,6 +181,7 @@ export default function AdminLifeMapSectionPage({
         sectionId={sectionId}
         studentId={studentId}
         headerContent={actionBar}
+        rubric={{ product: LIFE_MAP_RUBRIC, slug: section }}
       />
     )
   }

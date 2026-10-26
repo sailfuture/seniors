@@ -69,6 +69,7 @@ import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { dateTime, relativeTime as relativeFrom, toMillis } from "@/lib/format-time"
 import { markdownToPlainText } from "@/lib/markdown-text"
 import { Markdown } from "@/components/markdown"
+import { SectionRubricButton, type SectionRubricRef } from "./rubric"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -144,6 +145,8 @@ interface ReadOnlyDynamicFormPageProps {
   studentId: string
   headerContent?: React.ReactNode
   apiConfig?: FormApiConfig
+  /** This section's rubric, opened from each group header as a slide-over. */
+  rubric?: SectionRubricRef
 }
 
 function getImageUrl(value: unknown): string | null {
@@ -289,7 +292,7 @@ function RequestRevisionAllButton({
   )
 }
 
-export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId, headerContent, apiConfig = LIFEMAP_API_CONFIG }: ReadOnlyDynamicFormPageProps) {
+export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId, headerContent, apiConfig = LIFEMAP_API_CONFIG, rubric }: ReadOnlyDynamicFormPageProps) {
   const cfg = apiConfig
   const F = cfg.fields
   const searchParams = useSearchParams()
@@ -1070,32 +1073,13 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
             return (
               <Card className="overflow-hidden !pt-0 !gap-0">
                 {hasBadges && (
-                  <div className="flex items-center justify-between border-b px-6 py-3">
+                  <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3 md:justify-end">
+                    {rubric && <SectionRubricButton rubric={rubric} className="h-8" />}
                     <div className="flex shrink-0 items-center gap-2">
-                      {completedCount > 0 && (
-                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
-                          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-green-600 text-[9px] font-bold text-white">{completedCount}</span>
-                        </div>
-                      )}
-                      {readyCount > 0 && (
-                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${readyCount} ready for review`}>
-                          <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
-                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{readyCount}</span>
-                        </div>
-                      )}
-                      {revisionCount > 0 && (
-                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${revisionCount} need revision`}>
-                          <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{revisionCount}</span>
-                        </div>
-                      )}
-                      {blankCount > 0 && (
-                        <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${blankCount} not started`}>
-                          <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-                          <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
-                        </div>
-                      )}
+                      <StatusCount kind="complete" count={completedCount} />
+                      <StatusCount kind="ready" count={readyCount} />
+                      <StatusCount kind="revision" count={revisionCount} />
+                      <StatusCount kind="blank" count={blankCount} />
                     </div>
                     {canApprove && readyCount > 0 && (
                       <ConfirmAllButton
@@ -1178,6 +1162,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                 gQuestions={gQuestions}
                 hasDisplayType={hasDisplayType}
                 renderQuestionList={renderQuestionList}
+                rubric={rubric}
               />
             )
           })}
@@ -1361,6 +1346,28 @@ function CollapsibleQuestionCard({
   )
 }
 
+const STATUS_COUNT = {
+  complete: { icon: CheckmarkCircle02Icon, strokeWidth: 2, iconClass: "text-green-600", label: "complete" },
+  ready: { icon: SentIcon, strokeWidth: 2, iconClass: "text-blue-500", label: "ready for review" },
+  revision: { icon: AlertCircleIcon, strokeWidth: 2, iconClass: "text-red-500", label: "need revision" },
+  blank: { icon: CircleIcon, strokeWidth: 1.5, iconClass: "text-muted-foreground/50", label: "not started" },
+} as const
+
+/** A status tally for a group's questions: the icon with its count beside it. Nothing at zero. */
+function StatusCount({ kind, count }: { kind: keyof typeof STATUS_COUNT; count: number }) {
+  if (count <= 0) return null
+  const k = STATUS_COUNT[kind]
+  return (
+    <div
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold tabular-nums"
+      title={`${count} ${k.label}`}
+    >
+      <HugeiconsIcon icon={k.icon} strokeWidth={k.strokeWidth} className={cn("size-4", k.iconClass)} />
+      {count}
+    </div>
+  )
+}
+
 function ReadonlyGroupCard({
   group,
   allComplete,
@@ -1382,6 +1389,7 @@ function ReadonlyGroupCard({
   gQuestions,
   hasDisplayType,
   renderQuestionList,
+  rubric,
 }: {
   group: CustomGroup
   allComplete: boolean
@@ -1403,6 +1411,7 @@ function ReadonlyGroupCard({
   gQuestions: TemplateQuestion[]
   hasDisplayType: boolean
   renderQuestionList: (qs: TemplateQuestion[], flat?: boolean) => React.ReactNode
+  rubric?: SectionRubricRef
 }) {
   const canApprove = useCanApprove()
   const [collapsed, setCollapsed] = useState(allComplete)
@@ -1422,7 +1431,7 @@ function ReadonlyGroupCard({
           if (e.currentTarget.contains(e.target as Node)) toggleCollapsed()
         }}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           {/* The arrow trails the title so the title lines up with the questions below. */}
           <div className="flex min-w-0 flex-1 items-center">
             <div className="group/title flex min-w-0 items-center gap-2">
@@ -1438,31 +1447,15 @@ function ReadonlyGroupCard({
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            {completedCount > 0 && (
-              <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${completedCount} complete`}>
-                <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-green-600" />
-                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-green-600 text-[9px] font-bold text-white">{completedCount}</span>
-              </div>
-            )}
-            {readyCount > 0 && (
-              <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${readyCount} ready for review`}>
-                <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 text-blue-500" />
-                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{readyCount}</span>
-              </div>
-            )}
-            {revisionCount > 0 && (
-              <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${revisionCount} need revision`}>
-                <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-4 text-red-500" />
-                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{revisionCount}</span>
-              </div>
-            )}
-            {blankCount > 0 && (
-              <div className="relative inline-flex size-8 items-center justify-center rounded-lg border" title={`${blankCount} not started`}>
-                <HugeiconsIcon icon={CircleIcon} strokeWidth={1.5} className="text-muted-foreground/40 size-4" />
-                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-gray-400 text-[9px] font-bold text-white">{blankCount}</span>
-              </div>
-            )}
+          <div
+            className="flex flex-wrap items-center gap-2 md:shrink-0 md:flex-nowrap md:justify-end"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {rubric && <SectionRubricButton rubric={rubric} className="h-8" />}
+            <StatusCount kind="complete" count={completedCount} />
+            <StatusCount kind="ready" count={readyCount} />
+            <StatusCount kind="revision" count={revisionCount} />
+            <StatusCount kind="blank" count={blankCount} />
             <TeacherComment
               fieldName="_section_comment"
               fieldLabel={group.group_name}
