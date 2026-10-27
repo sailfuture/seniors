@@ -6,6 +6,7 @@ const isProtectedRoute = createRouteMatcher([
   "/life-map(.*)",
   "/business-thesis(.*)",
   "/admin(.*)",
+  "/schedule(.*)",
   "/image-generation(.*)",
   "/api/image-generation(.*)",
   "/api/student(.*)",

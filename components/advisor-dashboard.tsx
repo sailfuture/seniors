@@ -291,12 +291,12 @@ export function AdvisorDashboard() {
 
       <ContactsCard />
 
-      <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} />
-
       {/* Business Thesis advisors book their meetings with students here and
           see which of their students have met. Students never book. */}
-      {products.includes("business-thesis") && advisorsId != null && (
-        <ThesisSchedule advisorId={advisorsId} showClassSchedule={false} />
+      {products.includes("business-thesis") && advisorsId != null ? (
+        <ThesisSchedule advisorId={advisorsId} />
+      ) : (
+        <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} />
       )}
     </div>
   )

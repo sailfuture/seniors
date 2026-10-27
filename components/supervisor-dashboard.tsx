@@ -8,6 +8,7 @@ import {
   ArrowRight01Icon,
   ArrowTurnBackwardIcon,
   BookOpen02Icon,
+  Calendar03Icon,
   Clock01Icon,
   Login01Icon,
   UserGroupIcon,
@@ -51,6 +52,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusCount } from "@/components/status-count"
+import { useThesisMeetings } from "@/components/thesis-schedule"
+import { formatMeetingTime, meetingIncludes, type ThesisMeeting } from "@/lib/thesis-meetings"
 
 /** Thesis supervisors oversee the business thesis advisors only. */
 const PRODUCT: AdvisorProduct = "business-thesis"
@@ -303,6 +306,9 @@ export function SupervisorDashboard() {
   const progress = progressQuery.data
   const progressLoading = progressQuery.isPending
 
+  const meetingsQuery = useThesisMeetings()
+  const meetings = meetingsQuery.data?.ok && meetingsQuery.data.configured ? meetingsQuery.data.meetings : null
+
   // Totals across every student an advisor covers, each student once.
   const totals = useMemo(() => {
     if (!model || !progress) return null
@@ -342,24 +348,12 @@ export function SupervisorDashboard() {
           icon={UserGroupIcon}
           label="Thesis advisors"
           value={model?.rows.length}
-          note={
-            model && access
-              ? `${model.rows.filter((r) => signInOf(access.get(r.advisor.email?.trim().toLowerCase() ?? ""), now)?.ok).length} signed in`
-              : undefined
-          }
           loading={!model}
         />
         <Kpi
           icon={BookOpen02Icon}
           label="Seniors with an advisor"
           value={model ? `${model.seniors.length - model.unadvised.length} of ${model.seniors.length}` : undefined}
-          note={
-            model
-              ? model.unadvised.length > 0
-                ? `${model.unadvised.length} still need one`
-                : "Every senior has one"
-              : undefined
-          }
           warn={Boolean(model && model.unadvised.length > 0)}
           loading={!model}
         />
@@ -430,6 +424,9 @@ export function SupervisorDashboard() {
                     : null
                 }
                 signInLoading={accessQuery.isPending}
+                lastMeeting={meetings ? lastMeetingOf(row, meetings, now) : undefined}
+                meetingsLoading={meetingsQuery.isPending}
+                now={now}
               />
             ))}
           </div>
@@ -648,16 +645,40 @@ function AttentionRow({
   )
 }
 
+/**
+ * The most recent thesis meeting that has happened with this advisor or any
+ * of their students, or null when there's none. Canceled ones don't count.
+ */
+function lastMeetingOf(row: AdvisorRow, meetings: ThesisMeeting[], now: number): number | null {
+  const emails = [row.advisor.email, ...row.students.map((s) => s.studentEmail)]
+    .map((e) => (e ?? "").trim().toLowerCase())
+    .filter(Boolean)
+  let last: number | null = null
+  for (const m of meetings) {
+    if (m.canceled || m.start > now) continue
+    if (!emails.some((e) => meetingIncludes(m, e))) continue
+    if (last === null || m.start > last) last = m.start
+  }
+  return last
+}
+
 function AdvisorCard({
   row,
   progress,
   signIn,
   signInLoading,
+  lastMeeting,
+  meetingsLoading,
+  now,
 }: {
   row: AdvisorRow
   progress: ThesisProgress | undefined
   signIn: SignIn | null
   signInLoading: boolean
+  /** ms of the last meeting, null for none, undefined when the calendar isn't readable. */
+  lastMeeting: number | null | undefined
+  meetingsLoading: boolean
+  now: number
 }) {
   const { advisor, students } = row
 
@@ -708,6 +729,16 @@ function AdvisorCard({
             <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} className="text-muted-foreground size-4" />
             {students.length} student{students.length === 1 ? "" : "s"}
           </span>
+          {meetingsLoading ? (
+            <Skeleton className="h-7 w-32 rounded-lg" />
+          ) : (
+            lastMeeting !== undefined && (
+              <span className={MetaBadgeClass} title={lastMeeting ? formatMeetingTime(lastMeeting) : undefined}>
+                <HugeiconsIcon icon={Calendar03Icon} strokeWidth={2} className="text-muted-foreground size-4" />
+                {lastMeeting ? `Last meeting ${relativeTime(lastMeeting, now)}` : "No meetings yet"}
+              </span>
+            )
+          )}
           {progress && (pending > 0 || revisions > 0) && (
             <span className="ml-auto flex items-center gap-1.5">
               <StatusCount kind="ready" count={pending} size="sm" />

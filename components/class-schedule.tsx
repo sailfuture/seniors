@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  ArrowRight01Icon,
   Calendar03Icon,
   CalendarBlock01Icon,
   CheckmarkCircle02Icon,
@@ -12,6 +13,7 @@ import {
   CLASS_MEETING,
   formatCalendarDate,
   meetingOutlook,
+  type MeetingSession,
   type SchoolCalendarDay,
 } from "@/lib/school-calendar"
 import { cn } from "@/lib/utils"
@@ -51,9 +53,12 @@ export function useSchoolCalendar() {
 export function ScheduleCard({
   days,
   status,
+  onSelectDay,
 }: {
   days: SchoolCalendarDay[] | undefined
   status: "pending" | "error" | "success"
+  /** When set, every class day is a button that opens that day's bookings. */
+  onSelectDay?: (session: MeetingSession) => void
 }) {
   const outlook = useMemo(() => (days ? meetingOutlook(days, OUTLOOK_WEEKS) : null), [days])
   const time = `${CLASS_MEETING.startLabel} – ${CLASS_MEETING.endLabel}`
@@ -70,6 +75,7 @@ export function ScheduleCard({
             <CardDescription>
               The senior class meets Thursdays and Fridays, {time} Eastern, at SailFuture Academy.
               Sessions over the next {OUTLOOK_WEEKS} weeks, from the school calendar.
+              {onSelectDay && " Select a class day to see its bookings and book a time."}
             </CardDescription>
           </div>
         </div>
@@ -113,12 +119,28 @@ export function ScheduleCard({
                 <TableBody>
                   {outlook.sessions.map((session) => {
                     const isNext = outlook.nextSession?.date === session.date
+                    const open = onSelectDay && session.status !== "off" ? () => onSelectDay(session) : undefined
                     return (
                       <TableRow
                         key={session.date}
                         className={cn(
-                          session.status === "off" && "bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-500/5"
+                          session.status === "off" && "bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-500/5",
+                          open && "focus-visible:bg-muted/60 cursor-pointer outline-none"
                         )}
+                        {...(open
+                          ? {
+                              role: "button",
+                              tabIndex: 0,
+                              "aria-label": `${formatCalendarDate(session.date)}: bookings`,
+                              onClick: open,
+                              onKeyDown: (e: React.KeyboardEvent) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault()
+                                  open()
+                                }
+                              },
+                            }
+                          : {})}
                       >
                         <TableCell className="pl-4 font-medium">
                           {formatCalendarDate(session.date)}
@@ -153,6 +175,13 @@ export function ScheduleCard({
                               />
                               Class meets
                               {isNext && <Badge variant="secondary">Next</Badge>}
+                              {open && (
+                                <HugeiconsIcon
+                                  icon={ArrowRight01Icon}
+                                  strokeWidth={2}
+                                  className="text-muted-foreground ml-auto size-4 shrink-0"
+                                />
+                              )}
                             </span>
                           )}
                         </TableCell>

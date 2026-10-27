@@ -165,7 +165,11 @@ function HeaderBreadcrumb() {
   } else if (pathname.startsWith("/admin/life-map")) {
     crumbs.push({ label: "Life Map" })
   } else if (pathname.startsWith("/admin/business-thesis")) {
-    crumbs.push({ label: "Business Thesis" })
+    // Thesis supervisors only have this one roster, named All Students.
+    const role = (session?.user as Record<string, unknown> | undefined)?.role
+    crumbs.push({ label: role === "supervisor" ? "All Students" : "Business Thesis" })
+  } else if (pathname.startsWith("/schedule")) {
+    crumbs.push({ label: "Schedule" })
   } else if (pathname.startsWith("/admin/users") || pathname.startsWith("/admin/advisors")) {
     // Thesis supervisors only see the advisor directory.
     const role = (session?.user as Record<string, unknown> | undefined)?.role

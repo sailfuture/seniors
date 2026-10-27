@@ -7,15 +7,14 @@ import { canManageStaff } from "@/lib/roles"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AdvisorManager } from "@/components/advisor-manager"
 import { StaffManager } from "@/components/staff-manager"
-import { ThesisSchedule } from "@/components/thesis-schedule"
 
-type UsersTab = "staff" | "advisors" | "schedule"
+type UsersTab = "staff" | "advisors"
 
 /**
  * One place for everyone who signs in as something other than a student.
- * Admins get the Users page: staff tiers, the outside thesis advisors, and
- * the meeting schedule. Thesis supervisors get the same page without staff,
- * named Advisors. The current tab lives in the URL (?tab=) so links can open
+ * Admins get the Users page: staff tiers and the outside thesis advisors.
+ * Thesis supervisors get the same page without staff, named Advisors. The
+ * meeting schedule has its own page, /schedule. The current tab lives in the URL (?tab=) so links can open
  * any of them directly.
  */
 export function UsersPage({ defaultTab = "staff" }: { defaultTab?: UsersTab }) {
@@ -29,8 +28,8 @@ export function UsersPage({ defaultTab = "staff" }: { defaultTab?: UsersTab }) {
         <h1 className="text-2xl font-bold">{showStaff ? "Users" : "Advisors"}</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           {showStaff
-            ? "Who can sign in to the Senior Dashboard, what each person can do, and when thesis meetings happen."
-            : "The outside thesis advisors, the students each one advises, and when thesis meetings happen."}
+            ? "Who can sign in to the Senior Dashboard and what each person can do."
+            : "The outside thesis advisors and the students each one advises."}
         </p>
       </div>
       <Suspense fallback={null}>
@@ -44,7 +43,7 @@ function UsersTabs({ defaultTab, showStaff }: { defaultTab: UsersTab; showStaff:
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
-  const tabs: UsersTab[] = showStaff ? ["staff", "advisors", "schedule"] : ["advisors", "schedule"]
+  const tabs: UsersTab[] = showStaff ? ["staff", "advisors"] : ["advisors"]
   const fromUrl = params.get("tab") as UsersTab | null
   const fallback = tabs.includes(defaultTab) ? defaultTab : tabs[0]
   const tab: UsersTab = fromUrl && tabs.includes(fromUrl) ? fromUrl : fallback
@@ -58,7 +57,6 @@ function UsersTabs({ defaultTab, showStaff }: { defaultTab: UsersTab; showStaff:
       <TabsList>
         {showStaff && <TabsTrigger value="staff">Staff</TabsTrigger>}
         <TabsTrigger value="advisors">{showStaff ? "Thesis advisors" : "Advisors"}</TabsTrigger>
-        <TabsTrigger value="schedule">Schedule</TabsTrigger>
       </TabsList>
       {showStaff && (
         <TabsContent value="staff">
@@ -67,9 +65,6 @@ function UsersTabs({ defaultTab, showStaff }: { defaultTab: UsersTab; showStaff:
       )}
       <TabsContent value="advisors">
         <AdvisorManager />
-      </TabsContent>
-      <TabsContent value="schedule">
-        <ThesisSchedule />
       </TabsContent>
     </Tabs>
   )

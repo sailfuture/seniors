@@ -23,6 +23,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   BookOpen01Icon,
   BookOpen02Icon,
+  Calendar03Icon,
   MapsIcon,
   Link01Icon,
   Settings02Icon,
@@ -38,7 +39,8 @@ import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSectio
 import { fetchBtSections, invalidateBtSectionsCache, btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
 import { useRefreshKey } from "@/lib/refresh-context"
 import { canAccessLifeMap, canEditTemplates, canManageAdvisors, canManageStaff, isStaffRole } from "@/lib/roles"
-import { useAllStudents, useStudents } from "@/lib/queries"
+import { useAdvisors, useAllStudents, useStudents } from "@/lib/queries"
+import { advisorProduct } from "@/lib/advisors"
 import { classYearOf, currentClassYear } from "@/lib/students"
 import type { Comment } from "@/lib/form-types"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
@@ -594,6 +596,25 @@ function rubricNavItem(title: string, url: string, pathname: string) {
   }
 }
 
+/** Thesis meetings: the class schedule, bookings and who's meeting. */
+function scheduleNavItem(pathname: string) {
+  return {
+    title: "Schedule",
+    url: "/schedule",
+    icon: <HugeiconsIcon icon={Calendar03Icon} strokeWidth={2} />,
+    isActive: pathname.startsWith("/schedule"),
+    items: [],
+  }
+}
+
+/** An advisor outside a student's work: their product's rubric, and the
+    meeting schedule for Business Thesis advisors. */
+function advisorNavItems(pathname: string, product: string | null) {
+  return product === "life-map"
+    ? [rubricNavItem("Rubric", "/life-map/rubric", pathname)]
+    : [rubricNavItem("Rubric", "/business-thesis/rubric", pathname), scheduleNavItem(pathname)]
+}
+
 /** Staff home: the rubric for each product this role can see. */
 function rubricNavItems(pathname: string, lifeMap: boolean) {
   return [
@@ -627,7 +648,8 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
         ]
       : []),
     {
-      title: "Business Thesis",
+      // Thesis supervisors have only this roster, so it's simply All Students.
+      title: access.lifeMap ? "Business Thesis" : "All Students",
       url: "/admin/business-thesis",
       icon: <HugeiconsIcon icon={BookOpen02Icon} strokeWidth={2} />,
       isActive: onBusiness,
@@ -637,6 +659,7 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
       })),
     },
     ...rubricNavItems(pathname, access.lifeMap),
+    scheduleNavItem(pathname),
     // Thesis supervisors never edit the templates.
     ...(access.templates
       ? [
@@ -839,16 +862,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     btCompleteSet: btReviewCounts.complete,
   }, studentList)
   const studentInfo = useStudentInfo(adminStudentId)
+  // Which product an advisor covers decides their rubric and schedule links.
+  const advisorsQuery = useAdvisors()
+  const advisorsId = (session?.user as Record<string, unknown> | undefined)?.advisors_id
+  const me = isAdvisor ? advisorsQuery.data?.find((a) => Number(a.id) === Number(advisorsId)) : undefined
+  const myProduct = me ? advisorProduct(me) : null
+  const items = isAdvisor && !adminStudentId ? advisorNavItems(pathname, myProduct) : navItems
   const publicPagesNav = !isReviewer ? buildStudentPublicPagesNav(ownStudentId) : null
 
   const isLifeMap = pathname.startsWith("/admin/life-map/") && adminStudentId
-
-  // Advisors work from their dashboard's student list, so they only get a
-  // sidebar inside one student's work. (After the hooks so the hook order
-  // stays stable.)
-  if (isAdvisor && !adminStudentId) {
-    return null
-  }
 
   return (
     <Sidebar
@@ -917,7 +939,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroup>
         )}
-        <NavMain items={navItems} hideLabel={!!adminStudentId} loading={sidebarLoading} />
+        <NavMain items={items} hideLabel={!!adminStudentId} loading={sidebarLoading && !(isAdvisor && !adminStudentId)} />
         {!isReviewer && (
           <SidebarGroup>
             <SidebarGroupLabel>Tools</SidebarGroupLabel>

@@ -19,6 +19,14 @@ import {
   type ThesisMeeting,
 } from "@/lib/thesis-meetings"
 import { relativeTime } from "@/lib/format-time"
+import { CLASS_MEETING, formatCalendarDate, type MeetingSession } from "@/lib/school-calendar"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -73,6 +81,7 @@ export function ThesisSchedule({
   showClassSchedule?: boolean
 } = {}) {
   const forAdvisor = advisorId != null
+  const [day, setDay] = useState<MeetingSession | null>(null)
   const calendarQuery = useSchoolCalendar()
   const meetingsQuery = useThesisMeetings()
   const advisorsQuery = useAdvisors()
@@ -140,7 +149,18 @@ export function ThesisSchedule({
 
   return (
     <div className="flex flex-col gap-6">
-      {showClassSchedule && <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} />}
+      {showClassSchedule && (
+        <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} onSelectDay={setDay} />
+      )}
+      <DaySheet
+        day={day}
+        onClose={() => setDay(null)}
+        meetings={meetings}
+        studentsByEmail={studentsByEmail}
+        loading={meetingsQuery.isPending}
+        configured={configured}
+        forAdvisor={forAdvisor}
+      />
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <BookingCard forAdvisor={forAdvisor} />
@@ -295,7 +315,6 @@ function IconTile({ icon }: { icon: typeof Calendar03Icon }) {
 
 /** Google's booking page, inline when it can be framed, else as a link. */
 function BookingCard({ forAdvisor }: { forAdvisor: boolean }) {
-  const embed = THESIS_BOOKING_URL ? bookingEmbedUrl(THESIS_BOOKING_URL) : null
   return (
     <Card>
       <CardHeader className="border-b">
@@ -312,28 +331,144 @@ function BookingCard({ forAdvisor }: { forAdvisor: boolean }) {
         </div>
       </CardHeader>
       <CardContent>
-        {embed ? (
-          <iframe
-            src={embed}
-            title="Book a thesis meeting"
-            className="h-[640px] w-full rounded-lg border-0"
-            loading="lazy"
-          />
-        ) : THESIS_BOOKING_URL ? (
-          <Button asChild>
-            <a href={THESIS_BOOKING_URL} target="_blank" rel="noopener noreferrer">
-              Open the booking page
-            </a>
-          </Button>
-        ) : (
-          <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-            {forAdvisor
-              ? "Booking isn’t open yet. SailFuture Academy staff are setting up the meeting times."
-              : "The booking page isn’t connected yet. Once the appointment schedule exists in Google Calendar, set its inline embed link as NEXT_PUBLIC_THESIS_BOOKING_URL in Vercel and redeploy."}
-          </p>
-        )}
+        <BookingEmbed forAdvisor={forAdvisor} />
       </CardContent>
     </Card>
+  )
+}
+
+/** Google's booking page, inline when it can be framed, else as a link. */
+function BookingEmbed({ forAdvisor, className }: { forAdvisor: boolean; className?: string }) {
+  const embed = THESIS_BOOKING_URL ? bookingEmbedUrl(THESIS_BOOKING_URL) : null
+  if (embed) {
+    return (
+      <iframe
+        src={embed}
+        title="Book a thesis meeting"
+        className={cn("h-[640px] w-full rounded-lg border-0", className)}
+        loading="lazy"
+      />
+    )
+  }
+  if (THESIS_BOOKING_URL) {
+    return (
+      <Button asChild>
+        <a href={THESIS_BOOKING_URL} target="_blank" rel="noopener noreferrer">
+          Open the booking page
+        </a>
+      </Button>
+    )
+  }
+  return (
+    <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
+      {forAdvisor
+        ? "Booking isn’t open yet. SailFuture Academy staff are setting up the meeting times."
+        : "The booking page isn’t connected yet. Once the appointment schedule exists in Google Calendar, set its inline embed link as NEXT_PUBLIC_THESIS_BOOKING_URL in Vercel and redeploy."}
+    </p>
+  )
+}
+
+/** The school's calendar date (YYYY-MM-DD) a meeting falls on. */
+const dayKey = (ms: number) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(ms))
+
+const clock = (ms: number) =>
+  new Date(ms).toLocaleTimeString("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+
+/**
+ * One class day: what's already booked on it, then the booking page so a
+ * supervisor or advisor can book a time without leaving the schedule.
+ */
+function DaySheet({
+  day,
+  onClose,
+  meetings,
+  studentsByEmail,
+  loading,
+  configured,
+  forAdvisor,
+}: {
+  day: MeetingSession | null
+  onClose: () => void
+  meetings: ThesisMeeting[]
+  studentsByEmail: Map<string, RosterStudent>
+  loading: boolean
+  configured: boolean
+  forAdvisor: boolean
+}) {
+  const booked = useMemo(
+    () =>
+      day
+        ? meetings.filter((m) => !m.canceled && dayKey(m.start) === day.date).sort((a, b) => a.start - b.start)
+        : [],
+    [day, meetings]
+  )
+  return (
+    <Sheet open={day !== null} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-xl">
+        <SheetHeader className="shrink-0 gap-1 border-b px-6 py-5 pr-12">
+          <SheetTitle className="text-lg font-semibold">
+            {day ? formatCalendarDate(day.date) : "Class day"}
+          </SheetTitle>
+          <SheetDescription>
+            {day?.session ?? "Class session"}, {CLASS_MEETING.startLabel} – {CLASS_MEETING.endLabel} Eastern.
+            {day?.status === "unknown" && " Not on the school calendar yet."}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+          <section>
+            <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+              Booked this day
+            </p>
+            {!configured ? (
+              <p className="text-muted-foreground mt-2 text-sm">
+                Bookings show here once the shared meetings calendar is connected.
+              </p>
+            ) : loading ? (
+              <div className="mt-2 space-y-2">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : booked.length === 0 ? (
+              <p className="text-muted-foreground mt-2 rounded-lg border border-dashed p-3 text-sm">
+                Nothing booked yet.
+              </p>
+            ) : (
+              <ul className="mt-2 divide-y overflow-hidden rounded-lg border">
+                {booked.map((m) => {
+                  const who = [...studentsByEmail.entries()]
+                    .filter(([email]) => meetingIncludes(m, email))
+                    .map(([, s]) => studentName(s))
+                  return (
+                    <li key={m.id} className="flex items-baseline gap-3 px-4 py-3">
+                      <span className="w-32 shrink-0 text-sm font-medium tabular-nums">
+                        {clock(m.start)} – {clock(m.end)}
+                      </span>
+                      <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
+                        {who.length ? who.join(", ") : m.title || "Thesis meeting"}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+          <section>
+            <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+              Book a time
+            </p>
+            <p className="text-muted-foreground mt-1 mb-3 text-sm">
+              Pick a time on this day, then add the student as a guest.
+            </p>
+            <BookingEmbed forAdvisor={forAdvisor} />
+          </section>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }
 
