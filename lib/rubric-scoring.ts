@@ -33,6 +33,8 @@ export interface ScoringCriterion {
   expectations?: string
   /** What each level looks like, in order: Not started to Exceeds expectations. */
   levels: [string, string, string, string]
+  /** Template group ids this row scores (0 = the ungrouped questions), from lib/rubric-groups.ts. */
+  groups?: number[]
 }
 
 export interface SectionScoring {

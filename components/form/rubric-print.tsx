@@ -86,7 +86,7 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
           <Button variant="outline" size="sm" asChild className="gap-2 bg-white">
             <a href={backHref}>
               <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
-              {single ? "Back to section" : "Back to rubric"}
+              {single ? "Back to section" : `Back to ${product.rubricName}`}
             </a>
           </Button>
           <p className="text-muted-foreground hidden text-xs sm:block">
@@ -124,7 +124,7 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
           <Sheet>
             <header className="border-b-2 border-gray-900 pb-5">
               <p className={LABEL}>
-                SailFuture Academy · {product.name} rubric · Section {all.indexOf(single) + 1} of {all.length}
+                SailFuture Academy · {product.rubricName} · Section Rubric {all.indexOf(single) + 1} of {all.length}
               </p>
               <h1 className="mt-2 text-[24pt] leading-[1.1] font-bold tracking-tight">{single.title}</h1>
               <p className="mt-2 text-[10pt] text-gray-500">
@@ -135,7 +135,7 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
               <RubricSectionBody section={single} tone="print" />
             </div>
             <footer className="mt-10 border-t border-gray-200 pt-3 text-[8.5pt] text-gray-400">
-              {product.name} Rubric · {single.title} · SailFuture Academy · {printedOn}
+              {product.rubricName} · {single.title} · SailFuture Academy · {printedOn}
             </footer>
           </Sheet>
         ) : (
@@ -143,7 +143,7 @@ export function RubricPrint({ product }: { product: RubricProduct }) {
             <Sheet>
               <header className="border-b-2 border-gray-900 pb-6">
                 <p className={LABEL}>SailFuture Academy · {product.name}</p>
-                <h1 className="mt-2 text-[28pt] leading-[1.1] font-bold tracking-tight">Rubric</h1>
+                <h1 className="mt-2 text-[28pt] leading-[1.1] font-bold tracking-tight">{product.rubricName}</h1>
                 <p className="mt-3 max-w-[5.5in] text-[11pt] leading-relaxed text-gray-700">
                   The {product.name} is built from {sections.length} sections. Each section is a major
                   component of the finished work. For every section, this rubric explains what it

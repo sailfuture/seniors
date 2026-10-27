@@ -429,7 +429,7 @@ export default function AdminStudentLifeMapOverviewPage({
           <Button variant="outline" size="sm" className="gap-2" asChild>
             <Link href="/life-map/rubric">
               <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
-              Rubric
+              Life Map Rubric
             </Link>
           </Button>
           <Button variant="outline" size="sm" className="gap-2" asChild>

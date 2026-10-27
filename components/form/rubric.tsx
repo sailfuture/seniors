@@ -17,12 +17,14 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
   BookOpen01Icon,
+  CheckListIcon,
   GridViewIcon,
   PrinterIcon,
   SquareLock02Icon,
 } from "@hugeicons/core-free-icons"
 import { Markdown } from "@/components/markdown"
 import type { SectionScoring } from "@/lib/rubric-scoring"
+import { criteriaForGroup } from "@/lib/rubric-groups"
 import { RubricScoringTable } from "@/components/form/rubric-scoring-table"
 import { cachedFetch } from "@/lib/cached-fetch"
 import type { FormApiConfig } from "@/lib/form-api-config"
@@ -39,6 +41,10 @@ export interface RubricProduct {
   apiConfig: FormApiConfig
   /** "Business Thesis" or "Life Map". */
   name: string
+  /** What the whole rubric is called: "Thesis Rubric" or "Life Map Rubric".
+      One section's part of it is its Section Rubric, and one group's rows
+      within that are its Criteria. */
+  rubricName: string
   /** Student route base, e.g. "/business-thesis". */
   basePath: string
   slug: (title: string) => string
@@ -163,7 +169,7 @@ export function useRubric(product: RubricProduct): { sections: RubricSection[]; 
   return { sections: rubric, loading }
 }
 
-/** Small outline button that opens a section's rubric (or the whole rubric). */
+/** Small outline button that opens a section's Section Rubric page. */
 export function RubricButton({
   href,
   muted = false,
@@ -185,9 +191,9 @@ export function RubricButton({
       )}
       onClick={(e) => e.stopPropagation()}
     >
-      <Link href={href} title="Rubric: what this section must cover">
+      <Link href={href} title="Section Rubric: what this section must cover">
         <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-3.5" />
-        Rubric
+        Section Rubric
       </Link>
     </Button>
   )
@@ -209,10 +215,10 @@ export function SectionRubricButton({ rubric, className }: { rubric: SectionRubr
         size="sm"
         className={cn("gap-2", className)}
         onClick={() => setOpen(true)}
-        title="Rubric: what this section must cover"
+        title="Section Rubric: what this section must cover"
       >
         <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
-        Rubric
+        Section Rubric
       </Button>
       {open && <SectionRubricSheet rubric={rubric} open onOpenChange={setOpen} />}
     </>
@@ -239,7 +245,7 @@ export function SectionRubricSheet({
       <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-2xl">
         <SheetHeader className="shrink-0 gap-1 border-b px-6 py-5 pr-12">
           <p className={LABEL}>
-            {product.name} rubric{index >= 0 && ` · Section ${index + 1} of ${sections.length}`}
+            Section Rubric{index >= 0 && ` · Section ${index + 1} of ${sections.length}`}
           </p>
           <SheetTitle className="text-lg leading-snug font-semibold">
             {section?.title ?? (loading ? "Loading…" : "Rubric")}
@@ -259,7 +265,7 @@ export function SectionRubricSheet({
             <Button variant="outline" size="sm" className="gap-2" asChild>
               <Link href={rubricHref(product, slug)}>
                 <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
-                Open full rubric
+                Open {product.rubricName}
               </Link>
             </Button>
           </div>
@@ -276,6 +282,105 @@ export function SectionRubricSheet({
             <RubricSectionBody section={section} levels={false} />
           ) : (
             <p className="text-muted-foreground text-sm">This section was not found in the template.</p>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+/**
+ * Button on a group card: opens just that group's Criteria, the rows of
+ * the Section Rubric that score this group. `groupId` null means the
+ * section's ungrouped questions.
+ */
+export function GroupCriteriaButton({
+  rubric,
+  groupId,
+  groupName,
+  className,
+}: {
+  rubric: SectionRubricRef
+  groupId: number | null
+  groupName?: string
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className={cn("gap-2", className)}
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen(true)
+        }}
+        title="Criteria: how this group is scored"
+      >
+        <HugeiconsIcon icon={CheckListIcon} strokeWidth={2} className="size-4" />
+        Criteria
+      </Button>
+      {open && (
+        <GroupCriteriaSheet rubric={rubric} groupId={groupId} groupName={groupName} onOpenChange={setOpen} />
+      )}
+    </>
+  )
+}
+
+function GroupCriteriaSheet({
+  rubric,
+  groupId,
+  groupName,
+  onOpenChange,
+}: {
+  rubric: SectionRubricRef
+  groupId: number | null
+  groupName?: string
+  onOpenChange: (open: boolean) => void
+}) {
+  const { product, slug } = rubric
+  const { sections, loading } = useRubric(product)
+  const section = sections.find((s) => s.slug === slug)
+  const criteria = section?.scoring ? criteriaForGroup(section.scoring, groupId) : null
+
+  return (
+    <Sheet open onOpenChange={onOpenChange}>
+      <SheetContent
+        className="flex flex-col gap-0 p-0 sm:max-w-3xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SheetHeader className="shrink-0 gap-1 border-b px-6 py-5 pr-12">
+          <p className={LABEL}>Criteria{section && ` · ${section.title}`}</p>
+          <SheetTitle className="text-lg leading-snug font-semibold">
+            {groupName ? `Criteria for ${groupName}` : section ? `Criteria for ${section.title}` : "Criteria"}
+          </SheetTitle>
+          <SheetDescription className="text-sm">
+            The rows of the {section?.title ?? "section"} Section Rubric that score this group, and
+            what each level looks like.
+          </SheetDescription>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-2" asChild>
+              <Link href={rubricHref(product, slug)}>
+                <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
+                Open Section Rubric
+              </Link>
+            </Button>
+          </div>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {loading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+          ) : criteria && criteria.criteria.length > 0 ? (
+            <RubricScoringTable scoring={criteria} />
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              No criteria are tied to this group yet. The Section Rubric has every row for the section.
+            </p>
           )}
         </div>
       </SheetContent>
@@ -444,13 +549,13 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
   if (slug && !current) {
     return (
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:p-6">
-        <h1 className="text-2xl font-bold">Rubric</h1>
+        <h1 className="text-2xl font-bold">{product.rubricName}</h1>
         <p className="text-muted-foreground">This section was not found. It may have been removed.</p>
         <div>
           <Button variant="outline" size="sm" asChild className="gap-2">
             <Link href={rubricHref(product)}>
               <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
-              Full rubric
+              {product.rubricName}
             </Link>
           </Button>
         </div>
@@ -461,9 +566,9 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 md:p-6">
       <div>
-        <p className={LABEL}>{product.name} rubric</p>
+        <p className={LABEL}>{current ? `${product.rubricName} · Section Rubric` : product.name}</p>
         <h1 className="mt-1 text-2xl font-bold">
-          {current ? current.title : `${product.name} Rubric`}
+          {current ? current.title : product.rubricName}
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
           {current

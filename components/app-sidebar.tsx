@@ -522,7 +522,7 @@ function buildStudentNav(
           badgeBlue: sum(readyReviewCounts),
           isLocked: false,
         },
-        { title: "Rubric", url: "/life-map/rubric", isLocked: false },
+        { title: "Life Map Rubric", url: "/life-map/rubric", isLocked: false },
         ...mapItems.map((s, i) => {
           const sec = sections.find((sec) => sec.section_title === s.title)
           return {
@@ -551,7 +551,7 @@ function buildStudentNav(
           badgeBlue: sum(btReadyReviewCounts),
           isLocked: false,
         },
-        { title: "Rubric", url: "/business-thesis/rubric", isLocked: false },
+        { title: "Thesis Rubric", url: "/business-thesis/rubric", isLocked: false },
         ...btItems.map((s, i) => {
           const sec = btSections.find((sc) => btTitleToSlug(sc.section_title) === s.slug)
           return {
@@ -611,15 +611,15 @@ function scheduleNavItem(pathname: string) {
     meeting schedule for Business Thesis advisors. */
 function advisorNavItems(pathname: string, product: string | null) {
   return product === "life-map"
-    ? [rubricNavItem("Rubric", "/life-map/rubric", pathname)]
-    : [rubricNavItem("Rubric", "/business-thesis/rubric", pathname), scheduleNavItem(pathname)]
+    ? [rubricNavItem("Life Map Rubric", "/life-map/rubric", pathname)]
+    : [rubricNavItem("Thesis Rubric", "/business-thesis/rubric", pathname), scheduleNavItem(pathname)]
 }
 
 /** Staff home: the rubric for each product this role can see. */
 function rubricNavItems(pathname: string, lifeMap: boolean) {
   return [
     ...(lifeMap ? [rubricNavItem("Life Map Rubric", "/life-map/rubric", pathname)] : []),
-    rubricNavItem(lifeMap ? "Business Thesis Rubric" : "Rubric", "/business-thesis/rubric", pathname),
+    rubricNavItem("Thesis Rubric", "/business-thesis/rubric", pathname),
   ]
 }
 
@@ -726,7 +726,7 @@ function getTeacherStudentNav(
         icon: <HugeiconsIcon icon={CheckListIcon} strokeWidth={2} />,
         isActive: pathname.endsWith("/review"),
       },
-      rubricNavItem("Rubric", "/life-map/rubric", pathname),
+      rubricNavItem("Life Map Rubric", "/life-map/rubric", pathname),
       {
         title: "Life Map",
         url: `/admin/life-map/${studentId}`,
@@ -757,7 +757,7 @@ function getTeacherStudentNav(
         icon: <HugeiconsIcon icon={CheckListIcon} strokeWidth={2} />,
         isActive: pathname.endsWith("/review"),
       },
-      rubricNavItem("Rubric", "/business-thesis/rubric", pathname),
+      rubricNavItem("Thesis Rubric", "/business-thesis/rubric", pathname),
       {
         title: "Business Thesis",
         url: `/admin/business-thesis/${studentId}`,

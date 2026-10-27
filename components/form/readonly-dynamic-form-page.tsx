@@ -67,7 +67,7 @@ import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
 import { dateTime, relativeTime as relativeFrom, toMillis } from "@/lib/format-time"
 import { markdownToPlainText } from "@/lib/markdown-text"
 import { Markdown } from "@/components/markdown"
-import { SectionRubricButton, type SectionRubricRef } from "./rubric"
+import { GroupCriteriaButton, type SectionRubricRef } from "./rubric"
 import { StatusCount } from "@/components/status-count"
 
 interface GptZeroResult {
@@ -1073,7 +1073,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               <Card className="overflow-hidden !pt-0 !gap-0">
                 {hasBadges && (
                   <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3 md:justify-end">
-                    {rubric && <SectionRubricButton rubric={rubric} className="h-8" />}
+                    {rubric && <GroupCriteriaButton rubric={rubric} groupId={null} className="h-8" />}
                     <div className="flex shrink-0 items-center gap-2">
                       <StatusCount kind="complete" count={completedCount} />
                       <StatusCount kind="ready" count={readyCount} />
@@ -1429,7 +1429,9 @@ function ReadonlyGroupCard({
             className="flex flex-wrap items-center gap-2 md:shrink-0 md:flex-nowrap md:justify-end"
             onClick={(e) => e.stopPropagation()}
           >
-            {rubric && <SectionRubricButton rubric={rubric} className="h-8" />}
+            {rubric && (
+              <GroupCriteriaButton rubric={rubric} groupId={group.id} groupName={group.group_name} className="h-8" />
+            )}
             <StatusCount kind="complete" count={completedCount} />
             <StatusCount kind="ready" count={readyCount} />
             <StatusCount kind="revision" count={revisionCount} />

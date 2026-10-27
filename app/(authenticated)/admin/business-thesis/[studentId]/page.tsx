@@ -441,7 +441,7 @@ export default function AdminStudentBusinessThesisOverviewPage({
           <Button variant="outline" size="sm" className="gap-2" asChild>
             <Link href="/business-thesis/rubric">
               <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} className="size-4" />
-              Rubric
+              Thesis Rubric
             </Link>
           </Button>
           <Button variant="outline" size="sm" className="gap-2" asChild>

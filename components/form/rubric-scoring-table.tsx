@@ -36,7 +36,7 @@ export function RubricScoringTable({
   if (print) {
     return (
       <div>
-        <p className={cn(LABEL, "text-gray-500")}>Rubric</p>
+        <p className={cn(LABEL, "text-gray-500")}>Criteria</p>
         {intro}
         <table className="mt-2.5 w-full table-fixed border-collapse text-left text-[8.5pt] leading-snug">
           <thead>
@@ -89,7 +89,7 @@ export function RubricScoringTable({
 
   return (
     <div className="@container">
-      <p className={LABEL}>Rubric</p>
+      <p className={LABEL}>Criteria</p>
       {intro}
 
       {/* Wide: a real table, one row per objective. */}
