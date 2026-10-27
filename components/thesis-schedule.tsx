@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Calendar03Icon, CalendarAdd01Icon, UserMultiple02Icon } from "@hugeicons/core-free-icons"
@@ -82,6 +83,7 @@ export function ThesisSchedule({
 } = {}) {
   const forAdvisor = advisorId != null
   const [day, setDay] = useState<MeetingSession | null>(null)
+  const [openStudentId, setOpenStudentId] = useState<string | null>(null)
   const calendarQuery = useSchoolCalendar()
   const meetingsQuery = useThesisMeetings()
   const advisorsQuery = useAdvisors()
@@ -141,7 +143,7 @@ export function ThesisSchedule({
     () =>
       meetings.filter(
         (m) => !m.canceled && m.start > now && m.start < now + UPCOMING_DAYS * DAY_MS
-      ),
+      ).sort((a, b) => a.start - b.start),
     [meetings, now]
   )
 
@@ -162,17 +164,23 @@ export function ThesisSchedule({
         forAdvisor={forAdvisor}
       />
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <BookingCard forAdvisor={forAdvisor} />
-        <UpcomingCard
-          forAdvisor={forAdvisor}
-          meetings={upcoming}
-          studentsByEmail={studentsByEmail}
-          loading={meetingsQuery.isPending}
-          configured={configured}
-          failed={Boolean(data && data.configured && !data.ok)}
-        />
-      </div>
+      <BookingCard forAdvisor={forAdvisor} />
+      <UpcomingCard
+        forAdvisor={forAdvisor}
+        meetings={upcoming}
+        rows={rows}
+        loading={meetingsQuery.isPending}
+        configured={configured}
+        failed={Boolean(data && data.configured && !data.ok)}
+        onOpenStudent={setOpenStudentId}
+      />
+      <StudentMeetingsSheet
+        row={rows?.find((r) => String(r.student.id) === openStudentId) ?? null}
+        meetings={meetings}
+        now={now}
+        forAdvisor={forAdvisor}
+        onClose={() => setOpenStudentId(null)}
+      />
 
       <Card>
         <CardHeader className="border-b">
@@ -226,7 +234,13 @@ export function ThesisSchedule({
               </TableHeader>
               <TableBody>
                 {rows.map((r) => (
-                  <MeetingRow key={r.student.id} row={r} now={now} forAdvisor={forAdvisor} />
+                  <MeetingRow
+                    key={r.student.id}
+                    row={r}
+                    now={now}
+                    forAdvisor={forAdvisor}
+                    onOpen={() => setOpenStudentId(String(r.student.id))}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -253,12 +267,40 @@ function statusOf(r: StudentRow, now: number): { label: string; tone: "warn" | "
   return { label: "On track", tone: "ok" }
 }
 
-function MeetingRow({ row, now, forAdvisor }: { row: StudentRow; now: number; forAdvisor: boolean }) {
+/** Table rows that open a sheet: click, or Enter/Space when focused. */
+function rowButtonProps(open: () => void) {
+  return {
+    role: "button" as const,
+    tabIndex: 0,
+    onClick: open,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault()
+        open()
+      }
+    },
+    className: "focus-visible:bg-muted/60 cursor-pointer outline-none",
+  }
+}
+
+const initialsOf = (s: RosterStudent) => `${s.firstName.charAt(0)}${s.lastName.charAt(0)}`.toUpperCase()
+
+function MeetingRow({
+  row,
+  now,
+  forAdvisor,
+  onOpen,
+}: {
+  row: StudentRow
+  now: number
+  forAdvisor: boolean
+  onOpen: () => void
+}) {
   const { student, advisors, meetings: m } = row
   const status = statusOf(row, now)
-  const initials = `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase()
+  const initials = initialsOf(student)
   return (
-    <TableRow>
+    <TableRow {...rowButtonProps(onOpen)} aria-label={`${studentName(student)}: meetings`}>
       <TableCell className="pl-6">
         <div className="flex items-center gap-2.5">
           <Avatar className="size-7">
@@ -466,20 +508,26 @@ function DaySheet({
   )
 }
 
+/**
+ * What's booked in the next two weeks, as a table: when, who and with which
+ * advisor. A row with a student on it opens that student's meetings.
+ */
 function UpcomingCard({
   forAdvisor,
   meetings,
-  studentsByEmail,
+  rows,
   loading,
   configured,
   failed,
+  onOpenStudent,
 }: {
   forAdvisor: boolean
   meetings: ThesisMeeting[]
-  studentsByEmail: Map<string, RosterStudent>
+  rows: StudentRow[] | null
   loading: boolean
   configured: boolean
   failed: boolean
+  onOpenStudent: (studentId: string) => void
 }) {
   return (
     <Card>
@@ -488,50 +536,239 @@ function UpcomingCard({
           <IconTile icon={Calendar03Icon} />
           <div>
             <CardTitle>Booked in the next two weeks</CardTitle>
-            <CardDescription>From the shared Senior Thesis Meetings calendar.</CardDescription>
+            <CardDescription>
+              From the shared Senior Thesis Meetings calendar. Select a meeting to see that
+              student&rsquo;s meetings.
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-0">
         {!configured ? (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground px-6 text-sm">
             {forAdvisor
               ? "Bookings show here once the shared meetings calendar is connected."
               : "Connect the meetings calendar to list bookings here. The steps are under Meetings by student."}
           </p>
         ) : loading ? (
-          <div className="space-y-2">
+          <div className="space-y-2 px-6">
             {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
+              <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
         ) : failed ? (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground px-6 text-sm">
             The meetings calendar couldn&rsquo;t be read just now.
           </p>
         ) : meetings.length === 0 ? (
-          <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
+          <p className="text-muted-foreground mx-6 rounded-lg border border-dashed p-3 text-sm">
             Nothing booked in the next two weeks.
           </p>
         ) : (
-          <ul className="flex flex-col divide-y">
-            {meetings.map((m) => {
-              const who = [...studentsByEmail.entries()]
-                .filter(([email]) => meetingIncludes(m, email))
-                .map(([, s]) => studentName(s))
-              return (
-                <li key={m.id} className="flex flex-col gap-0.5 py-2.5 first:pt-0 last:pb-0">
-                  <span className="text-sm font-medium">{formatMeetingTime(m.start)}</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {who.length ? who.join(", ") : m.title || "Thesis meeting"}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-6">Date</TableHead>
+                <TableHead>Time</TableHead>
+                <TableHead>Student</TableHead>
+                {!forAdvisor && <TableHead className="pr-6">Advisor</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {meetings.map((m) => {
+                const who = (rows ?? []).filter((r) => meetingIncludes(m, r.student.studentEmail))
+                const first = who[0]
+                return (
+                  <TableRow
+                    key={m.id}
+                    {...(first ? rowButtonProps(() => onOpenStudent(String(first.student.id))) : {})}
+                  >
+                    <TableCell className="pl-6 font-medium">{formatDay(m.start)}</TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">
+                      {clock(m.start)} – {clock(m.end)}
+                    </TableCell>
+                    <TableCell>
+                      {who.length ? (
+                        <div className="flex items-center gap-2.5">
+                          <Avatar className="size-7">
+                            <AvatarImage src={first!.student.profileImage || undefined} alt="" />
+                            <AvatarFallback className="text-[10px]">{initialsOf(first!.student)}</AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium">{who.map((r) => studentName(r.student)).join(", ")}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">{m.title || "Thesis meeting"}</span>
+                      )}
+                    </TableCell>
+                    {!forAdvisor && (
+                      <TableCell className="text-muted-foreground pr-6">
+                        {first?.advisors.length ? first.advisors.map(advisorName).join(", ") : "–"}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** "Thu, Oct 29" in the school's zone. */
+const formatDay = (ms: number) =>
+  new Date(ms).toLocaleDateString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  })
+
+type MeetingState = "Held" | "Upcoming" | "Canceled" | "Declined"
+
+function meetingState(m: ThesisMeeting, studentEmail: string, now: number): MeetingState {
+  if (m.canceled) return "Canceled"
+  if (m.attendees.some((a) => a.email === studentEmail && a.response === "DECLINED")) return "Declined"
+  return m.start > now ? "Upcoming" : "Held"
+}
+
+/**
+ * One student's thesis meetings: totals, every meeting on the shared
+ * calendar (upcoming first, then past), and links into their thesis.
+ */
+function StudentMeetingsSheet({
+  row,
+  meetings,
+  now,
+  forAdvisor,
+  onClose,
+}: {
+  row: StudentRow | null
+  meetings: ThesisMeeting[]
+  now: number
+  forAdvisor: boolean
+  onClose: () => void
+}) {
+  const student = row?.student
+  const email = (student?.studentEmail ?? "").trim().toLowerCase()
+  const list = useMemo(() => {
+    if (!email) return []
+    const mine = meetings.filter(
+      (m) =>
+        m.mentions.includes(email) || m.attendees.some((a) => a.email === email)
+    )
+    const upcoming = mine.filter((m) => m.start > now).sort((a, b) => a.start - b.start)
+    const past = mine.filter((m) => m.start <= now).sort((a, b) => b.start - a.start)
+    return [...upcoming, ...past]
+  }, [meetings, email, now])
+  const m = row?.meetings
+  const id = student ? String(student.id) : ""
+
+  return (
+    <Sheet open={row !== null} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-2xl">
+        <SheetHeader className="shrink-0 gap-3 border-b px-6 py-5 pr-12">
+          <div className="flex items-center gap-3">
+            <Avatar className="size-11">
+              <AvatarImage src={student?.profileImage || undefined} alt="" />
+              <AvatarFallback>{student ? initialsOf(student) : ""}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <SheetTitle className="truncate text-lg font-semibold">
+                {student ? studentName(student) : "Student"}
+              </SheetTitle>
+              <SheetDescription className="truncate">
+                {forAdvisor
+                  ? "Your thesis meetings with this student"
+                  : row?.advisors.length
+                    ? `Advisor: ${row.advisors.map(advisorName).join(", ")}`
+                    : "No thesis advisor yet"}
+              </SheetDescription>
+            </div>
+          </div>
+          {student && (
+            <div className="flex flex-wrap gap-2">
+              <Button asChild size="sm">
+                <Link href={`/admin/business-thesis/${id}`}>Open Business Thesis</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/admin/business-thesis/${id}/review`}>Review</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <a href={`/public/business-thesis/${id}`} target="_blank" rel="noopener noreferrer">
+                  Public page
+                </a>
+              </Button>
+            </div>
+          )}
+        </SheetHeader>
+        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          {m && (
+            <div className="grid grid-cols-3 gap-3">
+              <SheetStat label="Met" value={m.held.length} />
+              <SheetStat label="Upcoming" value={m.upcoming.length} />
+              <SheetStat label="Canceled" value={m.canceled} />
+            </div>
+          )}
+          {list.length === 0 ? (
+            <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
+              No thesis meetings on the shared calendar yet.
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableHead className="pl-4">Date</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Meeting</TableHead>
+                    <TableHead className="pr-4">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {list.map((mt) => {
+                    const state = meetingState(mt, email, now)
+                    return (
+                      <TableRow key={mt.id}>
+                        <TableCell className="pl-4 font-medium">{formatDay(mt.start)}</TableCell>
+                        <TableCell className="text-muted-foreground tabular-nums">
+                          {clock(mt.start)} – {clock(mt.end)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground max-w-[14rem] truncate">
+                          {mt.title || "Thesis meeting"}
+                        </TableCell>
+                        <TableCell className="pr-4">
+                          <span
+                            className={cn(
+                              "text-sm",
+                              state === "Held" && "font-medium",
+                              state === "Upcoming" && "text-primary font-medium",
+                              (state === "Canceled" || state === "Declined") && "text-muted-foreground line-through"
+                            )}
+                          >
+                            {state}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function SheetStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border px-3 py-2">
+      <p className="text-muted-foreground text-xs font-medium">{label}</p>
+      <p className="text-xl font-semibold tabular-nums">{value}</p>
+    </div>
   )
 }
 
