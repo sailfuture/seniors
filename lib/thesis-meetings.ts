@@ -127,8 +127,19 @@ export function formatMeetingTime(ms: number): string {
 }
 
 /**
- * Google's inline embed needs the schedule URL with `gv=true`; a short
- * calendar.app.google link only works as a plain link, not in a frame.
+ * The booking link as saved, cleaned up: the whole embed snippet
+ * (<iframe src="…">) works too, so whatever was copied from Google is fine.
+ */
+export function bookingSourceUrl(raw: string): string {
+  const text = raw.trim()
+  const src = text.match(/src\s*=\s*["']([^"']+)["']/i)?.[1]
+  return (src ?? text).replace(/&amp;/g, "&").trim()
+}
+
+/**
+ * Google's inline embed needs the schedule URL with `gv=true`. A short
+ * calendar.app.google link can't be framed; /api/thesis-meetings/booking
+ * follows it to the full schedule URL.
  */
 export function bookingEmbedUrl(url: string): string | null {
   try {

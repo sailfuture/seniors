@@ -872,11 +872,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const isLifeMap = pathname.startsWith("/admin/life-map/") && adminStudentId
 
+  // Advisors, students and thesis supervisors have a home page; inside a
+  // student's work it stays at the very top, above the student's details.
+  const hasHome = !isStaff || isSupervisor
+  const homeLink = (
+    <SidebarGroup className="pb-0">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton asChild tooltip="Home" isActive={pathname === "/dashboard"}>
+            <Link href="/dashboard">
+              <HugeiconsIcon icon={Home09Icon} strokeWidth={2} />
+              <span className="font-semibold">Home</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarGroup>
+  )
+
   return (
     <Sidebar
       className="top-(--header-height) h-[calc(100svh-var(--header-height))]!"
       {...props}
     >
+      {hasHome && adminStudentId && <div className="shrink-0">{homeLink}</div>}
       {/* A student's header holds its place from the first paint (skeleton
           until the roster arrives), so the menu below never jumps down. */}
       {adminStudentId && (
@@ -911,21 +930,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </>
       )}
       <SidebarContent>
-        {(!isStaff || isSupervisor) && !adminStudentId && (
-          <SidebarGroup className="pb-0">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Home" isActive={pathname === "/dashboard"}>
-                  <Link href="/dashboard">
-                    <HugeiconsIcon icon={Home09Icon} strokeWidth={2} />
-                    <span className="font-semibold">Home</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroup>
-        )}
-        {adminStudentId && (
+        {hasHome && !adminStudentId && homeLink}
+        {adminStudentId && !isAdvisor && (
           <SidebarGroup className="pb-0">
             <SidebarMenu>
               <SidebarMenuItem>

@@ -12,6 +12,7 @@ import { useAdvisorAssignments, useAdvisors, useStudents } from "@/lib/queries"
 import {
   THESIS_BOOKING_URL,
   bookingEmbedUrl,
+  bookingSourceUrl,
   fetchThesisMeetings,
   formatMeetingTime,
   meetingIncludes,
@@ -374,8 +375,33 @@ function BookingCard({ forAdvisor }: { forAdvisor: boolean }) {
 }
 
 /** Google's booking page, inline when it can be framed, else as a link. */
+/** The saved booking link, cleaned up, and whether it can be framed as is. */
+const BOOKING_SOURCE = bookingSourceUrl(THESIS_BOOKING_URL)
+const DIRECT_EMBED = BOOKING_SOURCE ? bookingEmbedUrl(BOOKING_SOURCE) : null
+
+/**
+ * The embeddable booking URL. A short link is resolved on the server to the
+ * full appointments page, once per session.
+ */
+function useBookingEmbed() {
+  return useQuery({
+    queryKey: ["thesis-booking-embed"],
+    enabled: Boolean(BOOKING_SOURCE) && !DIRECT_EMBED,
+    staleTime: Infinity,
+    queryFn: async () => {
+      const res = await fetch("/api/thesis-meetings/booking")
+      const body = (await res.json().catch(() => null)) as { embedUrl?: string | null } | null
+      return body?.embedUrl ?? null
+    },
+  })
+}
+
 function BookingEmbed({ forAdvisor, className }: { forAdvisor: boolean; className?: string }) {
-  const embed = THESIS_BOOKING_URL ? bookingEmbedUrl(THESIS_BOOKING_URL) : null
+  const resolved = useBookingEmbed()
+  const embed = DIRECT_EMBED ?? resolved.data ?? null
+  if (BOOKING_SOURCE && !embed && resolved.isPending) {
+    return <Skeleton className={cn("h-[640px] w-full rounded-lg", className)} />
+  }
   if (embed) {
     return (
       <iframe
@@ -386,10 +412,11 @@ function BookingEmbed({ forAdvisor, className }: { forAdvisor: boolean; classNam
       />
     )
   }
-  if (THESIS_BOOKING_URL) {
+  if (BOOKING_SOURCE) {
+    // Only when Google's page can't be found to frame at all.
     return (
       <Button asChild>
-        <a href={THESIS_BOOKING_URL} target="_blank" rel="noopener noreferrer">
+        <a href={BOOKING_SOURCE} target="_blank" rel="noopener noreferrer">
           Open the booking page
         </a>
       </Button>

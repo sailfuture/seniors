@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { Fragment, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -28,6 +28,28 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+
+/** The sessions grouped by the week (Monday to Sunday) they fall in. */
+function weeksOf(sessions: MeetingSession[]): { start: string; label: string; sessions: MeetingSession[] }[] {
+  const weeks: { start: string; label: string; sessions: MeetingSession[] }[] = []
+  for (const session of sessions) {
+    const [y, m, d] = session.date.split("-").map(Number)
+    const day = new Date(Date.UTC(y, m - 1, d))
+    day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7))
+    const start = day.toISOString().slice(0, 10)
+    let week = weeks[weeks.length - 1]
+    if (!week || week.start !== start) {
+      week = {
+        start,
+        label: day.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }),
+        sessions: [],
+      }
+      weeks.push(week)
+    }
+    week.sessions.push(session)
+  }
+  return weeks
+}
 
 /** How far ahead the schedule table looks. */
 const OUTLOOK_WEEKS = 8
@@ -117,7 +139,17 @@ export function ScheduleCard({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {outlook.sessions.map((session) => {
+                  {weeksOf(outlook.sessions).map((week) => (
+                    <Fragment key={week.start}>
+                      <TableRow className="bg-muted/30 hover:bg-muted/30">
+                        <TableCell
+                          colSpan={3}
+                          className="text-muted-foreground py-1.5 pl-4 text-[11px] font-semibold tracking-wide uppercase"
+                        >
+                          Week of {week.label}
+                        </TableCell>
+                      </TableRow>
+                      {week.sessions.map((session) => {
                     const isNext = outlook.nextSession?.date === session.date
                     const open = onSelectDay && session.status !== "off" ? () => onSelectDay(session) : undefined
                     return (
@@ -188,6 +220,8 @@ export function ScheduleCard({
                       </TableRow>
                     )
                   })}
+                    </Fragment>
+                  ))}
                 </TableBody>
               </Table>
             </div>

@@ -459,29 +459,33 @@ export function RubricSectionBody({
     </>
   )
   const hasOverview = hasAbout || section.requirements.length > 0
-  const inCard = card && !print && (hasOverview || !!header)
+  const scoring = section.scoring ? (
+    <RubricScoringTable scoring={section.scoring} print={print} levels={levels} />
+  ) : (
+    section.components.length === 0 && (
+      <p className={cn("text-muted-foreground text-sm", print && "text-gray-500")}>
+        No questions have been published in this section yet.
+      </p>
+    )
+  )
+
+  // On the rubric page the whole section, criteria included, is one card.
+  if (card && !print) {
+    return (
+      <Card className="gap-0 py-0">
+        {header && <CardHeader className="border-b py-4">{header}</CardHeader>}
+        <CardContent className="space-y-6 py-5">
+          {hasOverview && <div className="space-y-4">{overview}</div>}
+          {scoring}
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <div className={cn("space-y-6", print && "space-y-5")}>
-      {inCard ? (
-        <Card className="gap-0 py-0">
-          {header && (
-            <CardHeader className={cn("py-4", hasOverview && "border-b")}>{header}</CardHeader>
-          )}
-          {hasOverview && <CardContent className="space-y-4 py-4">{overview}</CardContent>}
-        </Card>
-      ) : (
-        overview
-      )}
-
-      {section.scoring ? (
-        <RubricScoringTable scoring={section.scoring} print={print} levels={levels} />
-      ) : (
-        section.components.length === 0 && (
-          <p className={cn("text-muted-foreground text-sm", print && "text-gray-500")}>
-            No questions have been published in this section yet.
-          </p>
-        )
-      )}
+      {overview}
+      {scoring}
     </div>
   )
 }
@@ -530,7 +534,6 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
   const slug = activeRubricSlug(pathname, product, routeSlug)
   const current = slug ? sections.find((s) => s.slug === slug) : undefined
   const shown = current ? [current] : sections
-  const backHref = current ? `${product.basePath}/${current.slug}` : product.basePath
 
   if (loading) {
     return (
@@ -575,13 +578,7 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
             ? `What this section must cover and how it is scored. ${describeRubricSection(current)}.`
             : `Each section is a major component of the ${product.name}. For every section, what it must cover and how it is scored from 1 to 4.`}
         </p>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <Button variant="outline" size="sm" asChild className="gap-2">
-            <Link href={backHref}>
-              <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
-              {current ? "Back to section" : "Back"}
-            </Link>
-          </Button>
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
           <Button variant="outline" size="sm" asChild className="gap-2">
             <a href={rubricPrintHref(product)} target="_blank" rel="noopener noreferrer">
               <HugeiconsIcon icon={PrinterIcon} strokeWidth={2} className="size-4" />
