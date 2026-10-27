@@ -183,7 +183,7 @@ export function ThesisSchedule({
               <CardDescription>
                 {forAdvisor
                   ? "Thesis meetings on the shared calendar with each student you advise: how many have happened, and the last and next one."
-                  : "Every senior’s thesis meetings from the shared calendar: how many have happened, the last and next one, and whether their advisor was on the invitation."}
+                  : "Every senior’s thesis meetings from the shared calendar: how many have happened, and the last and next one."}
               </CardDescription>
             </div>
           </div>
@@ -219,7 +219,6 @@ export function ThesisSchedule({
                   <TableHead className="pl-6">Student</TableHead>
                   {!forAdvisor && <TableHead>Advisor</TableHead>}
                   <TableHead className="text-right">Met</TableHead>
-                  {!forAdvisor && <TableHead>Advisor on invite</TableHead>}
                   <TableHead>Last meeting</TableHead>
                   <TableHead>Next meeting</TableHead>
                   <TableHead className="pr-6">Status</TableHead>
@@ -275,11 +274,6 @@ function MeetingRow({ row, now, forAdvisor }: { row: StudentRow; now: number; fo
         </TableCell>
       )}
       <TableCell className="text-right tabular-nums">{m?.held.length ?? "–"}</TableCell>
-      {!forAdvisor && (
-        <TableCell className="text-muted-foreground tabular-nums">
-          {m && m.held.length > 0 ? `${m.withAdvisor} of ${m.held.length}` : "–"}
-        </TableCell>
-      )}
       <TableCell className="text-muted-foreground">
         {m?.last ? (
           <span title={formatMeetingTime(m.last.start)}>{relativeTime(m.last.start, now)}</span>
