@@ -9,6 +9,7 @@ import {
   ArrowTurnBackwardIcon,
   BookOpen02Icon,
   Clock01Icon,
+  Login01Icon,
   UserGroupIcon,
   UserQuestion01Icon,
   UserWarning01Icon,
@@ -683,25 +684,28 @@ function AdvisorCard({
             </CardDescription>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        {/* A rule under the name, then the advisor's status as badges in the
+            same style as the review counts beside them. */}
+        <div className="-mx-4 mt-3 flex flex-wrap items-center gap-1.5 border-t px-4 pt-3">
           {signInLoading ? (
-            <Skeleton className="h-3.5 w-28" />
+            <Skeleton className="h-7 w-36 rounded-lg" />
           ) : (
             signIn && (
-              <span className="inline-flex items-center gap-1.5">
-                <span
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    signIn.ok ? "bg-emerald-500" : "bg-amber-500"
-                  )}
+              <span
+                className={cn(MetaBadgeClass, !signIn.ok && "text-amber-700")}
+                title={signIn.label}
+              >
+                <HugeiconsIcon
+                  icon={Login01Icon}
+                  strokeWidth={2}
+                  className={cn("size-4", signIn.ok ? "text-emerald-600" : "text-amber-500")}
                 />
-                <span className={signIn.ok ? "text-muted-foreground" : "text-amber-700"}>
-                  {signIn.label}
-                </span>
+                {signIn.label}
               </span>
             )
           )}
-          <span className="text-muted-foreground">
+          <span className={MetaBadgeClass}>
+            <HugeiconsIcon icon={UserGroupIcon} strokeWidth={2} className="text-muted-foreground size-4" />
             {students.length} student{students.length === 1 ? "" : "s"}
           </span>
           {progress && (pending > 0 || revisions > 0) && (
@@ -721,7 +725,7 @@ function AdvisorCard({
             </Button>
           </div>
         ) : (
-          <ul className="-mx-2 flex flex-col">
+          <ul className="flex flex-col gap-2">
             {students.map((s) => (
               <li key={s.id}>
                 <StudentRow student={s} />
@@ -734,11 +738,16 @@ function AdvisorCard({
   )
 }
 
+/** Matches StatusCount's small size, so every badge in the header lines up. */
+const MetaBadgeClass =
+  "bg-background inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold"
+
+/** Each student is a button into their thesis review. */
 function StudentRow({ student }: { student: RosterStudent }) {
   return (
     <Link
       href={reviewHref(student.id)}
-      className="hover:bg-muted/60 group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors"
+      className="bg-background hover:bg-muted/60 focus-visible:ring-ring/50 group flex items-center gap-3 rounded-lg border px-3 py-2 shadow-xs transition-colors outline-none focus-visible:ring-[3px]"
     >
       <Avatar className="size-8">
         <AvatarImage src={student.profileImage || undefined} alt="" />
@@ -748,7 +757,7 @@ function StudentRow({ student }: { student: RosterStudent }) {
       <HugeiconsIcon
         icon={ArrowRight01Icon}
         strokeWidth={2}
-        className="text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100"
+        className="text-muted-foreground group-hover:text-foreground size-4 shrink-0 transition-colors"
       />
     </Link>
   )

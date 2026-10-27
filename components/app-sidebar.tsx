@@ -21,6 +21,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  BookOpen01Icon,
   BookOpen02Icon,
   MapsIcon,
   Link01Icon,
@@ -519,6 +520,7 @@ function buildStudentNav(
           badgeBlue: sum(readyReviewCounts),
           isLocked: false,
         },
+        { title: "Rubric", url: "/life-map/rubric", isLocked: false },
         ...mapItems.map((s, i) => {
           const sec = sections.find((sec) => sec.section_title === s.title)
           return {
@@ -547,6 +549,7 @@ function buildStudentNav(
           badgeBlue: sum(btReadyReviewCounts),
           isLocked: false,
         },
+        { title: "Rubric", url: "/business-thesis/rubric", isLocked: false },
         ...btItems.map((s, i) => {
           const sec = btSections.find((sc) => btTitleToSlug(sc.section_title) === s.slug)
           return {
@@ -578,6 +581,25 @@ interface StaffNavAccess {
   users: boolean
   /** Admins see staff and advisors ("Users"); supervisors only advisors. */
   staff: boolean
+}
+
+/** A top-level link to a product's rubric. */
+function rubricNavItem(title: string, url: string, pathname: string) {
+  return {
+    title,
+    url,
+    icon: <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} />,
+    isActive: pathname.startsWith(url),
+    items: [],
+  }
+}
+
+/** Staff home: the rubric for each product this role can see. */
+function rubricNavItems(pathname: string, lifeMap: boolean) {
+  return [
+    ...(lifeMap ? [rubricNavItem("Life Map Rubric", "/life-map/rubric", pathname)] : []),
+    rubricNavItem(lifeMap ? "Business Thesis Rubric" : "Rubric", "/business-thesis/rubric", pathname),
+  ]
 }
 
 function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThesisSection[], pathname: string, students: StudentListItem[], access: StaffNavAccess) {
@@ -614,6 +636,7 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
         url: `/admin/business-thesis/${s.id}`,
       })),
     },
+    ...rubricNavItems(pathname, access.lifeMap),
     // Thesis supervisors never edit the templates.
     ...(access.templates
       ? [
@@ -680,6 +703,7 @@ function getTeacherStudentNav(
         icon: <HugeiconsIcon icon={CheckListIcon} strokeWidth={2} />,
         isActive: pathname.endsWith("/review"),
       },
+      rubricNavItem("Rubric", "/life-map/rubric", pathname),
       {
         title: "Life Map",
         url: `/admin/life-map/${studentId}`,
@@ -710,6 +734,7 @@ function getTeacherStudentNav(
         icon: <HugeiconsIcon icon={CheckListIcon} strokeWidth={2} />,
         isActive: pathname.endsWith("/review"),
       },
+      rubricNavItem("Rubric", "/business-thesis/rubric", pathname),
       {
         title: "Business Thesis",
         url: `/admin/business-thesis/${studentId}`,
