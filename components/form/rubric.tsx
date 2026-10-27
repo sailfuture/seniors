@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Sheet,
@@ -16,6 +17,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
   BookOpen01Icon,
+  GridViewIcon,
   PrinterIcon,
   SquareLock02Icon,
 } from "@hugeicons/core-free-icons"
@@ -291,17 +293,23 @@ export function RubricSectionBody({
   section,
   tone = "screen",
   levels = true,
+  card = false,
+  header,
 }: {
   section: RubricSection
   tone?: "screen" | "print"
   /** Off in the section slide-over: criteria and their overviews, no 1–4 levels. */
   levels?: boolean
+  /** On the rubric page: the overview (and `header`) sit in a card. */
+  card?: boolean
+  /** The section's title block, shown as the card's header. */
+  header?: React.ReactNode
 }) {
   const print = tone === "print"
   const summary = section.scoring?.summary
   const hasAbout = !!section.description?.trim() || !!summary
-  return (
-    <div className={cn("space-y-6", print && "space-y-5")}>
+  const overview = (
+    <>
       {hasAbout && (
         <div data-keep>
           <p className={cn(LABEL, print && "text-gray-500")}>About this section</p>
@@ -342,6 +350,22 @@ export function RubricSectionBody({
             ))}
           </ul>
         </div>
+      )}
+    </>
+  )
+  const hasOverview = hasAbout || section.requirements.length > 0
+  const inCard = card && !print && (hasOverview || !!header)
+  return (
+    <div className={cn("space-y-6", print && "space-y-5")}>
+      {inCard ? (
+        <Card className="gap-0 py-0">
+          {header && (
+            <CardHeader className={cn("py-4", hasOverview && "border-b")}>{header}</CardHeader>
+          )}
+          {hasOverview && <CardContent className="space-y-4 py-4">{overview}</CardContent>}
+        </Card>
+      ) : (
+        overview
       )}
 
       {section.scoring ? (
@@ -463,40 +487,20 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
       </div>
 
       {/* Section switcher */}
-      <nav aria-label="Sections" className="flex flex-wrap gap-1.5">
-        <a
-          href={rubricHref(product)}
-          onClick={switchSection}
-          aria-current={current ? undefined : "page"}
-          className={cn(
-            "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
-            current ? "text-muted-foreground hover:bg-accent hover:text-foreground" : "bg-primary text-primary-foreground border-primary"
-          )}
-        >
-          All sections
-        </a>
-        {sections.map((s) => {
-          const active = current?.id === s.id
-          return (
-            <a
-              key={s.id}
-              href={rubricHref(product, s.slug)}
-              onClick={switchSection}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
-                active
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : s.locked
-                    ? "text-muted-foreground/60 hover:bg-accent hover:text-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              )}
-            >
-              {s.locked && <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="size-3" />}
-              {s.title}
-            </a>
-          )
-        })}
+      <nav aria-label="Sections" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <SectionButton href={rubricHref(product)} active={!current} label="All sections" marker={
+          <HugeiconsIcon icon={GridViewIcon} strokeWidth={2} className="size-4" />
+        } />
+        {sections.map((s, i) => (
+          <SectionButton
+            key={s.id}
+            href={rubricHref(product, s.slug)}
+            active={current?.id === s.id}
+            label={s.title}
+            marker={i + 1}
+            locked={s.locked}
+          />
+        ))}
       </nav>
 
       {shown.length === 0 ? (
@@ -504,32 +508,79 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
       ) : (
         <div className="space-y-10">
           {shown.map((section, index) => (
-            <section key={section.id} className="space-y-4">
-              {!current && (
-                <div className="flex items-start gap-3 border-b pb-3">
-                  <span className="bg-primary/10 text-primary mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold tabular-nums">
-                    {index + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-lg leading-snug font-semibold">{section.title}</h2>
-                      {section.locked && (
-                        <span className="text-muted-foreground inline-flex items-center gap-1 text-[11px]">
-                          <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="size-3" />
-                          Locked
-                        </span>
-                      )}
+            <section key={section.id}>
+              <RubricSectionBody
+                section={section}
+                card
+                header={
+                  current ? undefined : (
+                    <div className="flex items-start gap-3">
+                      <span className="bg-primary/10 text-primary inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold tabular-nums">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-lg leading-snug font-semibold">{section.title}</h2>
+                          {section.locked && (
+                            <span className="text-muted-foreground inline-flex items-center gap-1 text-[11px]">
+                              <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="size-3" />
+                              Locked
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-muted-foreground text-xs">{describeRubricSection(section)}</p>
+                      </div>
                     </div>
-                    <p className="text-muted-foreground text-xs">{describeRubricSection(section)}</p>
-                  </div>
-                </div>
-              )}
-              <RubricSectionBody section={section} />
+                  )
+                }
+              />
             </section>
           ))}
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * One section in the switcher: an outline button (filled when it's the one
+ * showing) with the section's number, its title and a lock if it's locked.
+ */
+function SectionButton({
+  href,
+  active,
+  label,
+  marker,
+  locked = false,
+}: {
+  href: string
+  active: boolean
+  label: string
+  marker: React.ReactNode
+  locked?: boolean
+}) {
+  return (
+    <Button
+      asChild
+      variant={active ? "default" : "outline"}
+      className={cn(
+        "h-auto min-h-12 justify-start gap-3 px-3 py-2 text-left whitespace-normal",
+        !active && locked && "text-muted-foreground"
+      )}
+    >
+      <a href={href} onClick={switchSection} aria-current={active ? "page" : undefined}>
+        <span
+          className={cn(
+            "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold tabular-nums",
+            active ? "bg-primary-foreground/15" : "bg-primary/10 text-primary"
+          )}
+        >
+          {marker}
+        </span>
+        <span className="min-w-0 flex-1 text-sm leading-snug font-medium">{label}</span>
+        {locked && <HugeiconsIcon icon={SquareLock02Icon} strokeWidth={1.5} className="size-4 shrink-0 opacity-70" />}
+      </a>
+    </Button>
   )
 }
 

@@ -173,7 +173,6 @@ export function deriveRequirements(components: RubricComponent[]): string[] {
   const images = all.filter((q) => q.kind === "image").length
   const tables = all.filter((q) => q.kind === "lineItems").length
   const sources = components.reduce((n, c) => n + c.sources, 0)
-  const groups = components.filter((c) => c.id !== null).length
 
   const lines: string[] = []
   if (written.length > 0) {
@@ -187,11 +186,6 @@ export function deriveRequirements(components: RubricComponent[]): string[] {
   if (tables > 0) lines.push(`${plural(tables, "table of figures")} to complete`)
   if (images > 0) lines.push(`${plural(images, "image")} to upload`)
   if (sources > 0) lines.push(`${plural(sources, "source")} to cite`)
-  if (groups > 1) {
-    lines.push(`Complete when all ${groups} components are approved by a teacher`)
-  } else if (all.length > 0) {
-    lines.push("Complete when every question is approved by a teacher")
-  }
   return lines
 }
 
