@@ -332,7 +332,7 @@ export function ResponseReviewSheet({
               {canApprove && (
               <Button
                 variant="outline"
-                className="flex-1 gap-1.5 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800"
+                className="flex-1 gap-1.5 bg-white dark:bg-transparent"
                 disabled={acting}
                 onClick={() => applyAction("complete")}
               >

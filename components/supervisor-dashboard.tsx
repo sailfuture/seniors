@@ -8,7 +8,6 @@ import {
   ArrowRight01Icon,
   ArrowTurnBackwardIcon,
   BookOpen02Icon,
-  CheckmarkCircle02Icon,
   Clock01Icon,
   UserGroupIcon,
   UserQuestion01Icon,
@@ -50,6 +49,7 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { StatusCount } from "@/components/status-count"
 
 /** Thesis supervisors oversee the business thesis advisors only. */
 const PRODUCT: AdvisorProduct = "business-thesis"
@@ -79,13 +79,11 @@ function byStudentName(a: RosterStudent, b: RosterStudent) {
 }
 
 // ---------------------------------------------------------------------------
-// Thesis progress: one read of the status rows and the review queue for the
-// whole class, reduced per student.
+// Waiting work: one read of the review queue for the whole class, reduced
+// per student.
 // ---------------------------------------------------------------------------
 
 interface StudentProgress {
-  /** Answers marked complete on questions that need one. */
-  approved: number
   /** Answers ready for review and not yet acted on. */
   pending: number
   /** Answers sent back for revision and not yet resubmitted. */
@@ -95,8 +93,6 @@ interface StudentProgress {
 }
 
 interface ThesisProgress {
-  /** Questions on the live form that need an answer. */
-  required: number
   byStudent: Map<string, StudentProgress>
 }
 
@@ -104,7 +100,6 @@ interface TemplateRow {
   id: number
   isArchived?: boolean
   isPublished?: boolean
-  question_types_id?: number | null
   [key: string]: unknown
 }
 
@@ -119,30 +114,18 @@ interface StatusRow {
   [key: string]: unknown
 }
 
-const EMPTY_PROGRESS: StudentProgress = { approved: 0, pending: 0, revisions: 0, oldestPendingAt: null }
+const EMPTY_PROGRESS: StudentProgress = { pending: 0, revisions: 0, oldestPendingAt: null }
 
 function summarizeProgress(
   sections: unknown,
   template: unknown,
-  types: unknown,
-  statusRows: unknown,
   queueRows: unknown
 ): ThesisProgress {
   const { templateId, sectionId } = CFG.fields
 
-  // Headers and other display-only types never take an answer.
-  const noInput = new Set<number>()
-  for (const t of Array.isArray(types) ? (types as { id: number; noInput?: boolean }[]) : []) {
-    if (t?.noInput) noInput.add(Number(t.id))
-  }
-
   const live = new Map<number, TemplateRow>()
-  const required = new Set<number>()
   for (const q of Array.isArray(template) ? (template as TemplateRow[]) : []) {
-    if (!q || q.isArchived || !q.isPublished) continue
-    live.set(Number(q.id), q)
-    if (q.question_types_id != null && noInput.has(Number(q.question_types_id))) continue
-    required.add(Number(q.id))
+    if (q && !q.isArchived && q.isPublished) live.set(Number(q.id), q)
   }
 
   const lockedSections = new Set<number>()
@@ -158,19 +141,6 @@ function summarizeProgress(
       byStudent.set(studentId, e)
     }
     return e
-  }
-
-  // Approved answers, one per question per student.
-  const approvedSeen = new Set<string>()
-  for (const r of Array.isArray(statusRows) ? (statusRows as StatusRow[]) : []) {
-    if (!r || r.isArchived || !r.isComplete) continue
-    const sid = String(r.students_id ?? "")
-    const qid = Number(r[templateId])
-    if (!sid || !required.has(qid)) continue
-    const key = `${sid}:${qid}`
-    if (approvedSeen.has(key)) continue
-    approvedSeen.add(key)
-    entry(sid).approved++
   }
 
   // Waiting work, counted exactly the way the review queue lists it.
@@ -192,31 +162,27 @@ function summarizeProgress(
     if (e.oldestPendingAt == null || at < e.oldestPendingAt) e.oldestPendingAt = at
   }
 
-  return { required: required.size, byStudent }
+  return { byStudent }
 }
 
 function useThesisProgress() {
   return useQuery<ThesisProgress>({
     queryKey: ["supervisor-thesis-progress"],
     queryFn: async () => {
-      const [sectionsRes, templateRes, typesRes, statusRes, queueRes] = await Promise.all([
+      const [sectionsRes, templateRes, queueRes] = await Promise.all([
         cachedFetch(CFG.sectionsEndpoint),
         cachedFetch(CFG.templateEndpoint),
-        cachedFetch(CFG.questionTypesEndpoint),
-        fetch(CFG.responseStatusEndpoint),
         fetch(CFG.reviewQueueEndpoint),
       ])
-      if (!sectionsRes.ok || !templateRes.ok || !statusRes.ok || !queueRes.ok) {
+      if (!sectionsRes.ok || !templateRes.ok || !queueRes.ok) {
         throw new Error("Business thesis progress couldn't be loaded")
       }
-      const [sections, template, types, statusRows, queueRows] = await Promise.all([
+      const [sections, template, queueRows] = await Promise.all([
         sectionsRes.json(),
         templateRes.json(),
-        typesRes.ok ? typesRes.json() : [],
-        statusRes.json(),
         queueRes.json(),
       ])
-      return summarizeProgress(sections, template, types, statusRows, queueRows)
+      return summarizeProgress(sections, template, queueRows)
     },
   })
 }
@@ -341,17 +307,13 @@ export function SupervisorDashboard() {
     if (!model || !progress) return null
     let pending = 0
     let revisions = 0
-    let oldest: number | null = null
     for (const s of model.advised) {
       const p = progress.byStudent.get(String(s.id))
       if (!p) continue
       pending += p.pending
       revisions += p.revisions
-      if (p.oldestPendingAt != null && (oldest == null || p.oldestPendingAt < oldest)) {
-        oldest = p.oldestPendingAt
-      }
     }
-    return { pending, revisions, oldest }
+    return { pending, revisions }
   }, [model, progress])
 
   return (
@@ -405,14 +367,6 @@ export function SupervisorDashboard() {
           label="Ready for review"
           dot="bg-blue-500"
           value={totals?.pending}
-          note={
-            totals
-              ? totals.oldest != null
-                ? `Oldest waiting ${waitedFor(totals.oldest, now)}`
-                : "Nothing waiting"
-              : undefined
-          }
-          warn={isOverdue(totals?.oldest, now)}
           loading={!totals && (progressLoading || !model)}
           failed={progressQuery.isError}
         />
@@ -421,7 +375,6 @@ export function SupervisorDashboard() {
           label="Revisions open"
           dot="bg-red-500"
           value={totals?.revisions}
-          note={totals ? "Sent back, waiting on students" : undefined}
           loading={!totals && (progressLoading || !model)}
           failed={progressQuery.isError}
         />
@@ -439,8 +392,7 @@ export function SupervisorDashboard() {
         <div>
           <h2 className="text-lg font-semibold">Advisors and their students</h2>
           <p className="text-muted-foreground text-sm">
-            Each student&rsquo;s share of approved answers and what&rsquo;s waiting. Open a student
-            to see their review page.
+            What&rsquo;s waiting on each advisor. Open a student to see their review page.
           </p>
         </div>
         {!model ? (
@@ -471,14 +423,12 @@ export function SupervisorDashboard() {
                 key={row.advisor.id}
                 row={row}
                 progress={progress}
-                progressLoading={progressLoading}
                 signIn={
                   access
                     ? signInOf(access.get(row.advisor.email?.trim().toLowerCase() ?? ""), now)
                     : null
                 }
                 signInLoading={accessQuery.isPending}
-                now={now}
               />
             ))}
           </div>
@@ -700,17 +650,13 @@ function AttentionRow({
 function AdvisorCard({
   row,
   progress,
-  progressLoading,
   signIn,
   signInLoading,
-  now,
 }: {
   row: AdvisorRow
   progress: ThesisProgress | undefined
-  progressLoading: boolean
   signIn: SignIn | null
   signInLoading: boolean
-  now: number
 }) {
   const { advisor, students } = row
 
@@ -758,17 +704,11 @@ function AdvisorCard({
           <span className="text-muted-foreground">
             {students.length} student{students.length === 1 ? "" : "s"}
           </span>
-          {progress && students.length > 0 && (
-            <>
-              <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-blue-500" />
-                {pending} ready for review
-              </span>
-              <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-red-500" />
-                {revisions} revision{revisions === 1 ? "" : "s"} open
-              </span>
-            </>
+          {progress && (pending > 0 || revisions > 0) && (
+            <span className="ml-auto flex items-center gap-1.5">
+              <StatusCount kind="ready" count={pending} size="sm" />
+              <StatusCount kind="revision" count={revisions} size="sm" />
+            </span>
           )}
         </div>
       </CardHeader>
@@ -784,13 +724,7 @@ function AdvisorCard({
           <ul className="-mx-2 flex flex-col">
             {students.map((s) => (
               <li key={s.id}>
-                <StudentRow
-                  student={s}
-                  progress={progress?.byStudent.get(String(s.id)) ?? (progress ? EMPTY_PROGRESS : undefined)}
-                  required={progress?.required ?? 0}
-                  loading={progressLoading}
-                  now={now}
-                />
+                <StudentRow student={s} />
               </li>
             ))}
           </ul>
@@ -800,83 +734,22 @@ function AdvisorCard({
   )
 }
 
-function StudentRow({
-  student,
-  progress,
-  required,
-  loading,
-  now,
-}: {
-  student: RosterStudent
-  progress: StudentProgress | undefined
-  required: number
-  loading: boolean
-  now: number
-}) {
-  const pct = progress && required > 0 ? Math.min(100, Math.round((progress.approved / required) * 100)) : 0
-  const overdue = isOverdue(progress?.oldestPendingAt, now)
-
+function StudentRow({ student }: { student: RosterStudent }) {
   return (
     <Link
       href={reviewHref(student.id)}
-      className="hover:bg-muted/60 group flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors"
+      className="hover:bg-muted/60 group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors"
     >
       <Avatar className="size-8">
         <AvatarImage src={student.profileImage || undefined} alt="" />
         <AvatarFallback className="text-xs">{studentInitials(student)}</AvatarFallback>
       </Avatar>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{studentName(student)}</p>
-        {loading ? (
-          <Skeleton className="mt-1.5 h-1.5 w-full" />
-        ) : progress ? (
-          <div className="mt-1.5 flex items-center gap-2">
-            <div
-              className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full"
-              role="progressbar"
-              aria-valuenow={pct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`${studentName(student)}: ${pct}% of answers approved`}
-            >
-              <div className="bg-primary h-full rounded-full" style={{ width: `${pct}%` }} />
-            </div>
-            <span className="text-muted-foreground w-9 shrink-0 text-right text-xs tabular-nums">
-              {pct}%
-            </span>
-          </div>
-        ) : null}
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {progress && progress.pending > 0 && (
-          <span
-            title={`${progress.pending} ready for review`}
-            className={cn(
-              "inline-flex h-6 min-w-6 items-center justify-center gap-1 rounded-full px-2 text-xs font-medium tabular-nums",
-              overdue ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
-            )}
-          >
-            {overdue && <HugeiconsIcon icon={Clock01Icon} strokeWidth={2} className="size-3" />}
-            {progress.pending}
-          </span>
-        )}
-        {progress && progress.revisions > 0 && (
-          <span
-            title={`${progress.revisions} revision${progress.revisions === 1 ? "" : "s"} open`}
-            className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-red-100 px-2 text-xs font-medium text-red-800 tabular-nums"
-          >
-            {progress.revisions}
-          </span>
-        )}
-        {progress && progress.pending === 0 && progress.revisions === 0 && pct === 100 && (
-          <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-emerald-600" />
-        )}
-        <HugeiconsIcon
-          icon={ArrowRight01Icon}
-          strokeWidth={2}
-          className="text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100"
-        />
-      </div>
+      <p className="min-w-0 flex-1 truncate text-sm font-medium">{studentName(student)}</p>
+      <HugeiconsIcon
+        icon={ArrowRight01Icon}
+        strokeWidth={2}
+        className="text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100"
+      />
     </Link>
   )
 }

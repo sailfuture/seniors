@@ -198,7 +198,7 @@ function useReviewCounts(products: AdvisorProduct[], studentsByProduct: Partial<
   })
 }
 
-function useSchoolCalendar() {
+export function useSchoolCalendar() {
   return useQuery<SchoolCalendarDay[]>({
     queryKey: ["school-calendar"],
     staleTime: 60 * 60_000,
@@ -502,7 +502,7 @@ function ContactsCard() {
  * coming weeks as a table, with the ones the school calendar rules out
  * (holidays, breaks, closures) marked and explained.
  */
-function ScheduleCard({
+export function ScheduleCard({
   days,
   status,
 }: {
