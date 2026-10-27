@@ -35,6 +35,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Table,
   TableBody,
   TableCell,
@@ -165,7 +172,6 @@ export function ThesisSchedule({
         forAdvisor={forAdvisor}
       />
 
-      <BookingCard forAdvisor={forAdvisor} />
       <UpcomingCard
         forAdvisor={forAdvisor}
         meetings={upcoming}
@@ -350,27 +356,40 @@ function IconTile({ icon }: { icon: typeof Calendar03Icon }) {
   )
 }
 
-/** Google's booking page, inline when it can be framed, else as a link. */
-function BookingCard({ forAdvisor }: { forAdvisor: boolean }) {
+/**
+ * "Book a thesis meeting": opens Google's booking page framed in a dialog,
+ * so booking never leaves the dashboard.
+ */
+function BookingButton({
+  forAdvisor,
+  label = "Book a thesis meeting",
+  className,
+}: {
+  forAdvisor: boolean
+  label?: string
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
   return (
-    <Card>
-      <CardHeader className="border-b">
-        <div className="flex items-center gap-3">
-          <IconTile icon={CalendarAdd01Icon} />
-          <div>
-            <CardTitle>Book a thesis meeting</CardTitle>
-            <CardDescription>
+    <>
+      <Button className={cn("gap-2", className)} onClick={() => setOpen(true)}>
+        <HugeiconsIcon icon={CalendarAdd01Icon} strokeWidth={2} className="size-4" />
+        {label}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-3 sm:max-w-4xl">
+          <DialogHeader className="pr-8">
+            <DialogTitle>Book a thesis meeting</DialogTitle>
+            <DialogDescription>
               {forAdvisor
-                ? "Pick an open time during class to meet with one of your students. Add the student as a guest so it lands on their calendar and counts below."
-                : "Open times during class for thesis advisors and supervisors to meet with a student. Each booking lands on the shared Senior Thesis Meetings calendar; add the student as a guest so it counts for them."}
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <BookingEmbed forAdvisor={forAdvisor} />
-      </CardContent>
-    </Card>
+                ? "Pick an open time during class to meet with one of your students, then add the student as a guest so it lands on their calendar and counts here."
+                : "Pick an open time during class, then add the student as a guest. Each booking lands on the shared Senior Thesis Meetings calendar."}
+            </DialogDescription>
+          </DialogHeader>
+          {open && <BookingEmbed forAdvisor={forAdvisor} className="h-[70svh]" />}
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
@@ -527,7 +546,7 @@ function DaySheet({
             <p className="text-muted-foreground mt-1 mb-3 text-sm">
               Pick a time on this day, then add the student as a guest.
             </p>
-            <BookingEmbed forAdvisor={forAdvisor} />
+            <BookingButton forAdvisor={forAdvisor} label="Book a time" />
           </section>
         </div>
       </SheetContent>
@@ -559,15 +578,16 @@ function UpcomingCard({
   return (
     <Card>
       <CardHeader className="border-b">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <IconTile icon={Calendar03Icon} />
-          <div>
+          <div className="min-w-0 flex-1">
             <CardTitle>Booked in the next two weeks</CardTitle>
             <CardDescription>
               From the shared Senior Thesis Meetings calendar. Select a meeting to see that
               student&rsquo;s meetings.
             </CardDescription>
           </div>
+          <BookingButton forAdvisor={forAdvisor} />
         </div>
       </CardHeader>
       <CardContent className="px-0">
