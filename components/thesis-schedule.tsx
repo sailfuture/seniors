@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Calendar03Icon, CalendarAdd01Icon, UserMultiple02Icon } from "@hugeicons/core-free-icons"
-import { ScheduleCard, useSchoolCalendar } from "@/components/advisor-dashboard"
+import { ScheduleCard, useSchoolCalendar } from "@/components/class-schedule"
 import { advisorAllowsProduct, advisorName, type Advisor } from "@/lib/advisors"
 import { classYearOf, currentClassYear, studentName, type RosterStudent } from "@/lib/students"
 import { useAdvisorAssignments, useAdvisors, useStudents } from "@/lib/queries"
@@ -50,15 +50,29 @@ export function useThesisMeetings() {
 interface StudentRow {
   student: RosterStudent
   advisors: Advisor[]
+  /** On an advisor's own page, the viewer is always the advisor. */
+  hasAdvisor: boolean
   meetings: StudentMeetings | null
 }
 
 /**
- * The Schedule tab of the Advisors page: when the class meets, the booking
- * page for thesis meetings, what's booked in the next two weeks, and a
- * per-student breakdown so staff can see whether meetings are happening.
+ * Thesis meetings: when the class meets, the booking page, what's booked in
+ * the next two weeks, and a per-student breakdown of whether meetings are
+ * happening. Thesis supervisors and advisors book; students never do, they
+ * are only guests on the meeting.
+ *
+ * Staff (the Schedule tab of the Advisors page) see every senior. With
+ * `advisorId` (an advisor's home page) it covers only that advisor's own
+ * Business Thesis students, and the API already returns only their meetings.
  */
-export function ThesisSchedule() {
+export function ThesisSchedule({
+  advisorId,
+  showClassSchedule = true,
+}: {
+  advisorId?: string | number | null
+  showClassSchedule?: boolean
+} = {}) {
+  const forAdvisor = advisorId != null
   const calendarQuery = useSchoolCalendar()
   const meetingsQuery = useThesisMeetings()
   const advisorsQuery = useAdvisors()
@@ -80,8 +94,15 @@ export function ThesisSchedule() {
         .map((a) => [Number(a.id), a])
     )
     const year = currentClassYear()
+    const advisedIds = forAdvisor
+      ? new Set(
+          assignments
+            .filter((a) => a.type === "business-thesis" && Number(a.advisors_id) === Number(advisorId))
+            .map((a) => String(a.students_id))
+        )
+      : null
     return students
-      .filter((s) => classYearOf(s) === year)
+      .filter((s) => (advisedIds ? advisedIds.has(String(s.id)) : classYearOf(s) === year))
       .map((student) => {
         const mine = assignments
           .filter((a) => a.type === "business-thesis" && String(a.students_id) === String(student.id))
@@ -90,13 +111,14 @@ export function ThesisSchedule() {
         return {
           student,
           advisors: mine,
+          hasAdvisor: forAdvisor || mine.length > 0,
           meetings: data?.ok
             ? meetingsForStudent(meetings, student, mine.map((a) => a.email), now)
             : null,
         }
       })
       .sort((x, y) => attentionRank(x, now) - attentionRank(y, now) || studentName(x.student).localeCompare(studentName(y.student)))
-  }, [advisorsQuery.data, assignmentsQuery.data, studentsQuery.data, data, meetings, now])
+  }, [advisorsQuery.data, assignmentsQuery.data, studentsQuery.data, data, meetings, now, forAdvisor, advisorId])
 
   const studentsByEmail = useMemo(
     () =>
@@ -118,11 +140,12 @@ export function ThesisSchedule() {
 
   return (
     <div className="flex flex-col gap-6">
-      <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} />
+      {showClassSchedule && <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} />}
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <BookingCard />
+        <BookingCard forAdvisor={forAdvisor} />
         <UpcomingCard
+          forAdvisor={forAdvisor}
           meetings={upcoming}
           studentsByEmail={studentsByEmail}
           loading={meetingsQuery.isPending}
@@ -136,17 +159,25 @@ export function ThesisSchedule() {
           <div className="flex items-center gap-3">
             <IconTile icon={UserMultiple02Icon} />
             <div>
-              <CardTitle>Meetings by student</CardTitle>
+              <CardTitle>{forAdvisor ? "Your students’ meetings" : "Meetings by student"}</CardTitle>
               <CardDescription>
-                Every senior&rsquo;s thesis meetings from the shared calendar: how many have
-                happened, the last and next one, and whether their advisor was on the invitation.
+                {forAdvisor
+                  ? "Thesis meetings on the shared calendar with each student you advise: how many have happened, and the last and next one."
+                  : "Every senior’s thesis meetings from the shared calendar: how many have happened, the last and next one, and whether their advisor was on the invitation."}
               </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="px-0">
           {!configured ? (
-            <SetupSteps />
+            forAdvisor ? (
+              <p className="text-muted-foreground px-6 text-sm">
+                Meeting tracking isn&rsquo;t connected yet. SailFuture Academy staff are setting up
+                the shared meetings calendar.
+              </p>
+            ) : (
+              <SetupSteps />
+            )
           ) : !rows || meetingsQuery.isPending ? (
             <div className="space-y-2 px-6">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -158,15 +189,17 @@ export function ThesisSchedule() {
               The meetings calendar couldn&rsquo;t be read just now. Try again in a few minutes.
             </p>
           ) : rows.length === 0 ? (
-            <p className="text-muted-foreground px-6 text-sm">No seniors on the roster yet.</p>
+            <p className="text-muted-foreground px-6 text-sm">
+              {forAdvisor ? "No Business Thesis students are assigned to you yet." : "No seniors on the roster yet."}
+            </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="pl-6">Student</TableHead>
-                  <TableHead>Advisor</TableHead>
+                  {!forAdvisor && <TableHead>Advisor</TableHead>}
                   <TableHead className="text-right">Met</TableHead>
-                  <TableHead>Advisor on invite</TableHead>
+                  {!forAdvisor && <TableHead>Advisor on invite</TableHead>}
                   <TableHead>Last meeting</TableHead>
                   <TableHead>Next meeting</TableHead>
                   <TableHead className="pr-6">Status</TableHead>
@@ -174,7 +207,7 @@ export function ThesisSchedule() {
               </TableHeader>
               <TableBody>
                 {rows.map((r) => (
-                  <MeetingRow key={r.student.id} row={r} now={now} />
+                  <MeetingRow key={r.student.id} row={r} now={now} forAdvisor={forAdvisor} />
                 ))}
               </TableBody>
             </Table>
@@ -195,13 +228,13 @@ function statusOf(r: StudentRow, now: number): { label: string; tone: "warn" | "
   const m = r.meetings
   if (!m) return { label: "–", tone: "muted" }
   if (m.next) return { label: "Booked", tone: "ok" }
-  if (!m.last) return { label: r.advisors.length ? "No meetings yet" : "No advisor, no meetings", tone: "warn" }
+  if (!m.last) return { label: r.hasAdvisor ? "No meetings yet" : "No advisor, no meetings", tone: "warn" }
   const days = Math.floor((now - m.last.start) / DAY_MS)
   if (days > STALE_DAYS) return { label: `Last met ${Math.floor(days / 7)} weeks ago`, tone: "warn" }
   return { label: "On track", tone: "ok" }
 }
 
-function MeetingRow({ row, now }: { row: StudentRow; now: number }) {
+function MeetingRow({ row, now, forAdvisor }: { row: StudentRow; now: number; forAdvisor: boolean }) {
   const { student, advisors, meetings: m } = row
   const status = statusOf(row, now)
   const initials = `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase()
@@ -216,13 +249,17 @@ function MeetingRow({ row, now }: { row: StudentRow; now: number }) {
           <span className="font-medium">{studentName(student)}</span>
         </div>
       </TableCell>
-      <TableCell className="text-muted-foreground">
-        {advisors.length ? advisors.map(advisorName).join(", ") : "None"}
-      </TableCell>
+      {!forAdvisor && (
+        <TableCell className="text-muted-foreground">
+          {advisors.length ? advisors.map(advisorName).join(", ") : "None"}
+        </TableCell>
+      )}
       <TableCell className="text-right tabular-nums">{m?.held.length ?? "–"}</TableCell>
-      <TableCell className="text-muted-foreground tabular-nums">
-        {m && m.held.length > 0 ? `${m.withAdvisor} of ${m.held.length}` : "–"}
-      </TableCell>
+      {!forAdvisor && (
+        <TableCell className="text-muted-foreground tabular-nums">
+          {m && m.held.length > 0 ? `${m.withAdvisor} of ${m.held.length}` : "–"}
+        </TableCell>
+      )}
       <TableCell className="text-muted-foreground">
         {m?.last ? (
           <span title={formatMeetingTime(m.last.start)}>{relativeTime(m.last.start, now)}</span>
@@ -257,7 +294,7 @@ function IconTile({ icon }: { icon: typeof Calendar03Icon }) {
 }
 
 /** Google's booking page, inline when it can be framed, else as a link. */
-function BookingCard() {
+function BookingCard({ forAdvisor }: { forAdvisor: boolean }) {
   const embed = THESIS_BOOKING_URL ? bookingEmbedUrl(THESIS_BOOKING_URL) : null
   return (
     <Card>
@@ -267,8 +304,9 @@ function BookingCard() {
           <div>
             <CardTitle>Book a thesis meeting</CardTitle>
             <CardDescription>
-              Open times during class. Each booking lands on the shared Senior Thesis Meetings
-              calendar, where the advisor, teachers and the student all see it.
+              {forAdvisor
+                ? "Pick an open time during class to meet with one of your students. Add the student as a guest so it lands on their calendar and counts below."
+                : "Open times during class for thesis advisors and supervisors to meet with a student. Each booking lands on the shared Senior Thesis Meetings calendar; add the student as a guest so it counts for them."}
             </CardDescription>
           </div>
         </div>
@@ -289,9 +327,9 @@ function BookingCard() {
           </Button>
         ) : (
           <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-            The booking page isn&rsquo;t connected yet. Once the appointment schedule exists in
-            Google Calendar, set its inline embed link as NEXT_PUBLIC_THESIS_BOOKING_URL in
-            Vercel and redeploy.
+            {forAdvisor
+              ? "Booking isn’t open yet. SailFuture Academy staff are setting up the meeting times."
+              : "The booking page isn’t connected yet. Once the appointment schedule exists in Google Calendar, set its inline embed link as NEXT_PUBLIC_THESIS_BOOKING_URL in Vercel and redeploy."}
           </p>
         )}
       </CardContent>
@@ -300,12 +338,14 @@ function BookingCard() {
 }
 
 function UpcomingCard({
+  forAdvisor,
   meetings,
   studentsByEmail,
   loading,
   configured,
   failed,
 }: {
+  forAdvisor: boolean
   meetings: ThesisMeeting[]
   studentsByEmail: Map<string, RosterStudent>
   loading: boolean
@@ -326,8 +366,9 @@ function UpcomingCard({
       <CardContent>
         {!configured ? (
           <p className="text-muted-foreground text-sm">
-            Connect the meetings calendar to list bookings here. The steps are under Meetings by
-            student.
+            {forAdvisor
+              ? "Bookings show here once the shared meetings calendar is connected."
+              : "Connect the meetings calendar to list bookings here. The steps are under Meetings by student."}
           </p>
         ) : loading ? (
           <div className="space-y-2">
@@ -381,6 +422,11 @@ function SetupSteps() {
         </li>
         <li>
           Create an appointment schedule for the class times, saving bookings to that calendar.
+          Thesis supervisors and advisors book it from this page; students don&rsquo;t book.
+        </li>
+        <li>
+          When booking, add the student as a guest. A meeting counts for a student only when
+          their email is on it.
         </li>
         <li>
           Copy the calendar&rsquo;s secret iCal address into THESIS_MEETINGS_ICS_URL in Vercel,
