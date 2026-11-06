@@ -251,7 +251,7 @@ export function ScheduleCard({
                             key={session.date}
                             className={cn(
                               flagged && "bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-500/5",
-                              session.isPast && "text-muted-foreground",
+                              session.isPast && "bg-muted/60 text-muted-foreground hover:bg-muted/70",
                               open && "focus-visible:bg-muted/60 cursor-pointer outline-none"
                             )}
                             {...(open
