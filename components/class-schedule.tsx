@@ -4,6 +4,7 @@ import { Fragment, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  Alert02Icon,
   ArrowRight01Icon,
   Calendar03Icon,
   CalendarBlock01Icon,
@@ -11,10 +12,14 @@ import {
 } from "@hugeicons/core-free-icons"
 import {
   CLASS_MEETING,
+  eventConflictsWithClass,
   formatCalendarDate,
+  formatEventTime,
   meetingOutlook,
   type MeetingSession,
+  type SchoolCalendar,
   type SchoolCalendarDay,
+  type SchoolEvent,
 } from "@/lib/school-calendar"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -54,35 +59,63 @@ function weeksOf(sessions: MeetingSession[]): { start: string; label: string; se
 /** How far ahead the schedule table looks. */
 const OUTLOOK_WEEKS = 8
 
+const EMPTY_CALENDAR: SchoolCalendar = { days: [], events: [], terms: [], years: [] }
+
+async function fetchSchoolCalendar(): Promise<SchoolCalendar> {
+  const res = await fetch("/api/school-calendar")
+  if (!res.ok) throw new Error(`school calendar returned ${res.status}`)
+  const body = (await res.json()) as Partial<SchoolCalendar>
+  return {
+    days: Array.isArray(body.days) ? body.days : EMPTY_CALENDAR.days,
+    events: Array.isArray(body.events) ? body.events : EMPTY_CALENDAR.events,
+    terms: Array.isArray(body.terms) ? body.terms : EMPTY_CALENDAR.terms,
+    years: Array.isArray(body.years) ? body.years : EMPTY_CALENDAR.years,
+  }
+}
+
+const CALENDAR_QUERY = {
+  queryKey: ["school-calendar"] as const,
+  queryFn: fetchSchoolCalendar,
+  staleTime: 15 * 60_000,
+}
+
+/** The whole school calendar: days, events, terms and years. */
+export function useSchoolCalendarData() {
+  return useQuery<SchoolCalendar>(CALENDAR_QUERY)
+}
+
+/** Just the day rows, for the class-schedule outlook. Shares the one fetch
+    with `useSchoolCalendarData`. */
 export function useSchoolCalendar() {
-  return useQuery<SchoolCalendarDay[]>({
-    queryKey: ["school-calendar"],
-    staleTime: 60 * 60_000,
-    queryFn: async () => {
-      const res = await fetch("/api/school-calendar")
-      if (!res.ok) throw new Error(`school calendar returned ${res.status}`)
-      const body = (await res.json()) as { days?: SchoolCalendarDay[] }
-      return Array.isArray(body.days) ? body.days : []
-    },
+  return useQuery<SchoolCalendar, Error, SchoolCalendarDay[]>({
+    ...CALENDAR_QUERY,
+    select: (cal) => cal.days,
   })
 }
 
 /**
  * When the senior class meets: every Thursday and Friday session over the
  * coming weeks as a table, with the ones the school calendar rules out
- * (holidays, breaks, closures) marked and explained.
+ * (holidays, breaks, closures) marked and explained, and school events that
+ * land on a class day called out.
  */
 export function ScheduleCard({
   days,
+  events,
   status,
   onSelectDay,
 }: {
   days: SchoolCalendarDay[] | undefined
+  /** School events; when given, sessions with an event on the same day say so. */
+  events?: SchoolEvent[]
   status: "pending" | "error" | "success"
   /** When set, every class day is a button that opens that day's bookings. */
   onSelectDay?: (session: MeetingSession) => void
 }) {
-  const outlook = useMemo(() => (days ? meetingOutlook(days, OUTLOOK_WEEKS) : null), [days])
+  const outlook = useMemo(
+    () => (days ? meetingOutlook(days, OUTLOOK_WEEKS, undefined, events ?? []) : null),
+    [days, events]
+  )
   const time = `${CLASS_MEETING.startLabel} – ${CLASS_MEETING.endLabel}`
 
   return (
@@ -152,11 +185,12 @@ export function ScheduleCard({
                       {week.sessions.map((session) => {
                     const isNext = outlook.nextSession?.date === session.date
                     const open = onSelectDay && session.status !== "off" ? () => onSelectDay(session) : undefined
+                    const flagged = session.status === "off" || session.conflict
                     return (
                       <TableRow
                         key={session.date}
                         className={cn(
-                          session.status === "off" && "bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-500/5",
+                          flagged && "bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-500/5",
                           open && "focus-visible:bg-muted/60 cursor-pointer outline-none"
                         )}
                         {...(open
@@ -199,21 +233,24 @@ export function ScheduleCard({
                           ) : session.status === "unknown" ? (
                             <span className="text-muted-foreground">Not on the school calendar yet</span>
                           ) : (
-                            <span className="flex items-center gap-2">
-                              <HugeiconsIcon
-                                icon={CheckmarkCircle02Icon}
-                                strokeWidth={2}
-                                className="size-4 shrink-0 text-emerald-600"
-                              />
-                              Class meets
-                              {isNext && <Badge variant="secondary">Next</Badge>}
-                              {open && (
+                            <span className="flex flex-col gap-1">
+                              <span className="flex items-center gap-2">
                                 <HugeiconsIcon
-                                  icon={ArrowRight01Icon}
+                                  icon={session.conflict ? Alert02Icon : CheckmarkCircle02Icon}
                                   strokeWidth={2}
-                                  className="text-muted-foreground ml-auto size-4 shrink-0"
+                                  className={cn("size-4 shrink-0", session.conflict ? "text-amber-600" : "text-emerald-600")}
                                 />
-                              )}
+                                Class meets
+                                {isNext && <Badge variant="secondary">Next</Badge>}
+                                {open && (
+                                  <HugeiconsIcon
+                                    icon={ArrowRight01Icon}
+                                    strokeWidth={2}
+                                    className="text-muted-foreground ml-auto size-4 shrink-0"
+                                  />
+                                )}
+                              </span>
+                              <SessionEvents events={session.events} />
                             </span>
                           )}
                         </TableCell>
@@ -235,5 +272,24 @@ export function ScheduleCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** The school events on a class day: the ones colliding with class first. */
+function SessionEvents({ events }: { events: SchoolEvent[] }) {
+  if (events.length === 0) return null
+  return (
+    <span className="flex flex-col gap-0.5 text-xs">
+      {events.map((e) => {
+        const conflict = eventConflictsWithClass(e)
+        return (
+          <span key={e.id} className={cn(conflict ? "text-amber-800 dark:text-amber-300" : "text-muted-foreground")}>
+            <span className={cn(conflict && "font-medium")}>{conflict ? "During class: " : "Also this day: "}</span>
+            {e.title}
+            <span className="opacity-80"> · {formatEventTime(e)}</span>
+          </span>
+        )
+      })}
+    </span>
   )
 }

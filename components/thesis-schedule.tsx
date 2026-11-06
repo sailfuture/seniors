@@ -5,7 +5,8 @@ import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Calendar03Icon, CalendarAdd01Icon, UserMultiple02Icon } from "@hugeicons/core-free-icons"
-import { ScheduleCard, useSchoolCalendar } from "@/components/class-schedule"
+import { ScheduleCard, useSchoolCalendarData } from "@/components/class-schedule"
+import { TermCalendar } from "@/components/term-calendar"
 import { advisorAllowsProduct, advisorName, type Advisor } from "@/lib/advisors"
 import { classYearOf, currentClassYear, studentName, type RosterStudent } from "@/lib/students"
 import { useAdvisorAssignments, useAdvisors, useStudents } from "@/lib/queries"
@@ -21,7 +22,14 @@ import {
   type ThesisMeeting,
 } from "@/lib/thesis-meetings"
 import { relativeTime } from "@/lib/format-time"
-import { CLASS_MEETING, formatCalendarDate, type MeetingSession } from "@/lib/school-calendar"
+import {
+  CLASS_MEETING,
+  eventCategory,
+  eventConflictsWithClass,
+  formatCalendarDate,
+  formatEventTime,
+  type MeetingSession,
+} from "@/lib/school-calendar"
 import {
   Sheet,
   SheetContent,
@@ -53,8 +61,6 @@ import {
 /** A student who hasn't met in this long, with nothing booked, needs a nudge. */
 const STALE_DAYS = 21
 const DAY_MS = 86_400_000
-/** How far ahead the upcoming list looks. */
-const UPCOMING_DAYS = 14
 
 export function useThesisMeetings() {
   return useQuery({
@@ -73,26 +79,29 @@ interface StudentRow {
 }
 
 /**
- * Thesis meetings: when the class meets, the booking page, what's booked in
- * the next two weeks, and a per-student breakdown of whether meetings are
+ * Thesis meetings: when the class meets, the booking page, every upcoming
+ * booking, and a per-student breakdown of whether meetings are
  * happening. Thesis supervisors and advisors book; students never do, they
  * are only guests on the meeting.
  *
- * Staff (the Schedule tab of the Advisors page) see every senior. With
- * `advisorId` (an advisor's home page) it covers only that advisor's own
- * Business Thesis students, and the API already returns only their meetings.
+ * Staff (the Schedule page) see every senior. With `advisorId` (an advisor's
+ * home page) it covers only that advisor's own Business Thesis students, and
+ * the API already returns only their meetings. `showTermCalendar` adds the
+ * school calendar, term by term, with the events that collide with class.
  */
 export function ThesisSchedule({
   advisorId,
   showClassSchedule = true,
+  showTermCalendar = false,
 }: {
   advisorId?: string | number | null
   showClassSchedule?: boolean
+  showTermCalendar?: boolean
 } = {}) {
   const forAdvisor = advisorId != null
   const [day, setDay] = useState<MeetingSession | null>(null)
   const [openStudentId, setOpenStudentId] = useState<string | null>(null)
-  const calendarQuery = useSchoolCalendar()
+  const calendarQuery = useSchoolCalendarData()
   const meetingsQuery = useThesisMeetings()
   const advisorsQuery = useAdvisors()
   const assignmentsQuery = useAdvisorAssignments()
@@ -149,9 +158,7 @@ export function ThesisSchedule({
 
   const upcoming = useMemo(
     () =>
-      meetings.filter(
-        (m) => !m.canceled && m.start > now && m.start < now + UPCOMING_DAYS * DAY_MS
-      ).sort((a, b) => a.start - b.start),
+      meetings.filter((m) => !m.canceled && m.start > now).sort((a, b) => a.start - b.start),
     [meetings, now]
   )
 
@@ -159,8 +166,16 @@ export function ThesisSchedule({
 
   return (
     <div className="flex flex-col gap-6">
+      {showTermCalendar && (
+        <TermCalendar data={calendarQuery.data} status={calendarQuery.status} onSelectDay={setDay} />
+      )}
       {showClassSchedule && (
-        <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} onSelectDay={setDay} />
+        <ScheduleCard
+          days={calendarQuery.data?.days}
+          events={calendarQuery.data?.events}
+          status={calendarQuery.status}
+          onSelectDay={setDay}
+        />
       )}
       <DaySheet
         day={day}
@@ -499,6 +514,7 @@ function DaySheet({
           <SheetDescription>
             {day?.session ?? "Class session"}, {CLASS_MEETING.startLabel} – {CLASS_MEETING.endLabel} Eastern.
             {day?.status === "unknown" && " Not on the school calendar yet."}
+            {day?.conflict && " A school event runs during class this day."}
           </SheetDescription>
         </SheetHeader>
         <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
@@ -539,6 +555,37 @@ function DaySheet({
               </ul>
             )}
           </section>
+          {day && day.events.length > 0 && (
+            <section>
+              <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                On the school calendar
+              </p>
+              <ul className="mt-2 divide-y overflow-hidden rounded-lg border">
+                {day.events.map((e) => {
+                  const conflict = eventConflictsWithClass(e)
+                  return (
+                    <li
+                      key={e.id}
+                      className={cn("flex items-start gap-3 px-4 py-3", conflict && "bg-amber-50/60 dark:bg-amber-500/5")}
+                    >
+                      <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", eventCategory(e).dot)} aria-hidden />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">{e.title}</span>
+                        <span className="text-muted-foreground block text-xs">
+                          {formatEventTime(e)}
+                          {e.location && ` · ${e.location}`}
+                          {e.mandatory && " · Mandatory"}
+                        </span>
+                      </span>
+                      {conflict && (
+                        <span className="shrink-0 text-xs font-medium text-amber-800 dark:text-amber-300">During class</span>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
           <section>
             <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
               Book a time
@@ -555,7 +602,7 @@ function DaySheet({
 }
 
 /**
- * What's booked in the next two weeks, as a table: when, who and with which
+ * Every upcoming booking, as a table: when, who and with which
  * advisor. A row with a student on it opens that student's meetings.
  */
 function UpcomingCard({
@@ -581,7 +628,7 @@ function UpcomingCard({
         <div className="flex flex-wrap items-center gap-3">
           <IconTile icon={Calendar03Icon} />
           <div className="min-w-0 flex-1">
-            <CardTitle>Booked in the next two weeks</CardTitle>
+            <CardTitle>Upcoming meetings</CardTitle>
             <CardDescription>
               From the shared Senior Thesis Meetings calendar. Select a meeting to see that
               student&rsquo;s meetings.
@@ -609,7 +656,7 @@ function UpcomingCard({
           </p>
         ) : meetings.length === 0 ? (
           <p className="text-muted-foreground mx-6 rounded-lg border border-dashed p-3 text-sm">
-            Nothing booked in the next two weeks.
+            Nothing booked yet.
           </p>
         ) : (
           <Table>
