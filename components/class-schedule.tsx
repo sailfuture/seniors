@@ -14,7 +14,6 @@ import {
   CLASS_MEETING,
   defaultTerm,
   defaultYear,
-  eventConflictsWithClass,
   formatCalendarDate,
   formatDateRange,
   formatEventTime,
@@ -309,7 +308,7 @@ export function ScheduleCard({
                                             : "text-emerald-600"
                                       )}
                                     />
-                                    {session.isPast ? "Class met" : "Class meets"}
+                                    {session.conflict ? "Event conflict" : session.isPast ? "Class met" : "Class meets"}
                                     {isNext && <Badge variant="secondary">Next</Badge>}
                                     {open && (
                                       <HugeiconsIcon
@@ -319,7 +318,7 @@ export function ScheduleCard({
                                       />
                                     )}
                                   </span>
-                                  <SessionEvents events={session.events} />
+                                  <SessionEvents events={session.events} past={session.isPast} />
                                 </span>
                               )}
                             </TableCell>
@@ -344,21 +343,17 @@ export function ScheduleCard({
   )
 }
 
-/** The school events on a class day: the ones colliding with class first. */
-function SessionEvents({ events }: { events: SchoolEvent[] }) {
+/** The school events that collide with a class session. */
+function SessionEvents({ events, past }: { events: SchoolEvent[]; past: boolean }) {
   if (events.length === 0) return null
   return (
-    <span className="flex flex-col gap-0.5 text-xs">
-      {events.map((e) => {
-        const conflict = eventConflictsWithClass(e)
-        return (
-          <span key={e.id} className={cn(conflict ? "text-amber-800 dark:text-amber-300" : "text-muted-foreground")}>
-            <span className={cn(conflict && "font-medium")}>{conflict ? "During class: " : "Also this day: "}</span>
-            {e.title}
-            <span className="opacity-80"> · {formatEventTime(e)}</span>
-          </span>
-        )
-      })}
+    <span className={cn("flex flex-col gap-0.5 text-xs", past ? "text-muted-foreground" : "text-amber-800 dark:text-amber-300")}>
+      {events.map((e) => (
+        <span key={e.id}>
+          <span className="font-medium">{e.title}</span>
+          <span className="opacity-80"> · {formatEventTime(e)}</span>
+        </span>
+      ))}
     </span>
   )
 }

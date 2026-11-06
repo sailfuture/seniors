@@ -383,9 +383,10 @@ export interface MeetingSession {
   /** Why there's no class, for an "off" session. */
   title?: string
   kind?: ClosureKind
-  /** School events on the same day, those colliding with class first. */
+  /** School events that collide with the session (during class, or a
+      mandatory all-day event). Evening and optional events are left off. */
   events: SchoolEvent[]
-  /** Whether any of those events collides with the session. */
+  /** Whether there's any such event. */
   conflict: boolean
 }
 
@@ -434,11 +435,12 @@ export function sessionOn(
 ): MeetingSession | null {
   const weekday = weekdayOf(date)
   if (!CLASS_MEETING.weekdays.includes(weekday)) return null
-  const base = { date, session: `${WEEKDAY_NAME[weekday]} session`, isToday: date === today, isPast: date < today, events }
+  const colliding = events.filter(eventConflictsWithClass)
+  const base = { date, session: `${WEEKDAY_NAME[weekday]} session`, isToday: date === today, isPast: date < today, events: colliding }
   if (!day) return { ...base, status: "unknown", conflict: false }
   const closure = closureOf(day)
   if (closure) return { ...base, status: "off", ...closure, conflict: false }
-  return { ...base, status: "on", conflict: events.some(eventConflictsWithClass) }
+  return { ...base, status: "on", conflict: colliding.length > 0 }
 }
 
 /** First and last date to look at, inclusive. */

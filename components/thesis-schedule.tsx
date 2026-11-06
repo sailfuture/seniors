@@ -24,7 +24,6 @@ import { relativeTime } from "@/lib/format-time"
 import {
   CLASS_MEETING,
   eventCategory,
-  eventConflictsWithClass,
   formatCalendarDate,
   formatEventTime,
   type MeetingSession,
@@ -555,16 +554,12 @@ function DaySheet({
           {day && day.events.length > 0 && (
             <section>
               <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-                On the school calendar
+                Event conflict
               </p>
               <ul className="mt-2 divide-y overflow-hidden rounded-lg border">
                 {day.events.map((e) => {
-                  const conflict = eventConflictsWithClass(e)
                   return (
-                    <li
-                      key={e.id}
-                      className={cn("flex items-start gap-3 px-4 py-3", conflict && "bg-amber-50/60 dark:bg-amber-500/5")}
-                    >
+                    <li key={e.id} className="flex items-start gap-3 bg-amber-50/60 px-4 py-3 dark:bg-amber-500/5">
                       <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", eventCategory(e).dot)} aria-hidden />
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-medium">{e.title}</span>
@@ -574,9 +569,6 @@ function DaySheet({
                           {e.mandatory && " · Mandatory"}
                         </span>
                       </span>
-                      {conflict && (
-                        <span className="shrink-0 text-xs font-medium text-amber-800 dark:text-amber-300">During class</span>
-                      )}
                     </li>
                   )
                 })}

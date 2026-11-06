@@ -8,6 +8,7 @@ import { useCanApprove } from "@/hooks/use-can-review"
 import { readReturnTo } from "@/lib/return-to"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  ArrowDown01Icon,
   ArrowLeft02Icon,
   ArrowTurnBackwardIcon,
   CheckmarkCircle02Icon,
@@ -16,6 +17,7 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Markdown } from "@/components/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
@@ -114,8 +116,10 @@ export function TeacherEssayReviewPage({
   const F = cfg.fields
   const router = useRouter()
   // Opened from the queue, a section page, or the review sheet: Back returns
-  // there (and to the same question), not to a fixed home.
-  const backHref = readReturnTo(useSearchParams(), defaultBackHref)
+  // there (and to the same question). Opened any other way, Back steps back
+  // through the browser history, falling back to the student's review queue.
+  const explicitBack = readReturnTo(useSearchParams(), "")
+  const backHref = explicitBack || defaultBackHref
   const { data: session } = useSession()
   // Advisors comment, request revisions, and undo; approving, restoring
   // versions, and editing the essay text stay with staff.
@@ -348,10 +352,13 @@ export function TeacherEssayReviewPage({
   if (loading) {
     // Mirror the loaded layout: full-width document page.
     return (
-      <div className="flex w-full flex-1 flex-col gap-6 bg-white p-4 md:p-6 dark:bg-background">
-        <Skeleton className="h-8 w-40" />
-        <Skeleton className="h-10 w-3/4" />
-        <Skeleton className="min-h-96 w-full flex-1" />
+      <div className="w-full flex-1 bg-white dark:bg-background">
+        <div className={cn(PAGE, "flex flex-col gap-5")}>
+          <Skeleton className="h-8 w-36" />
+          <Skeleton className="h-9 w-2/3" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="min-h-96 w-full" />
+        </div>
       </div>
     )
   }
@@ -361,8 +368,8 @@ export function TeacherEssayReviewPage({
   // (isRichTextQuestion || looksLikeRichTextDoc) so those rows aren't a dead end.
   if (!question || (!isRichTextQuestion(question) && !looksLikeRichTextDoc(response?.student_response ?? ""))) {
     return (
-      <div className="mx-auto w-full max-w-3xl flex-1 space-y-4 p-4 md:p-6">
-        <BackButton href={backHref} />
+      <div className={cn(PAGE, "space-y-4")}>
+        <BackButton href={backHref} preferHistory={!explicitBack} />
         <p className="text-muted-foreground">This essay question was not found. It may have been unpublished or removed.</p>
       </div>
     )
@@ -370,8 +377,8 @@ export function TeacherEssayReviewPage({
 
   if (!response) {
     return (
-      <div className="mx-auto w-full max-w-3xl flex-1 space-y-4 p-4 md:p-6">
-        <BackButton href={backHref} />
+      <div className={cn(PAGE, "space-y-4")}>
+        <BackButton href={backHref} preferHistory={!explicitBack} />
         <h1 className="text-2xl font-bold">{question.field_label}</h1>
         <p className="text-muted-foreground">This student has not started this essay yet.</p>
       </div>
@@ -445,19 +452,10 @@ export function TeacherEssayReviewPage({
   const unreadFeedback = comments.filter((c) => !c.isOld && !c.isStudentReply).length
 
   return (
-    <div className="w-full flex-1 bg-white p-4 md:p-6 dark:bg-background">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">{question.field_label}</h1>
-        {question.detailed_instructions && (
-          <Markdown
-            text={question.detailed_instructions}
-            className="max-w-prose [--tw-prose-body:var(--muted-foreground)]"
-          />
-        )}
-      </div>
-
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <BackButton href={backHref} />
+    <div className="w-full flex-1 bg-white dark:bg-background">
+      <div className={PAGE}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <BackButton href={backHref} preferHistory={!explicitBack} />
         <div className="flex items-center gap-2">
           {canAnnotate && (
             <Button
@@ -503,6 +501,9 @@ export function TeacherEssayReviewPage({
         </div>
       </div>
 
+      <h1 className="mt-6 text-2xl font-bold tracking-tight">{question.field_label}</h1>
+      {question.detailed_instructions && <EssayInstructions text={question.detailed_instructions} />}
+
       {hasEssay && !canAnnotate && (
         <div className="bg-muted/50 text-muted-foreground mt-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
           <HugeiconsIcon icon={SentIcon} strokeWidth={2} className="size-4 shrink-0 text-blue-500" />
@@ -519,7 +520,7 @@ export function TeacherEssayReviewPage({
             key={`${response.id}-${restoreNonce}`}
             initialValue={value}
             patchUrl={`${cfg.responsePatchBase}/${response.id}`}
-            bodyClassName="px-6 py-10 sm:px-12 lg:px-24"
+            bodyClassName="px-6 py-8 sm:px-12 sm:py-10"
             onFirstProseEdit={snapshotBeforeEdit}
             commentsSheetOpen={commentsOpen}
             onCommentsSheetOpenChange={setCommentsOpen}
@@ -540,7 +541,7 @@ export function TeacherEssayReviewPage({
             }}
           />
         ) : (
-          <div className="rounded-xl border bg-white px-6 py-10 sm:px-12 lg:px-24 dark:bg-card">
+          <div className="rounded-xl border bg-white px-6 py-8 sm:px-12 sm:py-10 dark:bg-card">
             {hasEssay ? (
               <RichTextDisplay raw={value} showComments />
             ) : (
@@ -588,6 +589,7 @@ export function TeacherEssayReviewPage({
             )}
           </>
         )}
+      </div>
       </div>
 
       {/* Overall feedback thread, separate from the anchored inline comments. */}
@@ -819,10 +821,58 @@ function formatVersionDate(ts: number | string | undefined): string {
   })
 }
 
-function BackButton({ href }: { href: string }) {
+/** The page's column: centered, so the essay reads at a comfortable width on
+    a wide screen, with the same gutters on every state of the page. */
+const PAGE = "mx-auto w-full max-w-5xl px-4 py-5 md:px-8 md:py-6"
+
+/**
+ * The question's instructions, folded away under the title so the essay
+ * stays the focus; the first lines show as a preview until it's opened.
+ */
+function EssayInstructions({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="bg-muted/30 mt-3 rounded-lg border">
+      <CollapsibleTrigger className="hover:bg-muted/50 flex w-full items-center justify-between gap-3 rounded-lg px-4 py-2.5 text-left text-sm font-medium transition-colors">
+        Instructions
+        <HugeiconsIcon
+          icon={ArrowDown01Icon}
+          strokeWidth={2}
+          className={cn("text-muted-foreground size-4 shrink-0 transition-transform", open && "rotate-180")}
+        />
+      </CollapsibleTrigger>
+      {!open && (
+        <div className="-mt-1 px-4 pb-3">
+        <p className="text-muted-foreground line-clamp-2 text-sm">
+          {text.replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, "").replace(/[#*_>`]+/g, "").replace(/\s+/g, " ").trim()}
+        </p>
+        </div>
+      )}
+      <CollapsibleContent className="border-t px-4 py-3">
+        <Markdown text={text} className="max-w-prose [--tw-prose-body:var(--muted-foreground)]" />
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+/**
+ * Back to wherever the essay was opened from. With an explicit return
+ * target it links there; without one it steps back through the browser
+ * history, and only a page opened fresh (a new tab, a pasted link) uses the
+ * fixed fallback.
+ */
+function BackButton({ href, preferHistory = false }: { href: string; preferHistory?: boolean }) {
+  const router = useRouter()
   return (
     <Button variant="outline" size="sm" asChild className="gap-2">
-      <Link href={href}>
+      <Link
+        href={href}
+        onClick={(e) => {
+          if (!preferHistory || window.history.length <= 1) return
+          e.preventDefault()
+          router.back()
+        }}
+      >
         <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
         Back to review
       </Link>
