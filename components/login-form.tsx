@@ -3,7 +3,43 @@
 import { useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { SignIn, useAuth, useClerk } from "@clerk/nextjs"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+
+/**
+ * Stands in for Clerk's card until it mounts. The card can't draw until
+ * clerk-js downloads, fetches the instance's environment and client, and
+ * lazy-loads its UI chunks — about two seconds on a cold load — and without
+ * this the space under the headline sat empty that whole time. Server-
+ * rendered, so it's there on first paint, and sized to the real card
+ * (Google button, divider, email field, Continue) so the swap doesn't jump.
+ * Shapes only, never buttons: a control that does nothing until Clerk loads
+ * reads as broken.
+ */
+function SignInCardSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading sign-in"
+      className="w-full max-w-[28rem] rounded-2xl bg-white px-10 py-8 shadow-2xl max-sm:px-6"
+    >
+      <div className="flex h-8 items-center justify-center rounded-lg border border-black/10">
+        <Skeleton className="h-3 w-56 max-w-[70%] bg-black/[0.07]" />
+      </div>
+      <div className="mt-6 flex h-[18px] items-center gap-4">
+        <div className="h-px flex-1 bg-black/[0.07]" />
+        <Skeleton className="h-2.5 w-4 bg-black/[0.07]" />
+        <div className="h-px flex-1 bg-black/[0.07]" />
+      </div>
+      <div className="mt-6 flex h-5 items-center justify-between">
+        <Skeleton className="h-3 w-40 bg-black/[0.07]" />
+        <Skeleton className="h-3 w-16 bg-black/[0.07]" />
+      </div>
+      <div className="mt-1.5 h-8 rounded-lg border border-black/10" />
+      <Skeleton className="mt-8 h-8 rounded-lg bg-[#0f1f52]/15" />
+    </div>
+  )
+}
 
 /**
  * Clerk's prebuilt sign-in card, wrapped in the SailFuture navy branding.
@@ -40,6 +76,7 @@ export function LoginForm({
       )}
       {!(isLoaded && isSignedIn) && (
         <SignIn
+          fallback={<SignInCardSkeleton />}
           routing="hash"
           forceRedirectUrl="/dashboard"
           appearance={{
