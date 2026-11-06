@@ -30,7 +30,7 @@ import {
 } from "@/lib/review-counts"
 import { btTitleToSlug } from "@/lib/businessthesis-sections"
 import { titleToSlug } from "@/lib/lifemap-sections"
-import { ScheduleCard, useSchoolCalendar } from "@/components/class-schedule"
+import { ScheduleCard, useSchoolCalendarData } from "@/components/class-schedule"
 import { ThesisSchedule } from "@/components/thesis-schedule"
 import { ADVISOR_CONTACTS, telHref } from "@/lib/advisor-contacts"
 import {
@@ -173,7 +173,7 @@ export function AdvisorDashboard() {
   const { data: session } = useSession()
   const advisorsId = session?.user?.advisors_id
   const { product: myProduct, advised } = useAdvisedStudents(advisorsId)
-  const calendarQuery = useSchoolCalendar()
+  const calendarQuery = useSchoolCalendarData()
 
   // Every product on the advisor's list, so the counts are read once per
   // product rather than once per student.
@@ -241,7 +241,7 @@ export function AdvisorDashboard() {
       {products.includes("business-thesis") && advisorsId != null ? (
         <ThesisSchedule advisorId={advisorsId} />
       ) : (
-        <ScheduleCard days={calendarQuery.data} status={calendarQuery.status} />
+        <ScheduleCard calendar={calendarQuery.data} status={calendarQuery.status} />
       )}
     </div>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useMemo } from "react"
+import { Fragment, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -12,19 +12,28 @@ import {
 } from "@hugeicons/core-free-icons"
 import {
   CLASS_MEETING,
+  defaultTerm,
+  defaultYear,
   eventConflictsWithClass,
   formatCalendarDate,
+  formatDateRange,
   formatEventTime,
   meetingOutlook,
+  schoolNow,
+  termsOfYear,
+  weeksAhead,
+  yearsWithDays,
+  type DatedTerm,
+  type DateWindow,
   type MeetingSession,
   type SchoolCalendar,
-  type SchoolCalendarDay,
   type SchoolEvent,
 } from "@/lib/school-calendar"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table,
   TableBody,
@@ -56,7 +65,7 @@ function weeksOf(sessions: MeetingSession[]): { start: string; label: string; se
   return weeks
 }
 
-/** How far ahead the schedule table looks. */
+/** How far ahead the schedule looks when no term covers today. */
 const OUTLOOK_WEEKS = 8
 
 const EMPTY_CALENDAR: SchoolCalendar = { days: [], events: [], terms: [], years: [] }
@@ -73,50 +82,76 @@ async function fetchSchoolCalendar(): Promise<SchoolCalendar> {
   }
 }
 
-const CALENDAR_QUERY = {
-  queryKey: ["school-calendar"] as const,
-  queryFn: fetchSchoolCalendar,
-  staleTime: 15 * 60_000,
-}
-
 /** The whole school calendar: days, events, terms and years. */
 export function useSchoolCalendarData() {
-  return useQuery<SchoolCalendar>(CALENDAR_QUERY)
-}
-
-/** Just the day rows, for the class-schedule outlook. Shares the one fetch
-    with `useSchoolCalendarData`. */
-export function useSchoolCalendar() {
-  return useQuery<SchoolCalendar, Error, SchoolCalendarDay[]>({
-    ...CALENDAR_QUERY,
-    select: (cal) => cal.days,
+  return useQuery<SchoolCalendar>({
+    queryKey: ["school-calendar"],
+    queryFn: fetchSchoolCalendar,
+    staleTime: 15 * 60_000,
   })
 }
 
 /**
- * When the senior class meets: every Thursday and Friday session over the
- * coming weeks as a table, with the ones the school calendar rules out
- * (holidays, breaks, closures) marked and explained, and school events that
- * land on a class day called out.
+ * The dates the schedule covers. With the picker, the chosen term whole;
+ * otherwise what's left of the current term (or the next to start). When no
+ * term covers today or later, the coming weeks.
+ */
+function scheduleWindow(
+  term: DatedTerm | null,
+  termPicker: boolean,
+  today: string
+): { range: DateWindow; term: DatedTerm | null } {
+  if (term && (termPicker || term.end >= today)) {
+    return { range: { from: termPicker || term.start > today ? term.start : today, through: term.end }, term }
+  }
+  return { range: weeksAhead(OUTLOOK_WEEKS, today), term: null }
+}
+
+/**
+ * When the senior class meets: every Thursday and Friday session of the term
+ * as a table, with the ones the school calendar rules out (holidays, breaks,
+ * closures) marked and explained, and school events that land on a class day
+ * called out. On the Schedule page a term picker switches between the year's
+ * terms; on a home page it's just the rest of the current term.
  */
 export function ScheduleCard({
-  days,
-  events,
+  calendar,
   status,
   onSelectDay,
+  termPicker = false,
 }: {
-  days: SchoolCalendarDay[] | undefined
-  /** School events; when given, sessions with an event on the same day say so. */
-  events?: SchoolEvent[]
+  calendar: SchoolCalendar | undefined
   status: "pending" | "error" | "success"
   /** When set, every class day is a button that opens that day's bookings. */
   onSelectDay?: (session: MeetingSession) => void
+  /** Show the year's terms as tabs, each listing its whole schedule. */
+  termPicker?: boolean
 }) {
+  const [today] = useState(() => schoolNow().date)
+  const [termPick, setTermPick] = useState<number | null>(null)
+
+  const terms = useMemo(() => {
+    if (!calendar) return []
+    const year = defaultYear(yearsWithDays(calendar), today)
+    return year ? termsOfYear(calendar, year.id) : []
+  }, [calendar, today])
+  const { range, term } = useMemo(() => {
+    const picked = termPicker ? terms.find((t) => t.id === termPick) : undefined
+    return scheduleWindow(picked ?? defaultTerm(terms, today), termPicker, today)
+  }, [terms, termPicker, termPick, today])
+
   const outlook = useMemo(
-    () => (days ? meetingOutlook(days, OUTLOOK_WEEKS, undefined, events ?? []) : null),
-    [days, events]
+    () => (calendar ? meetingOutlook(calendar.days, range, undefined, calendar.events) : null),
+    [calendar, range]
   )
+  // A later term's first session isn't "next" while today's term is running.
+  const nextSession = range.from <= today && today <= range.through ? outlook?.nextSession ?? null : null
   const time = `${CLASS_MEETING.startLabel} – ${CLASS_MEETING.endLabel}`
+  const scope = term
+    ? termPicker
+      ? "Pick a term to see when the class meets, from the school calendar."
+      : `Sessions through the end of ${term.name}, from the school calendar.`
+    : `Sessions over the next ${OUTLOOK_WEEKS} weeks, from the school calendar.`
 
   return (
     <Card>
@@ -128,19 +163,41 @@ export function ScheduleCard({
           <div>
             <CardTitle>Class schedule</CardTitle>
             <CardDescription>
-              The senior class meets Thursdays and Fridays, {time} Eastern, at SailFuture Academy.
-              Sessions over the next {OUTLOOK_WEEKS} weeks, from the school calendar.
+              The senior class meets Thursdays and Fridays, {time} Eastern, at SailFuture Academy. {scope}
               {onSelectDay && " Select a class day to see its bookings and book a time."}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {outlook?.nextSession && (
+        {termPicker && term && terms.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Tabs value={String(term.id)} onValueChange={(v) => setTermPick(Number(v))}>
+              <TabsList aria-label="Academic term">
+                {terms.map((t) => (
+                  <TabsTrigger key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            <p className="text-muted-foreground text-sm">
+              <span className="text-foreground font-medium">{formatDateRange(term.start, term.end)}</span>
+              {outlook && (
+                <>
+                  {" · "}
+                  {outlook.sessions.length} {outlook.sessions.length === 1 ? "session" : "sessions"}
+                </>
+              )}
+            </p>
+          </div>
+        )}
+
+        {nextSession && (
           <p className="text-sm">
             Next session:{" "}
             <span className="font-medium">
-              {outlook.nextSession.isToday ? "today" : formatCalendarDate(outlook.nextSession.date)}, {time}
+              {nextSession.isToday ? "today" : formatCalendarDate(nextSession.date)}, {time}
             </span>
           </p>
         )}
@@ -158,7 +215,11 @@ export function ScheduleCard({
           </p>
         ) : outlook.sessions.length === 0 ? (
           <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
-            No sessions in the next {OUTLOOK_WEEKS} weeks.
+            {term
+              ? termPicker
+                ? `No sessions in ${term.name}.`
+                : `No sessions left in ${term.name}.`
+              : `No sessions in the next ${OUTLOOK_WEEKS} weeks.`}
           </p>
         ) : (
           <>
@@ -183,86 +244,94 @@ export function ScheduleCard({
                         </TableCell>
                       </TableRow>
                       {week.sessions.map((session) => {
-                    const isNext = outlook.nextSession?.date === session.date
-                    const open = onSelectDay && session.status !== "off" ? () => onSelectDay(session) : undefined
-                    const flagged = session.status === "off" || session.conflict
-                    return (
-                      <TableRow
-                        key={session.date}
-                        className={cn(
-                          flagged && "bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-500/5",
-                          open && "focus-visible:bg-muted/60 cursor-pointer outline-none"
-                        )}
-                        {...(open
-                          ? {
-                              role: "button",
-                              tabIndex: 0,
-                              "aria-label": `${formatCalendarDate(session.date)}: bookings`,
-                              onClick: open,
-                              onKeyDown: (e: React.KeyboardEvent) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault()
-                                  open()
+                        const isNext = nextSession?.date === session.date
+                        const open = onSelectDay && session.status !== "off" ? () => onSelectDay(session) : undefined
+                        const flagged = !session.isPast && (session.status === "off" || session.conflict)
+                        return (
+                          <TableRow
+                            key={session.date}
+                            className={cn(
+                              flagged && "bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-500/5",
+                              session.isPast && "text-muted-foreground",
+                              open && "focus-visible:bg-muted/60 cursor-pointer outline-none"
+                            )}
+                            {...(open
+                              ? {
+                                  role: "button",
+                                  tabIndex: 0,
+                                  "aria-label": `${formatCalendarDate(session.date)}: bookings`,
+                                  onClick: open,
+                                  onKeyDown: (e: React.KeyboardEvent) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault()
+                                      open()
+                                    }
+                                  },
                                 }
-                              },
-                            }
-                          : {})}
-                      >
-                        <TableCell className="pl-4 font-medium">
-                          {formatCalendarDate(session.date)}
-                          {session.isToday && <span className="text-muted-foreground font-normal"> · today</span>}
-                        </TableCell>
-                        <TableCell
-                          className={cn("tabular-nums", session.status === "off" && "text-muted-foreground line-through")}
-                        >
-                          {time}
-                        </TableCell>
-                        <TableCell className="pr-4 whitespace-normal">
-                          {session.status === "off" ? (
-                            <span className="flex items-start gap-2">
-                              <HugeiconsIcon
-                                icon={CalendarBlock01Icon}
-                                strokeWidth={2}
-                                className="mt-0.5 size-4 shrink-0 text-amber-600"
-                              />
-                              <span>
-                                <span className="font-medium">No class</span>
-                                <span className="text-muted-foreground"> · {session.title}</span>
-                              </span>
-                            </span>
-                          ) : session.status === "unknown" ? (
-                            <span className="text-muted-foreground">Not on the school calendar yet</span>
-                          ) : (
-                            <span className="flex flex-col gap-1">
-                              <span className="flex items-center gap-2">
-                                <HugeiconsIcon
-                                  icon={session.conflict ? Alert02Icon : CheckmarkCircle02Icon}
-                                  strokeWidth={2}
-                                  className={cn("size-4 shrink-0", session.conflict ? "text-amber-600" : "text-emerald-600")}
-                                />
-                                Class meets
-                                {isNext && <Badge variant="secondary">Next</Badge>}
-                                {open && (
+                              : {})}
+                          >
+                            <TableCell className="pl-4 font-medium">
+                              {formatCalendarDate(session.date)}
+                              {session.isToday && <span className="text-muted-foreground font-normal"> · today</span>}
+                            </TableCell>
+                            <TableCell
+                              className={cn("tabular-nums", session.status === "off" && "text-muted-foreground line-through")}
+                            >
+                              {time}
+                            </TableCell>
+                            <TableCell className="pr-4 whitespace-normal">
+                              {session.status === "off" ? (
+                                <span className="flex items-start gap-2">
                                   <HugeiconsIcon
-                                    icon={ArrowRight01Icon}
+                                    icon={CalendarBlock01Icon}
                                     strokeWidth={2}
-                                    className="text-muted-foreground ml-auto size-4 shrink-0"
+                                    className={cn("mt-0.5 size-4 shrink-0", session.isPast ? "text-muted-foreground" : "text-amber-600")}
                                   />
-                                )}
-                              </span>
-                              <SessionEvents events={session.events} />
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
+                                  <span>
+                                    <span className="font-medium">No class</span>
+                                    <span className="text-muted-foreground"> · {session.title}</span>
+                                  </span>
+                                </span>
+                              ) : session.status === "unknown" ? (
+                                <span className="text-muted-foreground">Not on the school calendar yet</span>
+                              ) : (
+                                <span className="flex flex-col gap-1">
+                                  <span className="flex items-center gap-2">
+                                    <HugeiconsIcon
+                                      icon={session.conflict ? Alert02Icon : CheckmarkCircle02Icon}
+                                      strokeWidth={2}
+                                      className={cn(
+                                        "size-4 shrink-0",
+                                        session.isPast
+                                          ? "text-muted-foreground"
+                                          : session.conflict
+                                            ? "text-amber-600"
+                                            : "text-emerald-600"
+                                      )}
+                                    />
+                                    {session.isPast ? "Class met" : "Class meets"}
+                                    {isNext && <Badge variant="secondary">Next</Badge>}
+                                    {open && (
+                                      <HugeiconsIcon
+                                        icon={ArrowRight01Icon}
+                                        strokeWidth={2}
+                                        className="text-muted-foreground ml-auto size-4 shrink-0"
+                                      />
+                                    )}
+                                  </span>
+                                  <SessionEvents events={session.events} />
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </Fragment>
                   ))}
                 </TableBody>
               </Table>
             </div>
-            {!outlook.coversWindow && outlook.calendarThrough && (
+            {!outlook.coversWindow && outlook.calendarThrough && outlook.calendarThrough < range.through && (
               <p className="text-muted-foreground text-xs">
                 The calendar is published through {formatCalendarDate(outlook.calendarThrough)};
                 sessions after that aren&rsquo;t confirmed yet.

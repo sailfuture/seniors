@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Calendar03Icon, CalendarAdd01Icon, UserMultiple02Icon } from "@hugeicons/core-free-icons"
 import { ScheduleCard, useSchoolCalendarData } from "@/components/class-schedule"
-import { TermCalendar } from "@/components/term-calendar"
 import { advisorAllowsProduct, advisorName, type Advisor } from "@/lib/advisors"
 import { classYearOf, currentClassYear, studentName, type RosterStudent } from "@/lib/students"
 import { useAdvisorAssignments, useAdvisors, useStudents } from "@/lib/queries"
@@ -86,17 +85,18 @@ interface StudentRow {
  *
  * Staff (the Schedule page) see every senior. With `advisorId` (an advisor's
  * home page) it covers only that advisor's own Business Thesis students, and
- * the API already returns only their meetings. `showTermCalendar` adds the
- * school calendar, term by term, with the events that collide with class.
+ * the API already returns only their meetings. `termPicker` lets the class
+ * schedule switch between the year's terms instead of showing just the
+ * current one.
  */
 export function ThesisSchedule({
   advisorId,
   showClassSchedule = true,
-  showTermCalendar = false,
+  termPicker = false,
 }: {
   advisorId?: string | number | null
   showClassSchedule?: boolean
-  showTermCalendar?: boolean
+  termPicker?: boolean
 } = {}) {
   const forAdvisor = advisorId != null
   const [day, setDay] = useState<MeetingSession | null>(null)
@@ -166,15 +166,12 @@ export function ThesisSchedule({
 
   return (
     <div className="flex flex-col gap-6">
-      {showTermCalendar && (
-        <TermCalendar data={calendarQuery.data} status={calendarQuery.status} onSelectDay={setDay} />
-      )}
       {showClassSchedule && (
         <ScheduleCard
-          days={calendarQuery.data?.days}
-          events={calendarQuery.data?.events}
+          calendar={calendarQuery.data}
           status={calendarQuery.status}
           onSelectDay={setDay}
+          termPicker={termPicker}
         />
       )}
       <DaySheet

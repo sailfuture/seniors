@@ -5,9 +5,9 @@
  * a weekend, a break or a holiday, tagged with its school year and term),
  * the named events pinned to those days (`school_calendar_events`: testing,
  * socials, trips, ceremonies, with times and a category), the academic terms
- * and the school years. The Schedule page shows each term's months with its
- * events, and marks the Thursday/Friday thesis sessions an event or closure
- * collides with. Read through `/api/school-calendar`, which caches it.
+ * and the school years. The class schedule lists a term's Thursday/Friday
+ * thesis sessions and marks the ones an event or closure collides with.
+ * Read through `/api/school-calendar`, which caches it.
  */
 
 const SCHOOL_CALENDAR_API = "https://xsc3-mvx7-r86m.n7e.xano.io/api:2GcBXyoA"
@@ -376,6 +376,8 @@ export interface MeetingSession {
   /** "Thursday session" or "Friday session". */
   session: string
   isToday: boolean
+  /** Before today: a session that has already happened (or not). */
+  isPast: boolean
   /** "on" (a school day), "off" (school is closed) or "unknown" (not on the calendar yet). */
   status: "on" | "off" | "unknown"
   /** Why there's no class, for an "off" session. */
@@ -432,50 +434,60 @@ export function sessionOn(
 ): MeetingSession | null {
   const weekday = weekdayOf(date)
   if (!CLASS_MEETING.weekdays.includes(weekday)) return null
-  const base = { date, session: `${WEEKDAY_NAME[weekday]} session`, isToday: date === today, events }
+  const base = { date, session: `${WEEKDAY_NAME[weekday]} session`, isToday: date === today, isPast: date < today, events }
   if (!day) return { ...base, status: "unknown", conflict: false }
   const closure = closureOf(day)
   if (closure) return { ...base, status: "off", ...closure, conflict: false }
   return { ...base, status: "on", conflict: events.some(eventConflictsWithClass) }
 }
 
+/** First and last date to look at, inclusive. */
+export interface DateWindow {
+  from: string
+  through: string
+}
+
+/** Today through the end of `weeks` weeks. */
+export function weeksAhead(weeks: number, today = schoolNow().date): DateWindow {
+  return { from: today, through: addDays(today, weeks * 7 - 1) }
+}
+
 /**
- * Which of the next `weeks` worth of Thursday/Friday sessions won't happen,
- * according to the school calendar, and which have a school event on the
- * same day. Days the calendar doesn't list are left out rather than guessed
- * either way; `coversWindow` says so.
+ * The Thursday/Friday sessions in a window of dates (a term, or the coming
+ * weeks): which won't happen according to the school calendar, and which
+ * have a school event on the same day. Days the calendar doesn't list are
+ * left out rather than guessed either way; `coversWindow` says so.
  */
 export function meetingOutlook(
   days: SchoolCalendarDay[],
-  weeks: number,
+  window: DateWindow,
   now = schoolNow(),
   events: SchoolEvent[] = []
 ): MeetingOutlook {
   const byDate = new Map(days.map((d) => [d.date, d]))
   const eventMap = eventsByDate(events)
-  const from = now.date
-  const span = weeks * 7
-  const through = addDays(from, span - 1)
+  const { from, through } = window
   const conflicts: MeetingConflict[] = []
   const sessions: MeetingSession[] = []
   let nextSession: MeetingOutlook["nextSession"] = null
   let listed = 0
+  let span = 0
 
-  for (let i = 0; i < span; i++) {
-    const date = addDays(from, i)
+  for (let date = from; date <= through; date = addDays(date, 1)) {
+    span++
     const day = byDate.get(date)
     if (day) listed++
-    const session = sessionOn(date, day, eventMap.get(date) ?? [], from)
+    const session = sessionOn(date, day, eventMap.get(date) ?? [], now.date)
     if (!session) continue
-    // Today's session drops off the list once it has ended.
-    const ended = i === 0 && now.minutes >= CLASS_MEETING.endMinutes
+    // Today's session drops off the upcoming list once it has ended.
+    const ended = session.isToday && now.minutes >= CLASS_MEETING.endMinutes
     if (!ended) sessions.push(session)
     if (session.status === "off") {
       conflicts.push({ date, session: session.session, title: session.title!, kind: session.kind! })
     }
     // Today's session still counts as upcoming until it has ended.
-    if (session.status === "on" && !nextSession && !ended) {
-      nextSession = { date, session: session.session, isToday: i === 0 }
+    if (session.status === "on" && !nextSession && !session.isPast && !ended) {
+      nextSession = { date, session: session.session, isToday: session.isToday }
     }
   }
 
@@ -539,152 +551,4 @@ export function defaultTerm<T extends { start: string; end: string }>(terms: T[]
     terms[terms.length - 1] ??
     null
   )
-}
-
-export interface TermDayCell {
-  date: string
-  /** The calendar row, or null when the office hasn't published the day. */
-  day: SchoolCalendarDay | null
-  /** Inside the term's own dates (the days around it are shown dimmed). */
-  inTerm: boolean
-  isToday: boolean
-  events: SchoolEvent[]
-  /** The class session, on a Thursday or Friday inside the term. */
-  session: MeetingSession | null
-}
-
-export interface TermMonth {
-  /** YYYY-MM */
-  key: string
-  /** "October 2026" */
-  label: string
-  /** Seven columns from Sunday; null pads the first and last week. */
-  cells: (TermDayCell | null)[]
-}
-
-export interface TermEventRow {
-  event: SchoolEvent
-  day: SchoolCalendarDay | null
-  inTerm: boolean
-  timing: EventTiming
-  /** Whether it lands on a class day and collides with the session. */
-  conflict: boolean
-  /** The class session it lands on, if the date is a class weekday. */
-  session: MeetingSession | null
-}
-
-export interface TermView {
-  term: DatedTerm
-  /** The term's own dates. */
-  start: string
-  end: string
-  /** The term plus the break after it, up to the next term; the events table
-      covers this so nothing between terms goes unlisted. */
-  through: string
-  months: TermMonth[]
-  /** Counts over the term's own dates. */
-  schoolDays: number
-  sessions: number
-  /** Thursday/Friday sessions lost to a holiday or break. */
-  sessionsOff: number
-  /** Sessions that happen but have a colliding school event. */
-  sessionsWithConflicts: number
-  events: TermEventRow[]
-}
-
-function monthLabel(key: string): string {
-  const [y, m] = key.split("-").map(Number)
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", {
-    timeZone: "UTC",
-    month: "long",
-    year: "numeric",
-  })
-}
-
-/** Everything the term calendar draws for one term. */
-export function termView(
-  cal: SchoolCalendar,
-  term: DatedTerm,
-  terms: DatedTerm[],
-  today = schoolNow().date
-): TermView {
-  const byDate = new Map(cal.days.map((d) => [d.date, d]))
-  const eventMap = eventsByDate(cal.events)
-  const next = terms.find((t) => t.start > term.end)
-  const through = next ? addDays(next.start, -1) : term.end
-
-  const cellOf = (date: string): TermDayCell => {
-    const day = byDate.get(date) ?? null
-    const events = eventMap.get(date) ?? []
-    const inTerm = term.start <= date && date <= term.end
-    return {
-      date,
-      day,
-      inTerm,
-      isToday: date === today,
-      events,
-      // The days around the term are shown for context only: a Thursday in
-      // the summer break isn't a session that was lost.
-      session: inTerm ? sessionOn(date, day ?? undefined, events, today) : null,
-    }
-  }
-
-  const months: TermMonth[] = []
-  const [sy, sm] = term.start.split("-").map(Number)
-  const [ey, em] = term.end.split("-").map(Number)
-  for (let y = sy, m = sm; y < ey || (y === ey && m <= em); m === 12 ? ((y += 1), (m = 1)) : (m += 1)) {
-    const key = `${y}-${String(m).padStart(2, "0")}`
-    const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
-    const cells: (TermDayCell | null)[] = []
-    for (let i = 0; i < weekdayOf(`${key}-01`); i++) cells.push(null)
-    for (let d = 1; d <= daysInMonth; d++) cells.push(cellOf(`${key}-${String(d).padStart(2, "0")}`))
-    while (cells.length % 7 !== 0) cells.push(null)
-    months.push({ key, label: monthLabel(key), cells })
-  }
-
-  let schoolDays = 0
-  let sessions = 0
-  let sessionsOff = 0
-  let sessionsWithConflicts = 0
-  for (let date = term.start; date <= term.end; date = addDays(date, 1)) {
-    const day = byDate.get(date)
-    if (!day || closureOf(day)) {
-      if (day && CLASS_MEETING.weekdays.includes(weekdayOf(date))) sessionsOff++
-      continue
-    }
-    schoolDays++
-    const session = sessionOn(date, day, eventMap.get(date) ?? [], today)
-    if (session) {
-      sessions++
-      if (session.conflict) sessionsWithConflicts++
-    }
-  }
-
-  const events: TermEventRow[] = cal.events
-    .filter((e) => term.start <= e.date && e.date <= through)
-    .map((event) => {
-      const day = byDate.get(event.date) ?? null
-      const session = sessionOn(event.date, day ?? undefined, eventMap.get(event.date) ?? [], today)
-      return {
-        event,
-        day,
-        inTerm: event.date <= term.end,
-        timing: eventTiming(event),
-        conflict: session?.status === "on" && eventConflictsWithClass(event),
-        session,
-      }
-    })
-
-  return {
-    term,
-    start: term.start,
-    end: term.end,
-    through,
-    months,
-    schoolDays,
-    sessions,
-    sessionsOff,
-    sessionsWithConflicts,
-    events,
-  }
 }
