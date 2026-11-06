@@ -717,8 +717,8 @@ function meetingState(m: ThesisMeeting, studentEmail: string, now: number): Meet
 }
 
 /**
- * One student's thesis meetings: totals, every meeting on the shared
- * calendar (upcoming first, then past), and links into their thesis.
+ * One student's thesis meetings: a row per meeting on the shared calendar
+ * (upcoming first, then past), and links into their thesis.
  */
 function StudentMeetingsSheet({
   row,
@@ -745,7 +745,6 @@ function StudentMeetingsSheet({
     const past = mine.filter((m) => m.start <= now).sort((a, b) => b.start - a.start)
     return [...upcoming, ...past]
   }, [meetings, email, now])
-  const m = row?.meetings
   const id = student ? String(student.id) : ""
 
   return (
@@ -787,13 +786,6 @@ function StudentMeetingsSheet({
           )}
         </SheetHeader>
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-          {m && (
-            <div className="grid grid-cols-3 gap-3">
-              <SheetStat label="Met" value={m.held.length} />
-              <SheetStat label="Upcoming" value={m.upcoming.length} />
-              <SheetStat label="Canceled" value={m.canceled} />
-            </div>
-          )}
           {list.length === 0 ? (
             <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
               No thesis meetings on the shared calendar yet.
@@ -805,7 +797,6 @@ function StudentMeetingsSheet({
                   <TableRow className="bg-muted/40 hover:bg-muted/40">
                     <TableHead className="pl-4">Date</TableHead>
                     <TableHead>Time</TableHead>
-                    <TableHead>Meeting</TableHead>
                     <TableHead className="pr-4">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -817,9 +808,6 @@ function StudentMeetingsSheet({
                         <TableCell className="pl-4 font-medium">{formatDay(mt.start)}</TableCell>
                         <TableCell className="text-muted-foreground tabular-nums">
                           {clock(mt.start)} – {clock(mt.end)}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground max-w-[14rem] truncate">
-                          {mt.title || "Thesis meeting"}
                         </TableCell>
                         <TableCell className="pr-4">
                           <span
@@ -843,15 +831,6 @@ function StudentMeetingsSheet({
         </div>
       </SheetContent>
     </Sheet>
-  )
-}
-
-function SheetStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border px-3 py-2">
-      <p className="text-muted-foreground text-xs font-medium">{label}</p>
-      <p className="text-xl font-semibold tabular-nums">{value}</p>
-    </div>
   )
 }
 
