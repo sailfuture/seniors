@@ -2,7 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
+import { withReturnTo } from "@/lib/return-to"
 import { useSession } from "@/components/session-provider"
 import { useCanApprove } from "@/hooks/use-can-review"
 import { CARD_TONE_BORDER, cardTone, type CardTone } from "./card-tone"
@@ -295,7 +296,11 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
   const cfg = apiConfig
   const F = cfg.fields
   const searchParams = useSearchParams()
-  const focusField = searchParams.get("focus")
+  const pathname = usePathname()
+  // ?focus= scrolls to a question and opens its comment; ?at= (coming back
+  // from that question's essay page) only scrolls.
+  const focusField = searchParams.get("focus") ?? searchParams.get("at")
+  const openFocusComment = searchParams.has("focus")
   const focusApplied = useRef(false)
   const { data: session } = useSession()
   // Advisors comment, request revisions, and undo; approving is staff only.
@@ -443,6 +448,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
       const el = document.querySelector(`[data-field-name="${CSS.escape(focusField)}"]`) as HTMLElement | null
       if (!el) return
       el.scrollIntoView({ behavior: "smooth", block: "center" })
+      if (!openFocusComment) return
       setTimeout(() => {
         const commentBtn = el.querySelector("[data-comment-trigger]") as HTMLElement | null
         commentBtn?.click()
@@ -799,13 +805,15 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
           // full document (with inline + overall commenting and review
           // actions) from a compact card.
           const hasEssay = !!value && value.trim().length > 0
-          const snippet = hasEssay ? extractPlainText(value).replace(/\s+/g, " ").trim() : ""
+          // Enough of the opening to fill a few lines at any card width; the
+          // clamp below cuts it to fit, so the card never grows past that.
+          const snippet = hasEssay ? extractPlainText(value).replace(/\s+/g, " ").trim().slice(0, 1200) : ""
           displayValue = (
             <div>
               <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-4 py-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm">
-                    {snippet ? snippet.slice(0, 110) : <span className="text-muted-foreground italic">No essay written yet.</span>}
+                  <p className="line-clamp-3 text-sm leading-relaxed">
+                    {snippet || <span className="text-muted-foreground italic">No essay written yet.</span>}
                   </p>
                   {hasEssay && (
                     <p className="text-muted-foreground mt-0.5 text-xs">
@@ -890,7 +898,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   variant="outline"
                   className="h-7 bg-white px-2.5 text-xs dark:bg-transparent"
                 >
-                  <Link href={`${cfg.adminBasePath}/${studentId}/essay/${q.id}`}>
+                  <Link href={withReturnTo(`${cfg.adminBasePath}/${studentId}/essay/${q.id}`, `${pathname}?at=${encodeURIComponent(q.field_name)}`)}>
                     Open document
                   </Link>
                 </Button>
@@ -911,7 +919,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
                   fieldValue={(isSource ? sourceSummary(parseSources(response)) : isRichText ? extractPlainText(value) : value) || "—"}
                   essayHref={
                     isRichText || looksLikeRichTextDoc(value)
-                      ? `${cfg.adminBasePath}/${studentId}/essay/${q.id}`
+                      ? withReturnTo(`${cfg.adminBasePath}/${studentId}/essay/${q.id}`, `${pathname}?at=${encodeURIComponent(q.field_name)}`)
                       : undefined
                   }
                   resolvedThreads={groupResolvedThreads(

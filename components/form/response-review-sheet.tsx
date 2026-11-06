@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useSession } from "@/components/session-provider"
 import { useCanApprove } from "@/hooks/use-can-review"
+import { useCurrentHref, withReturnTo } from "@/lib/return-to"
 import {
   Sheet,
   SheetContent,
@@ -87,6 +88,7 @@ export function ResponseReviewSheet({
   apiConfig: FormApiConfig
   onReviewed?: (responseId: number, action: "complete" | "revision" | "ready") => void
 }) {
+  const currentHref = useCurrentHref()
   const cfg = apiConfig
   const F = cfg.fields
   const { data: session } = useSession()
@@ -275,11 +277,14 @@ export function ResponseReviewSheet({
               <div className="space-y-3">
                 <Button asChild variant="outline" size="sm" className="gap-1.5">
                   <Link
-                    href={`/admin/${
-                      apiConfig.fields.sectionId.startsWith("lifemap")
-                        ? "life-map"
-                        : "business-thesis"
-                    }/${target.response.students_id}/essay/${target.question.id}`}
+                    href={withReturnTo(
+                      `/admin/${
+                        apiConfig.fields.sectionId.startsWith("lifemap")
+                          ? "life-map"
+                          : "business-thesis"
+                      }/${target.response.students_id}/essay/${target.question.id}`,
+                      currentHref
+                    )}
                   >
                     <HugeiconsIcon icon={LicenseDraftIcon} strokeWidth={2} className="size-4" />
                     Open Full Essay

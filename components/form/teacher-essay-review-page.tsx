@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "@/components/session-provider"
 import { useCanApprove } from "@/hooks/use-can-review"
+import { readReturnTo } from "@/lib/return-to"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowLeft02Icon,
@@ -101,16 +102,20 @@ export function TeacherEssayReviewPage({
   studentId,
   questionId,
   apiConfig,
-  backHref,
+  backHref: defaultBackHref,
 }: {
   studentId: string
   questionId: number
   apiConfig: FormApiConfig
+  /** Where Back goes when the page wasn't opened from somewhere specific. */
   backHref: string
 }) {
   const cfg = apiConfig
   const F = cfg.fields
   const router = useRouter()
+  // Opened from the queue, a section page, or the review sheet: Back returns
+  // there (and to the same question), not to a fixed home.
+  const backHref = readReturnTo(useSearchParams(), defaultBackHref)
   const { data: session } = useSession()
   // Advisors comment, request revisions, and undo; approving, restoring
   // versions, and editing the essay text stay with staff.

@@ -11,14 +11,9 @@ import {
   Mail01Icon,
 } from "@hugeicons/core-free-icons"
 import { useSession } from "@/components/session-provider"
-import {
-  advisorProduct,
-  PRODUCT_LABEL,
-  type AdvisorAssignment,
-  type AdvisorProduct,
-} from "@/lib/advisors"
+import { PRODUCT_LABEL, type AdvisorProduct } from "@/lib/advisors"
 import { type RosterStudent } from "@/lib/students"
-import { useAdvisorAssignments, useAdvisors, useAllStudents } from "@/lib/queries"
+import { useAdvisedStudents } from "@/lib/use-advised-students"
 import {
   BUSINESSTHESIS_API_CONFIG,
   LIFEMAP_API_CONFIG,
@@ -72,11 +67,6 @@ function reviewHref(product: AdvisorProduct, studentId: string) {
 
 function publicHref(product: AdvisorProduct, studentId: string) {
   return `/public/${product}/${studentId}`
-}
-
-interface AdvisedStudent {
-  student: RosterStudent
-  products: AdvisorProduct[]
 }
 
 /** Review counts keyed by `${product}:${studentId}`. */
@@ -182,53 +172,8 @@ function useReviewCounts(products: AdvisorProduct[], studentsByProduct: Partial<
 export function AdvisorDashboard() {
   const { data: session } = useSession()
   const advisorsId = session?.user?.advisors_id
-  const assignmentsQuery = useAdvisorAssignments()
-  // Graduated students stay listed so their locked projects remain reachable.
-  const studentsQuery = useAllStudents()
-  const advisorsQuery = useAdvisors()
+  const { product: myProduct, advised } = useAdvisedStudents(advisorsId)
   const calendarQuery = useSchoolCalendar()
-
-  // A business thesis advisor sees only business theses, a life map advisor
-  // only life maps. Advisors from before types existed (no product on their
-  // row) see whatever they were assigned.
-  const myProduct = useMemo<AdvisorProduct | null>(() => {
-    const me = advisorsQuery.data?.find((a) => Number(a.id) === Number(advisorsId))
-    return me ? advisorProduct(me) : null
-  }, [advisorsQuery.data, advisorsId])
-
-  // Same shared caches the staff surfaces use; the advisor only ever sees
-  // their own slice of them.
-  const advised = useMemo<AdvisedStudent[] | null>(() => {
-    if (advisorsId == null || !assignmentsQuery.data || !studentsQuery.data || !advisorsQuery.data) {
-      return null
-    }
-
-    const byId = new Map(studentsQuery.data.map((s: RosterStudent) => [String(s.id), s]))
-
-    const mine = assignmentsQuery.data.filter(
-      (a: AdvisorAssignment) =>
-        Number(a.advisors_id) === Number(advisorsId) && (myProduct === null || a.type === myProduct)
-    )
-
-    const grouped = new Map<string, AdvisedStudent>()
-    for (const a of mine) {
-      const student = byId.get(String(a.students_id))
-      if (!student) continue
-      const key = String(student.id)
-      const entry = grouped.get(key) ?? { student, products: [] }
-      const product = a.type as AdvisorProduct
-      if (product in PRODUCT_LABEL && !entry.products.includes(product)) {
-        entry.products.push(product)
-      }
-      grouped.set(key, entry)
-    }
-
-    return [...grouped.values()].sort((x, y) =>
-      `${x.student.lastName} ${x.student.firstName}`.localeCompare(
-        `${y.student.lastName} ${y.student.firstName}`
-      )
-    )
-  }, [advisorsId, assignmentsQuery.data, studentsQuery.data, advisorsQuery.data, myProduct])
 
   // Every product on the advisor's list, so the counts are read once per
   // product rather than once per student.

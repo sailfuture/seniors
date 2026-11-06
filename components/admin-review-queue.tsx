@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useCurrentHref, withReturnTo } from "@/lib/return-to"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -147,6 +148,7 @@ export function AdminReviewQueue({
   const cfg = apiConfig
   const F = cfg.fields
   const router = useRouter()
+  const currentHref = useCurrentHref()
 
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState<Record<GroupKey, QueueRow[]>>({ pending: [], revisions: [] })
@@ -273,7 +275,7 @@ export function AdminReviewQueue({
     // A rich-text essay opens as a full document so the teacher can comment
     // inline; everything else reviews in the side sheet.
     if (row.isEssay) {
-      router.push(`${cfg.adminBasePath}/${row.target.response.students_id}/essay/${row.target.question.id}`)
+      router.push(withReturnTo(`${cfg.adminBasePath}/${row.target.response.students_id}/essay/${row.target.question.id}`, currentHref))
       return
     }
     setSheetTarget(row.target)

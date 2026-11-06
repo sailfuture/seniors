@@ -92,8 +92,8 @@ export function useAllStudents({ enabled = true }: { enabled?: boolean } = {}) {
   return { data, isPending: active.isPending || archived.isPending }
 }
 
-export function useAdvisors() {
-  return useQuery({ queryKey: queryKeys.advisors, queryFn: fetchAdvisors })
+export function useAdvisors({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: queryKeys.advisors, queryFn: fetchAdvisors, enabled })
 }
 
 /**
@@ -110,10 +110,11 @@ export function useAdvisorAccess(enabled: boolean) {
   })
 }
 
-export function useAdvisorAssignments() {
+export function useAdvisorAssignments({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.advisorAssignments,
     queryFn: fetchAdvisorAssignments,
+    enabled,
   })
 }
 

@@ -39,8 +39,8 @@ import { fetchSections, invalidateSectionsCache, titleToSlug, type LifeMapSectio
 import { fetchBtSections, invalidateBtSectionsCache, btTitleToSlug, type BusinessThesisSection } from "@/lib/businessthesis-sections"
 import { useRefreshKey } from "@/lib/refresh-context"
 import { canAccessLifeMap, canEditTemplates, canManageAdvisors, canManageStaff, isStaffRole } from "@/lib/roles"
-import { useAdvisors, useAllStudents, useStudents } from "@/lib/queries"
-import { advisorProduct } from "@/lib/advisors"
+import { useAllStudents, useStudents } from "@/lib/queries"
+import { useAdvisedStudents, type AdvisedStudent } from "@/lib/use-advised-students"
 import { classYearOf, currentClassYear } from "@/lib/students"
 import type { Comment } from "@/lib/form-types"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
@@ -821,6 +821,53 @@ function extractStudentId(pathname: string): string | null {
   return match?.[1] ?? null
 }
 
+/** The advisor's assigned students, each a link into that student's work.
+    Null advised = still loading; empty = nothing assigned yet. */
+function AdvisedStudentsNav({ advised, pathname }: { advised: AdvisedStudent[] | null; pathname: string }) {
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Your Students</SidebarGroupLabel>
+      <SidebarMenu>
+        {advised === null ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <SidebarMenuItem key={i}>
+              <SidebarMenuButton className="pointer-events-none">
+                <Skeleton className="size-5 shrink-0 rounded-full" />
+                <Skeleton className="h-3.5 w-full max-w-[120px] rounded" />
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))
+        ) : advised.length === 0 ? (
+          <SidebarMenuItem>
+            <SidebarMenuButton className="text-muted-foreground pointer-events-none">
+              <span>No students assigned yet</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : (
+          advised.map(({ student, products }) => {
+            const name = `${student.firstName} ${student.lastName}`.trim()
+            const initials = `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase()
+            const href = `/admin/${products[0] ?? "business-thesis"}/${student.id}`
+            return (
+              <SidebarMenuItem key={student.id}>
+                <SidebarMenuButton asChild tooltip={name} isActive={pathname.startsWith(href)}>
+                  <Link href={href}>
+                    <Avatar className="size-5">
+                      <AvatarImage src={student.profileImage || undefined} alt="" />
+                      <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
+                    </Avatar>
+                    <span className="truncate">{name}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })
+        )}
+      </SidebarMenu>
+    </SidebarGroup>
+  )
+}
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { data: session } = useSession()
@@ -862,11 +909,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     btCompleteSet: btReviewCounts.complete,
   }, studentList)
   const studentInfo = useStudentInfo(adminStudentId)
-  // Which product an advisor covers decides their rubric and schedule links.
-  const advisorsQuery = useAdvisors()
-  const advisorsId = (session?.user as Record<string, unknown> | undefined)?.advisors_id
-  const me = isAdvisor ? advisorsQuery.data?.find((a) => Number(a.id) === Number(advisorsId)) : undefined
-  const myProduct = me ? advisorProduct(me) : null
+  // Which product an advisor covers decides their rubric and schedule links,
+  // and which students they see listed in the sidebar.
+  const advisorsId = (session?.user as Record<string, unknown> | undefined)?.advisors_id as
+    | number
+    | string
+    | undefined
+  const { product: myProduct, advised } = useAdvisedStudents(isAdvisor ? advisorsId : null)
   const items = isAdvisor && !adminStudentId ? advisorNavItems(pathname, myProduct) : navItems
   const publicPagesNav = !isReviewer ? buildStudentPublicPagesNav(ownStudentId) : null
 
@@ -946,6 +995,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         )}
         <NavMain items={items} hideLabel={!!adminStudentId} loading={sidebarLoading && !(isAdvisor && !adminStudentId)} />
+        {isAdvisor && !adminStudentId && <AdvisedStudentsNav advised={advised} pathname={pathname} />}
         {!isReviewer && (
           <SidebarGroup>
             <SidebarGroupLabel>Tools</SidebarGroupLabel>
