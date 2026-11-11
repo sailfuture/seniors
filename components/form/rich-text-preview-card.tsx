@@ -1,7 +1,6 @@
 "use client"
 
 import { AI_BLOCK_THRESHOLD, normalizeAiPercent } from "@/lib/ai-submission-check"
-import { formatWhen } from "@/lib/format-time"
 import { extractPlainText, richTextWordCount } from "@/lib/rich-text"
 
 const SNIPPET_WORDS = 50
@@ -31,7 +30,6 @@ function AiScoreReport({ data }: { data: PlagiarismData }) {
   const humanIsMax = human === max && human > 0
   // Same unrounded comparison as the submission gate, so the card agrees.
   const rejected = normalizeAiPercent(data.class_probability_ai) > AI_BLOCK_THRESHOLD
-  const checked = formatWhen(data.created_at as string | number | null | undefined)
 
   return (
     <span className="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 text-xs">
@@ -52,12 +50,6 @@ function AiScoreReport({ data }: { data: PlagiarismData }) {
       >
         Mixed: {mixed}%
       </span>
-      {checked && (
-        <>
-          <span className="text-muted-foreground/40">&mdash;</span>
-          <span className="text-muted-foreground">{checked}</span>
-        </>
-      )}
     </span>
   )
 }

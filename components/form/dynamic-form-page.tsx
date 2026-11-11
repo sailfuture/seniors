@@ -102,7 +102,7 @@ import { postResponseVersion } from "@/lib/response-versions"
 import { checkSubmissionForAi, AI_BLOCK_THRESHOLD, AI_CHECK_MIN_WORDS } from "@/lib/ai-submission-check"
 import { Linkify } from "@/components/linkify"
 import { cachedFetch, studentFetch } from "@/lib/cached-fetch"
-import { dateTime, formatWhen, relativeTime, toMillis } from "@/lib/format-time"
+import { dateTime, relativeTime, toMillis } from "@/lib/format-time"
 
 interface GptZeroResult {
   class_probability_ai?: number
@@ -1926,7 +1926,6 @@ function PlagiarismScores({ data }: { data: GptZeroResult }) {
   const ai = toPercent(data.class_probability_ai ?? 0)
   const human = toPercent(data.class_probability_human ?? 0)
   const mixed = toPercent(data.mixed ?? 0)
-  const relTime = formatWhen(data.created_at as string | number | null | undefined)
 
   const max = Math.max(ai, human, mixed)
   const aiIsMax = ai === max
@@ -1946,12 +1945,6 @@ function PlagiarismScores({ data }: { data: GptZeroResult }) {
       <span className={mixedIsMax ? "font-bold text-amber-600" : "text-muted-foreground"}>
         Mixed: {mixed}%
       </span>
-      {relTime && (
-        <>
-          <span className="text-muted-foreground/40">&mdash;</span>
-          <span className="text-muted-foreground">{relTime}</span>
-        </>
-      )}
     </span>
   )
 }
