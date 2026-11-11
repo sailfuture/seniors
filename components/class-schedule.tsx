@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table,
@@ -92,12 +93,16 @@ export function useSchoolCalendarData() {
 
 /**
  * The dates the schedule covers: what's left of the term from today (the
- * whole term when it hasn't started), never a day that has passed. When no
- * term covers today or later, the coming weeks.
+ * whole term when it hasn't started). With past dates switched on, the whole
+ * term, whether or not it has ended. When no term fits, the coming weeks.
  */
-function scheduleWindow(term: DatedTerm | null, today: string): { range: DateWindow; term: DatedTerm | null } {
-  if (term && term.end >= today) {
-    return { range: { from: term.start > today ? term.start : today, through: term.end }, term }
+function scheduleWindow(
+  term: DatedTerm | null,
+  today: string,
+  showPast: boolean
+): { range: DateWindow; term: DatedTerm | null } {
+  if (term && (showPast || term.end >= today)) {
+    return { range: { from: showPast || term.start > today ? term.start : today, through: term.end }, term }
   }
   return { range: weeksAhead(OUTLOOK_WEEKS, today), term: null }
 }
@@ -107,8 +112,9 @@ function scheduleWindow(term: DatedTerm | null, today: string): { range: DateWin
  * as a table, with the ones the school calendar rules out (holidays, breaks,
  * closures) marked and explained, and school events that land on a class day
  * called out. Only today and later is listed. On the Schedule page a term
- * picker switches between the current term and the ones still to come; on a
- * home page it's just the rest of the current term.
+ * picker switches between the current term and the ones still to come, and a
+ * switch brings back the weeks and terms that have passed; on a home page
+ * it's just the rest of the current term.
  */
 export function ScheduleCard({
   calendar,
@@ -120,22 +126,26 @@ export function ScheduleCard({
   status: "pending" | "error" | "success"
   /** When set, every class day is a button that opens that day's bookings. */
   onSelectDay?: (session: MeetingSession) => void
-  /** Show the terms that haven't ended as tabs, each listing what's left of it. */
+  /** Show the terms as tabs, with a switch for the weeks and terms that have
+      passed (off to begin with). */
   termPicker?: boolean
 }) {
   const [today] = useState(() => schoolNow().date)
   const [termPick, setTermPick] = useState<number | null>(null)
+  // Weeks and terms that have passed stay out of the way until asked for.
+  const [showPast, setShowPast] = useState(false)
 
   const terms = useMemo(() => {
     if (!calendar) return []
     const year = defaultYear(yearsWithDays(calendar), today)
-    // A term that has ended has nothing left to show.
-    return year ? termsOfYear(calendar, year.id).filter((t) => t.end >= today) : []
-  }, [calendar, today])
+    const all = year ? termsOfYear(calendar, year.id) : []
+    // Without past dates, a term that has ended has nothing left to show.
+    return showPast ? all : all.filter((t) => t.end >= today)
+  }, [calendar, today, showPast])
   const { range, term } = useMemo(() => {
     const picked = termPicker ? terms.find((t) => t.id === termPick) : undefined
-    return scheduleWindow(picked ?? defaultTerm(terms, today), today)
-  }, [terms, termPicker, termPick, today])
+    return scheduleWindow(picked ?? defaultTerm(terms, today), today, showPast)
+  }, [terms, termPicker, termPick, today, showPast])
 
   const outlook = useMemo(
     () => (calendar ? meetingOutlook(calendar.days, range, undefined, calendar.events) : null),
@@ -184,10 +194,14 @@ export function ScheduleCard({
                 <>
                   {" · "}
                   {outlook.sessions.length} {outlook.sessions.length === 1 ? "session" : "sessions"}
-                  {term.start < today && " left"}
+                  {!showPast && term.start < today && " left"}
                 </>
               )}
             </p>
+            <label className="ml-auto flex cursor-pointer items-center gap-2 text-sm">
+              <Switch size="sm" checked={showPast} onCheckedChange={setShowPast} />
+              Show past weeks and terms
+            </label>
           </div>
         )}
 
@@ -213,7 +227,11 @@ export function ScheduleCard({
           </p>
         ) : outlook.sessions.length === 0 ? (
           <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
-            {term ? `No sessions left in ${term.name}.` : `No sessions in the next ${OUTLOOK_WEEKS} weeks.`}
+            {term
+              ? showPast
+                ? `No sessions in ${term.name}.`
+                : `No sessions left in ${term.name}.`
+              : `No sessions in the next ${OUTLOOK_WEEKS} weeks.`}
           </p>
         ) : (
           <>
