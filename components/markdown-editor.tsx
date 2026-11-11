@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useId, useRef, useState } from "react"
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { useEditor, useEditorState, EditorContent, type Editor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import { TableKit } from "@tiptap/extension-table"
@@ -161,10 +161,29 @@ function Toolbar({
         : null,
   })
 
+  // `top: 0` sticks below the scrolling ancestor's top padding, which leaves a
+  // strip above the toolbar that the text scrolls through. Stick that much
+  // higher instead, flush with the top edge of whatever scrolls.
+  const barRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const bar = barRef.current
+    if (!bar) return
+    for (let el = bar.parentElement; el; el = el.parentElement) {
+      const style = getComputedStyle(el)
+      if (/(auto|scroll)/.test(style.overflowY)) {
+        bar.style.top = `${-(parseFloat(style.paddingTop) || 0)}px`
+        return
+      }
+    }
+  }, [])
+
   // Sticky so it stays in reach while editing long instructions in a
   // scrolling sheet; opaque so text doesn't show through.
   return (
-    <div className="bg-background sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-t-lg border-b p-1">
+    <div
+      ref={barRef}
+      className="bg-background sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-t-lg border-b p-1"
+    >
       {editor ? (
         <>
           <ToolbarButton
