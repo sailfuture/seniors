@@ -60,6 +60,7 @@ import {
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -259,6 +260,7 @@ export function ThesisSchedule({
         onClose={() => setDay(null)}
         meetings={meetings}
         studentsByEmail={studentsByEmail}
+        rows={rows}
         loading={meetingsQuery.isPending}
         configured={configured}
         onBook={canBook === null ? undefined : (date) => setBooking({ date })}
@@ -1088,6 +1090,7 @@ function DaySheet({
   onClose,
   meetings,
   studentsByEmail,
+  rows,
   loading,
   configured,
   onBook,
@@ -1096,6 +1099,8 @@ function DaySheet({
   onClose: () => void
   meetings: ThesisMeeting[]
   studentsByEmail: Map<string, RosterStudent>
+  /** Each senior with their thesis advisors; null while loading. */
+  rows: StudentRow[] | null
   loading: boolean
   configured: boolean
   /** Opens booking on this day; undefined until the meetings have loaded. */
@@ -1108,6 +1113,7 @@ function DaySheet({
         : [],
     [day, meetings]
   )
+  const advisorsOf = useMemo(() => new Map((rows ?? []).map((r) => [String(r.student.id), r.advisors])), [rows])
   return (
     <Sheet open={day !== null} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-xl">
@@ -1140,23 +1146,49 @@ function DaySheet({
                 Nothing booked yet.
               </p>
             ) : (
-              <ul className="mt-2 divide-y overflow-hidden rounded-lg border">
-                {booked.map((m) => {
-                  const who = [...studentsByEmail.entries()]
-                    .filter(([email]) => meetingIncludes(m, email))
-                    .map(([, s]) => studentName(s))
-                  return (
-                    <li key={m.id} className="flex items-baseline gap-3 px-4 py-3">
-                      <span className="w-32 shrink-0 text-sm font-medium tabular-nums">
-                        {clock(m.start)} – {clock(m.end)}
-                      </span>
-                      <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
-                        {who.length ? who.join(", ") : m.title || "Thesis meeting"}
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
+              <div className="mt-2 overflow-hidden rounded-lg border">
+                {/* Fixed columns, so a long name is cut short instead of wrapping the row. */}
+                <Table className="table-fixed">
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableHead className="w-[10.5rem] pl-4">Time</TableHead>
+                      <TableHead>Student</TableHead>
+                      <TableHead className="pr-4">Thesis advisor</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {booked.map((m) => {
+                      const who = [...studentsByEmail.entries()]
+                        .filter(([email]) => email && meetingIncludes(m, email))
+                        .map(([, s]) => s)
+                      const names = who.map(studentName).join(", ")
+                      const advisors = [
+                        ...new Set(who.flatMap((s) => (advisorsOf.get(String(s.id)) ?? []).map(advisorName))),
+                      ].join(", ")
+                      return (
+                        <TableRow key={m.id} className="hover:bg-transparent">
+                          <TableCell className="pl-4 font-medium tabular-nums">
+                            {clock(m.start)} – {clock(m.end)}
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex min-w-0 items-center gap-2.5">
+                              {who[0] && <StudentPhoto student={who[0]} className="size-7" />}
+                              <span className="truncate font-medium" title={names || undefined}>
+                                {names || m.title || "Thesis meeting"}
+                              </span>
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground pr-4">
+                            <span className="block truncate" title={advisors || undefined}>
+                              {advisors || (who.length ? "No advisor yet" : "–")}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </section>
           {day && day.events.length > 0 && (
@@ -1343,6 +1375,30 @@ function meetingState(m: ThesisMeeting, studentEmail: string, now: number): Meet
   return m.start > now ? "Upcoming" : "Held"
 }
 
+/** A meeting's state as a badge: navy to come, green held, red declined, gray canceled. */
+function MeetingStateBadge({ state }: { state: MeetingState }) {
+  if (state === "Declined") return <Badge variant="destructive">Declined</Badge>
+  if (state === "Canceled") {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        Canceled
+      </Badge>
+    )
+  }
+  return (
+    <Badge
+      variant="secondary"
+      className={
+        state === "Upcoming"
+          ? "bg-primary/10 text-primary"
+          : "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+      }
+    >
+      {state}
+    </Badge>
+  )
+}
+
 /**
  * One student's thesis meetings: a row per meeting on the shared calendar
  * (upcoming first, then past), booking another, and links into their thesis.
@@ -1450,16 +1506,7 @@ function StudentMeetingsSheet({
                           {clock(mt.start)} – {clock(mt.end)}
                         </TableCell>
                         <TableCell className="pr-4">
-                          <span
-                            className={cn(
-                              "text-sm",
-                              state === "Held" && "font-medium",
-                              state === "Upcoming" && "text-primary font-medium",
-                              (state === "Canceled" || state === "Declined") && "text-muted-foreground line-through"
-                            )}
-                          >
-                            {state}
-                          </span>
+                          <MeetingStateBadge state={state} />
                         </TableCell>
                         {anyCancelable && (
                           <TableCell className="pr-4 text-right">

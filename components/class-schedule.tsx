@@ -91,17 +91,13 @@ export function useSchoolCalendarData() {
 }
 
 /**
- * The dates the schedule covers. With the picker, the chosen term whole;
- * otherwise what's left of the current term (or the next to start). When no
+ * The dates the schedule covers: what's left of the term from today (the
+ * whole term when it hasn't started), never a day that has passed. When no
  * term covers today or later, the coming weeks.
  */
-function scheduleWindow(
-  term: DatedTerm | null,
-  termPicker: boolean,
-  today: string
-): { range: DateWindow; term: DatedTerm | null } {
-  if (term && (termPicker || term.end >= today)) {
-    return { range: { from: termPicker || term.start > today ? term.start : today, through: term.end }, term }
+function scheduleWindow(term: DatedTerm | null, today: string): { range: DateWindow; term: DatedTerm | null } {
+  if (term && term.end >= today) {
+    return { range: { from: term.start > today ? term.start : today, through: term.end }, term }
   }
   return { range: weeksAhead(OUTLOOK_WEEKS, today), term: null }
 }
@@ -110,8 +106,9 @@ function scheduleWindow(
  * When the senior class meets: every Thursday and Friday session of the term
  * as a table, with the ones the school calendar rules out (holidays, breaks,
  * closures) marked and explained, and school events that land on a class day
- * called out. On the Schedule page a term picker switches between the year's
- * terms; on a home page it's just the rest of the current term.
+ * called out. Only today and later is listed. On the Schedule page a term
+ * picker switches between the current term and the ones still to come; on a
+ * home page it's just the rest of the current term.
  */
 export function ScheduleCard({
   calendar,
@@ -123,7 +120,7 @@ export function ScheduleCard({
   status: "pending" | "error" | "success"
   /** When set, every class day is a button that opens that day's bookings. */
   onSelectDay?: (session: MeetingSession) => void
-  /** Show the year's terms as tabs, each listing its whole schedule. */
+  /** Show the terms that haven't ended as tabs, each listing what's left of it. */
   termPicker?: boolean
 }) {
   const [today] = useState(() => schoolNow().date)
@@ -132,11 +129,12 @@ export function ScheduleCard({
   const terms = useMemo(() => {
     if (!calendar) return []
     const year = defaultYear(yearsWithDays(calendar), today)
-    return year ? termsOfYear(calendar, year.id) : []
+    // A term that has ended has nothing left to show.
+    return year ? termsOfYear(calendar, year.id).filter((t) => t.end >= today) : []
   }, [calendar, today])
   const { range, term } = useMemo(() => {
     const picked = termPicker ? terms.find((t) => t.id === termPick) : undefined
-    return scheduleWindow(picked ?? defaultTerm(terms, today), termPicker, today)
+    return scheduleWindow(picked ?? defaultTerm(terms, today), today)
   }, [terms, termPicker, termPick, today])
 
   const outlook = useMemo(
@@ -186,6 +184,7 @@ export function ScheduleCard({
                 <>
                   {" · "}
                   {outlook.sessions.length} {outlook.sessions.length === 1 ? "session" : "sessions"}
+                  {term.start < today && " left"}
                 </>
               )}
             </p>
@@ -214,11 +213,7 @@ export function ScheduleCard({
           </p>
         ) : outlook.sessions.length === 0 ? (
           <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
-            {term
-              ? termPicker
-                ? `No sessions in ${term.name}.`
-                : `No sessions left in ${term.name}.`
-              : `No sessions in the next ${OUTLOOK_WEEKS} weeks.`}
+            {term ? `No sessions left in ${term.name}.` : `No sessions in the next ${OUTLOOK_WEEKS} weeks.`}
           </p>
         ) : (
           <>
