@@ -471,14 +471,14 @@ export function Kpi({
           </p>
           {loading ? (
             <>
-              <Skeleton className="mt-1.5 h-7 w-16" />
+              <Skeleton className="mt-1.5 h-5 w-14" />
               <Skeleton className="mt-1.5 h-3.5 w-28" />
             </>
           ) : failed ? (
             <p className="text-muted-foreground mt-1 text-sm">Couldn&rsquo;t load</p>
           ) : (
             <>
-              <p className="text-2xl leading-8 font-semibold tabular-nums">{value ?? "–"}</p>
+              <p className="mt-0.5 text-lg leading-6 font-semibold tabular-nums">{value ?? "–"}</p>
               {note && (
                 <p className={cn("text-xs", warn ? "text-amber-700" : "text-muted-foreground")}>
                   {note}

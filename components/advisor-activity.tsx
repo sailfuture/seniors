@@ -602,7 +602,7 @@ const PAGE = "mx-auto flex w-full max-w-4xl flex-1 flex-col items-stretch gap-6 
 
 function BackLink() {
   return (
-    <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
+    <Button asChild variant="outline" size="sm" className="gap-2 self-start">
       <Link href={ADVISOR_ACTIVITY_HREF}>
         <HugeiconsIcon icon={ArrowLeft02Icon} strokeWidth={2} className="size-4" />
         Advisor activity
