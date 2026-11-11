@@ -15,8 +15,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { ArrowRight01Icon, UserIcon } from "@hugeicons/core-free-icons"
+import { Badge } from "@/components/ui/badge"
+import { advisorName, fetchAdvisors } from "@/lib/advisors"
 import type { FormApiConfig } from "@/lib/form-api-config"
+import { fetchResponseEvents, latestEvent, type ResponseEvent } from "@/lib/response-events"
 import { isStaffRole } from "@/lib/roles"
 import { AdminReviewQueue } from "@/components/admin-review-queue"
 import { StudentReviewStatus } from "@/components/student-review-status"
@@ -55,11 +58,38 @@ interface TeacherComment {
   isOld?: boolean
   isComplete?: boolean
   isStudentReply?: boolean
+  isRevisionFeedback?: boolean
+  teachers_id?: string | number | null
+  /** Set when a thesis advisor wrote it (Business Thesis, since 2026-11-10). */
+  advisors_id?: number | null
   teacher_name?: string | null
   created_at?: number
-  _teachers?: { name?: string | null } | null
+  /** The teachers_id join: Xano returns the matching teacher rows as a list. */
+  _teachers?: TeacherRef[] | TeacherRef | null
+  _teacher?: TeacherRef | null
   [key: string]: unknown
 }
+
+interface TeacherRef {
+  firstName?: string | null
+  lastName?: string | null
+  name?: string | null
+}
+
+/** The staff member who wrote a comment, by name, when the row carries one. */
+function teacherOf(c: TeacherComment): string | undefined {
+  const t = (Array.isArray(c._teachers) ? c._teachers[0] : c._teachers) ?? c._teacher
+  const name = t ? `${t.firstName ?? ""} ${t.lastName ?? ""}`.trim() || (t.name ?? "") : ""
+  return name || c.teacher_name || undefined
+}
+
+/** A review event's actor without the "(advisor)" tag the log adds. */
+function actorOf(e: ResponseEvent | null | undefined): string | undefined {
+  return e?.actor_name?.replace(/\s*\(advisor\)\s*$/i, "").trim() || undefined
+}
+
+/** A revision note is saved moments after the request it goes with. */
+const SAME_ACTION_MS = 2 * 60_000
 
 interface SectionInfo {
   id: number
@@ -76,7 +106,9 @@ interface StatusRow {
   href: string
   when: number | null
   note?: string
-  teacher?: string
+  /** Who left the feedback: the reviewer who asked for the revision, or the
+      comment's author. */
+  from?: string
 }
 
 type GroupKey = "revisions" | "pending" | "unread" | "approved"
@@ -189,7 +221,7 @@ export function ProductStatusCard({
         const rowFor = (
           q: TemplateQuestion,
           when: number | null,
-          extra?: { note?: string; teacher?: string; key?: string }
+          extra?: { note?: string; from?: string; key?: string }
         ): StatusRow | null => {
           const section = sectionById.get(Number(q[F.sectionId]))
           if (!section || section.isLocked) return null
@@ -202,9 +234,57 @@ export function ProductStatusCard({
             href: `${basePath}/${slug}?focus=${encodeURIComponent(q.field_name)}`,
             when,
             note: extra?.note,
-            teacher: extra?.teacher,
+            from: extra?.from,
           }
         }
+
+        // Read and resolved comments, and the student's own replies, never
+        // show (matching the field sheets, which hide isComplete ones).
+        const unread = comments.filter((c) => !c.isOld && !c.isComplete && !c.isStudentReply)
+        const revisions = responses.filter((r) => !r.isArchived && !r.isComplete && r.revisionNeeded)
+
+        // The review log names who asked for each revision, and who an advisor
+        // was (a comment only joins staff). Read it only when a row needs it.
+        const events: ResponseEvent[] =
+          revisions.length > 0 || unread.some((c) => !teacherOf(c))
+            ? await fetchResponseEvents(cfg, String(studentId))
+            : []
+        const requestedBy = (q: TemplateQuestion): string | undefined => {
+          const byEvent = actorOf(latestEvent(events, "revision_requested", q.field_name, q.id, F.templateId))
+          if (byEvent) return byEvent
+          // No log entry: whoever wrote the latest revision note on it.
+          const notes = comments
+            .filter(
+              (c) =>
+                c.isRevisionFeedback &&
+                !c.isStudentReply &&
+                (Number(c[F.templateId] ?? 0) ? Number(c[F.templateId]) === q.id : c.field_name === q.field_name)
+            )
+            .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))
+          return notes[0] ? teacherOf(notes[0]) : undefined
+        }
+        // A comment with no staff author: the review action logged alongside it.
+        const loggedAuthor = (c: TeacherComment): string | undefined => {
+          const at = c.created_at ?? 0
+          const templateId = Number(c[F.templateId] ?? 0)
+          const match = events.find((e) => {
+            if (e.event_type === "submitted" || !e.actor_name) return false
+            const eventTemplateId = Number(e[F.templateId] ?? 0)
+            const same = templateId && eventTemplateId ? templateId === eventTemplateId : e.field_name === c.field_name
+            return same && Math.abs((toTimestamp(e.created_at) ?? 0) - at) <= SAME_ACTION_MS
+          })
+          return actorOf(match)
+        }
+        // Advisors by id, for an advisor's comment the log can't place.
+        const orphans = unread.filter((c) => !teacherOf(c) && !loggedAuthor(c) && c.advisors_id != null)
+        const advisors = orphans.length > 0 ? await fetchAdvisors() : []
+        const authorOf = (c: TeacherComment): string | undefined => {
+          const known = teacherOf(c) ?? loggedAuthor(c)
+          if (known) return known
+          const advisor = advisors.find((a) => Number(a.id) === Number(c.advisors_id))
+          return advisor ? advisorName(advisor) : undefined
+        }
+        if (cancelled) return
 
         const revisionRows: StatusRow[] = []
         const pendingRows: StatusRow[] = []
@@ -218,7 +298,7 @@ export function ProductStatusCard({
             const row = rowFor(q, when)
             if (row) approvedRows.push(row)
           } else if (r.revisionNeeded) {
-            const row = rowFor(q, when)
+            const row = rowFor(q, when, { from: requestedBy(q) })
             if (row) revisionRows.push(row)
           } else if (r.readyReview) {
             const row = rowFor(q, when)
@@ -227,10 +307,7 @@ export function ProductStatusCard({
         }
 
         const unreadRows: StatusRow[] = []
-        for (const c of comments) {
-          // Skip read and resolved comments (matching the field sheets, which
-          // hide isComplete ones) and the student's own replies.
-          if (c.isOld || c.isComplete || c.isStudentReply) continue
+        for (const c of unread) {
           // Prefer the comment's own template id — field names can repeat.
           const commentTemplateId = Number(c[F.templateId] ?? 0)
           const q =
@@ -238,9 +315,9 @@ export function ProductStatusCard({
             [...liveQuestions.values()].find((q) => q.field_name === c.field_name)
           const section = sectionById.get(Number(c[F.sectionId]))
           if (!section || section.isLocked) continue
-          const teacher = c.teacher_name || c._teachers?.name || undefined
+          const from = authorOf(c)
           if (q) {
-            const row = rowFor(q, c.created_at ?? null, { note: c.note, teacher, key: `c-${c.id}` })
+            const row = rowFor(q, c.created_at ?? null, { note: c.note, from, key: `c-${c.id}` })
             if (row) unreadRows.push(row)
           } else {
             const slug = slugify(section.section_title)
@@ -252,7 +329,7 @@ export function ProductStatusCard({
               href: `${basePath}/${slug}`,
               when: c.created_at ?? null,
               note: c.note,
-              teacher,
+              from,
             })
           }
         }
@@ -404,12 +481,17 @@ function StatusGroupRows({
               onClick={() => onOpen(row.href)}
             >
               <TableCell className="py-2.5">
-                <p className="text-sm font-medium">{row.questionLabel}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">{row.questionLabel}</p>
+                  {row.from && (
+                    <Badge variant="secondary" className="max-w-44 font-normal" title={`Feedback from ${row.from}`}>
+                      <HugeiconsIcon icon={UserIcon} strokeWidth={2} />
+                      <span className="truncate">{row.from}</span>
+                    </Badge>
+                  )}
+                </div>
                 {row.note && (
-                  <p className="text-muted-foreground mt-0.5 line-clamp-1 max-w-[420px] text-xs">
-                    {row.teacher && <span className="text-foreground/70 font-medium">{row.teacher}: </span>}
-                    {row.note}
-                  </p>
+                  <p className="text-muted-foreground mt-0.5 line-clamp-1 max-w-[420px] text-xs">{row.note}</p>
                 )}
               </TableCell>
               <TableCell className="text-muted-foreground py-2.5 text-sm">{row.sectionTitle}</TableCell>
