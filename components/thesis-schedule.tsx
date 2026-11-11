@@ -1,11 +1,21 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState, type RefObject } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Calendar03Icon, CalendarAdd01Icon, UserMultiple02Icon } from "@hugeicons/core-free-icons"
+import {
+  Alert02Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  Calendar03Icon,
+  CalendarAdd01Icon,
+  CalendarDownload01Icon,
+  Copy01Icon,
+  Delete02Icon,
+  UserMultiple02Icon,
+} from "@hugeicons/core-free-icons"
 import { ScheduleCard, useSchoolCalendarData } from "@/components/class-schedule"
 import { advisorAllowsProduct, advisorName, type Advisor } from "@/lib/advisors"
 import { classYearOf, currentClassYear, studentName, type RosterStudent } from "@/lib/students"
@@ -22,6 +32,7 @@ import {
   meetingsForStudent,
   type StudentMeetings,
   type ThesisMeeting,
+  type CalendarSubscription,
   type ThesisMeetingsResponse,
 } from "@/lib/thesis-meetings"
 import { relativeTime } from "@/lib/format-time"
@@ -36,6 +47,7 @@ import {
   schoolInstant,
   schoolNow,
   termsOfYear,
+  weekdayOf,
   yearsWithDays,
   type MeetingSession,
 } from "@/lib/school-calendar"
@@ -67,16 +79,21 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogMedia,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  useComboboxAnchor,
+} from "@/components/ui/combobox"
+import { InputGroupAddon } from "@/components/ui/input-group"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Table,
   TableBody,
@@ -207,8 +224,9 @@ export function ThesisSchedule({
   /** Null while the meetings are still loading. */
   const canBook = data ? data.canBook === true : null
 
-  // The class days a meeting can still be booked on: the rest of the school
-  // year, or the coming weeks when the calendar can't say.
+  // Every class day left in the school year (or the coming weeks when the
+  // calendar can't say), including the ones that can't be booked: the day
+  // picker shows those too, with the reason.
   const bookableDays = useMemo(() => {
     const cal = calendarQuery.data
     let through = addDays(today, BOOKING_WEEKS * 7 - 1)
@@ -218,9 +236,7 @@ export function ThesisSchedule({
       const last = terms[terms.length - 1]
       if (last && last.end >= today) through = last.end
     }
-    return meetingOutlook(cal?.days ?? [], { from: today, through }, undefined, cal?.events ?? []).sessions.filter(
-      (s) => s.status !== "off"
-    )
+    return meetingOutlook(cal?.days ?? [], { from: today, through }, undefined, cal?.events ?? []).sessions
   }, [calendarQuery.data, today])
 
   // An advisor cancels only meetings they are on; staff cancel any.
@@ -251,6 +267,7 @@ export function ThesisSchedule({
       <UpcomingCard
         forAdvisor={forAdvisor}
         onBook={canBook === null ? undefined : () => setBooking({})}
+        subscribe={data?.subscribe}
         meetings={upcoming}
         rows={rows}
         loading={meetingsQuery.isPending}
@@ -496,9 +513,12 @@ function BookingDialog({
   days: MeetingSession[]
   meetings: ThesisMeeting[]
 }) {
+  // The student picker's popup mounts inside the dialog; a modal dialog
+  // blocks clicks and scrolling anywhere else.
+  const dialogRef = useRef<HTMLDivElement>(null)
   return (
     <Dialog open={request !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent ref={dialogRef} className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader className="pr-8">
           <DialogTitle>Book a thesis meeting</DialogTitle>
           <DialogDescription>
@@ -511,6 +531,7 @@ function BookingDialog({
             <BookingForm
               request={request}
               onClose={onClose}
+              container={dialogRef}
               forAdvisor={forAdvisor}
               rows={rows}
               days={days}
@@ -550,9 +571,268 @@ function BookingDialog({
   )
 }
 
+/** Why a class day can't be booked, or null when it can: school is closed,
+    or a school event runs during class. */
+function blockReason(s: MeetingSession): string | null {
+  if (s.status === "off") return s.title ?? "No class"
+  if (s.conflict) return s.events[0]?.title ?? "School event during class"
+  return null
+}
+
+const utcDay = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d || 1))
+}
+/** "November 2026" for a "2026-11" key. */
+const monthLabel = (key: string) =>
+  utcDay(`${key}-01`).toLocaleDateString("en-US", { timeZone: "UTC", month: "long", year: "numeric" })
+/** "Thu, Nov 12" */
+const tileLabel = (iso: string) =>
+  utcDay(iso).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })
+
+/**
+ * The class days as a small calendar: a month at a time, a row per week and
+ * a column per class weekday. A day that can't be booked stays in its place,
+ * struck out, with the reason beside it.
+ */
+function ClassDayPicker({
+  labelledBy,
+  sessions,
+  value,
+  onChange,
+  meetings,
+  disabled,
+}: {
+  labelledBy: string
+  sessions: MeetingSession[]
+  value: string
+  onChange: (date: string) => void
+  meetings: ThesisMeeting[]
+  disabled?: boolean
+}) {
+  const columns = CLASS_MEETING.weekdays
+  const months = useMemo(() => {
+    const byMonth = new Map<string, Map<string, (MeetingSession | null)[]>>()
+    for (const s of sessions) {
+      const column = columns.indexOf(weekdayOf(s.date))
+      if (column < 0) continue
+      const key = s.date.slice(0, 7)
+      const weeks = byMonth.get(key) ?? new Map<string, (MeetingSession | null)[]>()
+      // A week is named for its first class day, whichever of them the month holds.
+      const weekKey = addDays(s.date, columns[0] - columns[column])
+      const row = weeks.get(weekKey) ?? columns.map(() => null)
+      row[column] = s
+      weeks.set(weekKey, row)
+      byMonth.set(key, weeks)
+    }
+    return [...byMonth.entries()].map(([key, weeks]) => ({ key, weeks: [...weeks.entries()] }))
+  }, [sessions, columns])
+
+  // How many meetings each day already holds.
+  const booked = useMemo(() => {
+    const count = new Map<string, number>()
+    for (const m of meetings) {
+      if (m.canceled) continue
+      const date = schoolNow(new Date(m.start)).date
+      count.set(date, (count.get(date) ?? 0) + 1)
+    }
+    return count
+  }, [meetings])
+
+  const [shown, setShown] = useState(() => (value || sessions[0]?.date || "").slice(0, 7))
+  const index = Math.max(
+    0,
+    months.findIndex((m) => m.key === shown)
+  )
+  const month = months[index]
+  if (!month) return null
+  const anyBlocked = month.weeks.some(([, row]) => row.some((s) => s && blockReason(s)))
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium" aria-live="polite">
+          {monthLabel(month.key)}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            aria-label="Earlier month"
+            disabled={index === 0}
+            onClick={() => setShown(months[index - 1].key)}
+          >
+            <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            aria-label="Later month"
+            disabled={index >= months.length - 1}
+            onClick={() => setShown(months[index + 1].key)}
+          >
+            <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
+          </Button>
+        </div>
+      </div>
+      <div role="radiogroup" aria-labelledby={labelledBy} className="grid grid-cols-2 gap-2">
+        {month.weeks.map(([weekKey, row]) =>
+          row.map((s, column) => {
+            if (!s) return <div key={`${weekKey}-${column}`} aria-hidden />
+            const reason = blockReason(s)
+            const selected = s.date === value
+            const count = booked.get(s.date) ?? 0
+            const note = reason ?? (s.isToday ? "Today" : count ? `${count} booked` : "")
+            return (
+              <button
+                key={s.date}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                aria-label={`${formatCalendarDate(s.date)}${reason ? `, can’t be booked: ${reason}` : ""}`}
+                title={reason ? `Can’t be booked: ${reason}` : undefined}
+                disabled={disabled || Boolean(reason)}
+                onClick={() => onChange(s.date)}
+                className={cn(
+                  "focus-visible:ring-ring/50 flex h-10 min-w-0 items-center justify-between gap-2 rounded-lg border px-3 text-left text-sm transition-colors outline-none focus-visible:ring-3",
+                  selected
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : reason
+                      ? "bg-muted/40 text-muted-foreground cursor-not-allowed border-dashed"
+                      : "bg-background hover:bg-muted cursor-pointer disabled:cursor-default disabled:opacity-60"
+                )}
+              >
+                <span className={cn("shrink-0 font-medium tabular-nums", reason && "line-through")}>
+                  {tileLabel(s.date)}
+                </span>
+                {note && (
+                  <span
+                    className={cn(
+                      "truncate text-xs",
+                      selected
+                        ? "text-primary-foreground/80"
+                        : reason && s.conflict
+                          ? "text-amber-800 dark:text-amber-300"
+                          : "text-muted-foreground"
+                    )}
+                  >
+                    {note}
+                  </span>
+                )}
+              </button>
+            )
+          })
+        )}
+      </div>
+      {anyBlocked && (
+        <p className="text-muted-foreground text-xs">
+          A day with no class, or with a school event during class, can&rsquo;t be booked.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Adds the shared meetings calendar to the viewer's own: Google Calendar by
+ * its link, anything else by the calendar's public iCal address.
+ */
+function SubscribeButton({ links }: { links: CalendarSubscription }) {
+  const [open, setOpen] = useState(false)
+  const webcal = links.ical?.replace(/^https?:/, "webcal:")
+
+  async function copy() {
+    if (!links.ical) return
+    try {
+      await navigator.clipboard.writeText(links.ical)
+      toast.success("Calendar address copied")
+    } catch {
+      toast.error("Couldn’t copy. Select the address and copy it by hand.")
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" className="gap-2" onClick={() => setOpen(true)}>
+        <HugeiconsIcon icon={CalendarDownload01Icon} strokeWidth={2} />
+        Subscribe
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="pr-8">
+            <DialogTitle>Add the meetings calendar to yours</DialogTitle>
+            <DialogDescription>
+              Every thesis meeting then shows alongside your own events, and stays current as meetings are
+              booked or canceled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <section className="flex flex-col gap-2 rounded-lg border p-3">
+              <p className="text-sm font-medium">Google Calendar</p>
+              <p className="text-muted-foreground text-sm">
+                Opens Google Calendar and offers to add Senior Thesis Meetings to your list.
+              </p>
+              <Button asChild className="self-start">
+                <a href={links.google} target="_blank" rel="noreferrer">
+                  Add to Google Calendar
+                </a>
+              </Button>
+            </section>
+            {links.ical && webcal ? (
+              <section className="flex flex-col gap-2 rounded-lg border p-3">
+                <p className="text-sm font-medium">Apple Calendar, Outlook and others</p>
+                <p className="text-muted-foreground text-sm">
+                  Open it in the calendar app on this device, or paste the address into any app that can
+                  subscribe to a calendar. These apps check for changes every few hours, so a new booking can
+                  take a while to appear.
+                </p>
+                <Button asChild variant="outline" className="self-start">
+                  <a href={webcal}>Open in my calendar app</a>
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={links.ical}
+                    aria-label="Calendar address"
+                    className="min-w-0 flex-1 text-xs"
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <Button type="button" variant="outline" className="shrink-0 gap-2" onClick={copy}>
+                    <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} />
+                    Copy
+                  </Button>
+                </div>
+              </section>
+            ) : (
+              <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
+                A link for Apple Calendar and Outlook appears here once the calendar is public. In Google
+                Calendar, open Senior Thesis Meetings, then Settings and sharing, then Access permissions, and
+                turn on &ldquo;Make available to public&rdquo;.
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+/** A student's profile photo, or their initials when there isn't one. */
+function StudentPhoto({ student, className }: { student: RosterStudent; className?: string }) {
+  return (
+    <Avatar className={cn("shrink-0", className)}>
+      <AvatarImage src={student.profileImage || undefined} alt="" />
+      <AvatarFallback className="text-[0.7em] font-medium">{initialsOf(student)}</AvatarFallback>
+    </Avatar>
+  )
+}
+
 function BookingForm({
   request,
   onClose,
+  container,
   forAdvisor,
   rows,
   days,
@@ -560,6 +840,8 @@ function BookingForm({
 }: {
   request: BookingRequest
   onClose: () => void
+  /** The dialog's content element, where the student picker's popup mounts. */
+  container: RefObject<HTMLDivElement | null>
   forAdvisor: boolean
   rows: StudentRow[]
   days: MeetingSession[]
@@ -571,16 +853,33 @@ function BookingForm({
   const [studentId, setStudentId] = useState(
     () => request.studentId ?? (forAdvisor && rows[0] ? String(rows[0].student.id) : "")
   )
-  const [date, setDate] = useState(() => request.date ?? days[0]?.date ?? "")
+  // The day asked for, unless it can't be booked; otherwise the next one that can.
+  const [date, setDate] = useState(() => {
+    const asked = request.date ? days.find((d) => d.date === request.date) : undefined
+    if (request.date && (!asked || !blockReason(asked))) return request.date
+    return days.find((d) => !blockReason(d))?.date ?? ""
+  })
   const [picked, setPicked] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const row = rows.find((r) => String(r.student.id) === studentId) ?? null
+  const students = useMemo(
+    () => rows.map((r) => r.student).sort((a, b) => studentName(a).localeCompare(studentName(b))),
+    [rows]
+  )
+  const advisorsOf = useMemo(() => new Map(rows.map((r) => [String(r.student.id), r.advisors])), [rows])
+  const pickerAnchor = useComboboxAnchor()
   const day = days.find((d) => d.date === date) ?? null
   // A day opened from the schedule may not be in the list (the calendar is
   // still loading); it is still offered.
-  const dayOptions = date && !day ? [{ date, conflict: false, isToday: false }, ...days] : days
+  const dayOptions = useMemo<MeetingSession[]>(
+    () =>
+      date && !day
+        ? [{ date, session: "", isToday: false, isPast: false, status: "unknown", events: [], conflict: false }, ...days]
+        : days,
+    [date, day, days]
+  )
 
   const times = useMemo(
     () =>
@@ -630,7 +929,9 @@ function BookingForm({
     )
     void queryClient.invalidateQueries({ queryKey: ["thesis-meetings"] })
     toast.success(`Booked with ${studentName(row.student)}`, {
-      description: `${formatCalendarDate(date)}, ${formatSlot(startMinutes)}. Invitations are on their way.`,
+      description: `${formatCalendarDate(date)}, ${formatSlot(startMinutes)}. ${
+        result.emailed ? "Invitations and a confirmation email are on their way." : "Invitations are on their way."
+      }`,
     })
     onClose()
   }
@@ -649,49 +950,68 @@ function BookingForm({
         <Label htmlFor="booking-student">Student</Label>
         {rows.length === 1 && row ? (
           <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
-            <Avatar className="size-7">
-              <AvatarImage src={row.student.profileImage || undefined} alt="" />
-              <AvatarFallback className="text-[10px]">{initialsOf(row.student)}</AvatarFallback>
-            </Avatar>
+            <StudentPhoto student={row.student} className="size-7" />
             <span className="text-sm font-medium">{studentName(row.student)}</span>
           </div>
         ) : (
-          <Select value={studentId} onValueChange={setStudentId}>
-            <SelectTrigger id="booking-student" className="w-full">
-              <SelectValue placeholder="Choose a student" />
-            </SelectTrigger>
-            <SelectContent>
-              {[...rows]
-                .sort((a, b) => studentName(a.student).localeCompare(studentName(b.student)))
-                .map((r) => (
-                  <SelectItem key={r.student.id} value={String(r.student.id)}>
-                    {studentName(r.student)}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
+          <Combobox
+            items={students}
+            value={row?.student ?? null}
+            onValueChange={(s) => setStudentId(s ? String((s as RosterStudent).id) : "")}
+            itemToStringLabel={(s: RosterStudent) => studentName(s)}
+            disabled={saving}
+          >
+            <div ref={pickerAnchor}>
+              <ComboboxInput id="booking-student" placeholder="Search students…" className="w-full" disabled={saving}>
+                {/* The chosen student's photo sits in the field. */}
+                {row && (
+                  <InputGroupAddon align="inline-start" className="pl-1.5">
+                    <StudentPhoto student={row.student} className="size-6" />
+                  </InputGroupAddon>
+                )}
+              </ComboboxInput>
+            </div>
+            <ComboboxContent anchor={pickerAnchor} container={container}>
+              <ComboboxEmpty className="py-6">No students found.</ComboboxEmpty>
+              <ComboboxList className="max-h-[min(20rem,calc(var(--available-height)-1rem))]">
+                {(s: RosterStudent) => {
+                  const advisors = advisorsOf.get(String(s.id)) ?? []
+                  return (
+                    <ComboboxItem key={s.id} value={s} className="cursor-pointer gap-3 py-1.5 pr-9 pl-2">
+                      <StudentPhoto student={s} className="size-8" />
+                      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                        <span className="truncate font-medium">{studentName(s)}</span>
+                        {!forAdvisor && (
+                          <span className="text-muted-foreground truncate text-xs">
+                            {advisors.length ? advisors.map(advisorName).join(", ") : "No thesis advisor yet"}
+                          </span>
+                        )}
+                      </span>
+                    </ComboboxItem>
+                  )
+                }}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
         )}
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="booking-day">Class day</Label>
+        <Label id="booking-day-label">Class day</Label>
         {dayOptions.length === 0 ? (
           <p className="text-muted-foreground text-sm">No class days are left on the school calendar.</p>
         ) : (
-          <Select value={date} onValueChange={setDate}>
-            <SelectTrigger id="booking-day" className="w-full">
-              <SelectValue placeholder="Choose a class day" />
-            </SelectTrigger>
-            <SelectContent>
-              {dayOptions.map((d) => (
-                <SelectItem key={d.date} value={d.date}>
-                  {formatCalendarDate(d.date)}
-                  {d.isToday && " · today"}
-                  {d.conflict && " · school event during class"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <ClassDayPicker
+            labelledBy="booking-day-label"
+            sessions={dayOptions}
+            value={date}
+            onChange={(d) => {
+              setDate(d)
+              setPicked(null)
+            }}
+            meetings={meetings}
+            disabled={saving}
+          />
         )}
       </div>
 
@@ -868,11 +1188,19 @@ function DaySheet({
               <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
                 Book a time
               </p>
-              <p className="text-muted-foreground mt-1 mb-3 text-sm">
-                An hour with a student during this class. The student, their advisor and the
-                thesis supervisor get a calendar invitation.
-              </p>
-              <BookButton label="Book a time" onBook={onBook && (() => onBook(day.date))} />
+              {blockReason(day) ? (
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Meetings can&rsquo;t be booked on this day: {blockReason(day)}.
+                </p>
+              ) : (
+                <>
+                  <p className="text-muted-foreground mt-1 mb-3 text-sm">
+                    An hour with a student during this class. The student, their advisor and the
+                    thesis supervisor get a calendar invitation.
+                  </p>
+                  <BookButton label="Book a time" onBook={onBook && (() => onBook(day.date))} />
+                </>
+              )}
             </section>
           )}
         </div>
@@ -888,6 +1216,7 @@ function DaySheet({
 function UpcomingCard({
   forAdvisor,
   onBook,
+  subscribe,
   meetings,
   rows,
   loading,
@@ -897,6 +1226,8 @@ function UpcomingCard({
 }: {
   forAdvisor: boolean
   onBook: (() => void) | undefined
+  /** Links for adding the shared calendar to your own, when there are any. */
+  subscribe: CalendarSubscription | undefined
   meetings: ThesisMeeting[]
   rows: StudentRow[] | null
   loading: boolean
@@ -916,7 +1247,10 @@ function UpcomingCard({
               student&rsquo;s meetings.
             </CardDescription>
           </div>
-          <BookButton onBook={onBook} />
+          <div className="flex flex-wrap items-center gap-2">
+            {subscribe && <SubscribeButton links={subscribe} />}
+            <BookButton onBook={onBook} />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-0">
@@ -1131,12 +1465,14 @@ function StudentMeetingsSheet({
                           <TableCell className="pr-4 text-right">
                             {cancelable(mt, state) && (
                               <Button
-                                size="sm"
+                                size="icon-sm"
                                 variant="ghost"
+                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 aria-label={`Cancel the meeting on ${formatDay(mt.start)}`}
+                                title="Cancel meeting"
                                 onClick={() => setCanceling(mt)}
                               >
-                                Cancel
+                                <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
                               </Button>
                             )}
                           </TableCell>
@@ -1194,16 +1530,32 @@ function CancelMeetingDialog({
     <AlertDialog open={meeting !== null} onOpenChange={(o) => !o && !working && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
+          <AlertDialogMedia className="bg-destructive/10 text-destructive">
+            <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} />
+          </AlertDialogMedia>
           <AlertDialogTitle>Cancel this meeting?</AlertDialogTitle>
           <AlertDialogDescription>
-            {meeting
-              ? `${formatDay(meeting.start)}, ${clock(meeting.start)} – ${clock(meeting.end)} with ${name}. It comes off the shared calendar and Google tells everyone invited.`
-              : ""}
+            {meeting ? (
+              <>
+                <span className="text-foreground font-medium">
+                  {formatDay(meeting.start)}, {clock(meeting.start)} – {clock(meeting.end)} with {name}.
+                </span>{" "}
+                It comes off the shared calendar and Google emails everyone invited that it’s canceled. This can’t be
+                undone.
+              </>
+            ) : (
+              ""
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={working}>Keep it</AlertDialogCancel>
-          <AlertDialogAction onClick={confirm} disabled={working}>
+          <AlertDialogCancel disabled={working}>Keep meeting</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={confirm}
+            disabled={working}
+            // "!" because the button's own navy background otherwise wins.
+            className="bg-destructive! hover:bg-destructive/90! text-white!"
+          >
             {working ? "Canceling…" : "Cancel meeting"}
           </AlertDialogAction>
         </AlertDialogFooter>

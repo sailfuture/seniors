@@ -13,10 +13,13 @@ import { effectiveStaffRole, fetchStaff, fetchStaffRoleOverrides, staffName } fr
 import {
   CLASS_MEETING,
   SCHOOL_CALENDAR_ENDPOINT,
-  closureOf,
+  SCHOOL_EVENTS_ENDPOINT,
   formatCalendarDate,
   parseSchoolCalendar,
+  parseSchoolEvents,
   schoolInstant,
+  schoolNow,
+  sessionOn,
   weekdayOf,
 } from "@/lib/school-calendar"
 import {
@@ -25,12 +28,15 @@ import {
   isThesisCalendarConfigured,
   listThesisEvents,
   missingCalendarSettings,
+  thesisCalendarId,
 } from "@/lib/google-calendar.server"
+import { courseTeacherRecipients, sendBookingConfirmation } from "@/lib/thesis-meeting-email.server"
 import { APP_EVENT_TAG, advisorScope, lower, toMeeting } from "@/lib/thesis-meetings.server"
 import {
   MEETING_MINUTES,
   bookingStartTimes,
   formatSlot,
+  type CalendarSubscription,
   type ThesisMeeting,
   type ThesisMeetingsResponse,
 } from "@/lib/thesis-meetings"
@@ -47,6 +53,8 @@ import {
  * POST books one: an hour inside a class session with one student. The event
  * goes on the shared calendar with the student, their advisor, the thesis
  * supervisor and whoever booked as guests, and Google emails the invitations.
+ * The adults also get the app's own confirmation email. A class day the
+ * school calendar closes, or puts an event on during class, can't be booked.
  */
 export const dynamic = "force-dynamic"
 
@@ -74,6 +82,25 @@ async function meetingsFromIcs(url: string): Promise<ThesisMeeting[]> {
       attendees: e.attendees,
       mentions: emailsIn(e.description),
     }))
+}
+
+/**
+ * Ways to add the shared calendar to your own. The Google link works for
+ * anyone the calendar is shared with; the iCal address only exists while the
+ * calendar is public, which is checked at most once an hour. The secret iCal
+ * address is never handed out.
+ */
+async function subscriptionLinks(): Promise<CalendarSubscription | null> {
+  const id = thesisCalendarId()
+  if (!id) return null
+  const google = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(id)}`
+  const ical = `https://calendar.google.com/calendar/ical/${encodeURIComponent(id)}/public/basic.ics`
+  try {
+    const res = await fetch(ical, { next: { revalidate: 3600 } })
+    return res.ok ? { google, ical } : { google }
+  } catch {
+    return { google }
+  }
 }
 
 export async function GET() {
@@ -130,24 +157,55 @@ export async function GET() {
   }
 
   meetings.sort((a, b) => a.start - b.start)
-  return json({ configured: true, canBook, ...setup, ok: true, meetings })
+  // An outside advisor can only use the calendar when it is public.
+  const links = await subscriptionLinks()
+  const subscribe = links && (isStaffRole(role) || links.ical) ? { subscribe: links } : {}
+  return json({ configured: true, canBook, ...setup, ...subscribe, ok: true, meetings })
 }
 
 function refuse(error: string, status: number) {
   return Response.json({ error }, { status })
 }
 
-/** Whether the school calendar rules the day out. A day it doesn't list
-    yet, or a calendar that can't be read, never blocks a booking. */
-async function closedOn(date: string): Promise<string | null> {
+/** Why the school calendar rules the day out: school is closed, or an event
+    runs during class. A day it doesn't list yet, or a calendar that can't be
+    read, never blocks a booking. */
+async function blockedOn(date: string): Promise<string | null> {
   try {
-    const res = await fetch(SCHOOL_CALENDAR_ENDPOINT, { next: { revalidate: 900 } })
-    if (!res.ok) return null
-    const day = parseSchoolCalendar(await res.json()).find((d) => d.date === date)
-    return day ? closureOf(day)?.title ?? null : null
+    const [daysRes, eventsRes] = await Promise.all([
+      fetch(SCHOOL_CALENDAR_ENDPOINT, { next: { revalidate: 300 } }),
+      fetch(SCHOOL_EVENTS_ENDPOINT, { next: { revalidate: 300 } }).catch(() => null),
+    ])
+    if (!daysRes.ok) return null
+    const days = parseSchoolCalendar(await daysRes.json())
+    const events = eventsRes?.ok ? parseSchoolEvents(await eventsRes.json(), days) : []
+    const session = sessionOn(
+      date,
+      days.find((d) => d.date === date),
+      events.filter((e) => e.date === date),
+      schoolNow().date
+    )
+    if (!session) return null
+    if (session.status === "off") return `There’s no class on ${formatCalendarDate(date)}: ${session.title}.`
+    if (session.conflict) {
+      return `${formatCalendarDate(date)} can’t be booked: ${session.events[0].title} is during class.`
+    }
+    return null
   } catch {
     return null
   }
+}
+
+/** "Thursday, November 12, 2026" */
+function longDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
 }
 
 export async function POST(req: Request) {
@@ -174,7 +232,7 @@ export async function POST(req: Request) {
   if (!(start > Date.now())) return refuse("That time has already passed.", 400)
 
   const advisorId = Number(session.user.advisors_id)
-  const [students, scope, closed] = await Promise.all([
+  const [students, scope, blocked] = await Promise.all([
     fetchActiveStudents(),
     staff
       ? Promise.all([fetchAdvisors(), fetchAdvisorAssignments()]).then(([advisors, assignments]) => ({
@@ -184,7 +242,7 @@ export async function POST(req: Request) {
           thesisStudentIds: null as Set<string> | null,
         }))
       : advisorScope(advisorId),
-    closedOn(date),
+    blockedOn(date),
   ])
   const student = students.find((s) => String(s.id) === studentId)
   if (!student) return refuse("That student isn’t on the roster.", 404)
@@ -193,7 +251,7 @@ export async function POST(req: Request) {
   }
   const studentEmail = lower(student.studentEmail)
   if (!studentEmail) return refuse("That student has no school email to invite.", 422)
-  if (closed) return refuse(`There’s no class on ${formatCalendarDate(date)}: ${closed}.`, 409)
+  if (blocked) return refuse(blocked, 409)
 
   // Who is invited: the student, their advisor, the thesis supervisor, and
   // whoever booked. An advisor books for themselves; staff book on behalf of
@@ -204,23 +262,44 @@ export async function POST(req: Request) {
     if (e.includes("@") && !guests.has(e)) guests.set(e, { email: e, ...(name ? { name } : {}) })
   }
   invite(studentEmail, studentName(student))
+  // The app's own confirmation goes to the adults; the student has Google's.
+  const notify = new Map<string, { email: string; name?: string }>()
+  const tell = (email: string | null | undefined, name?: string | null) => {
+    const e = lower(email)
+    if (e.includes("@") && e !== studentEmail && !notify.has(e)) notify.set(e, { email: e, ...(name ? { name } : {}) })
+  }
   let withNames: string[]
   if (staff) {
     const theirs = scope.assignments
       .filter((a) => a.type === "business-thesis" && String(a.students_id) === studentId)
       .map((a) => scope.advisors.find((x) => Number(x.id) === Number(a.advisors_id)))
       .filter((a): a is Advisor => Boolean(a && a.isActive !== false && advisorAllowsProduct(a, "business-thesis")))
-    for (const a of theirs) invite(a.email, advisorName(a))
+    for (const a of theirs) {
+      invite(a.email, advisorName(a))
+      tell(a.email, advisorName(a))
+    }
     withNames = theirs.map(advisorName)
   } else {
-    invite(scope.me?.email ?? session.user.email, scope.me ? advisorName(scope.me) : session.user.name)
+    const myEmail = scope.me?.email ?? session.user.email
+    const myName = scope.me ? advisorName(scope.me) : session.user.name
+    invite(myEmail, myName)
+    tell(myEmail, myName)
     withNames = [scope.me ? advisorName(scope.me) : session.user.name ?? "their advisor"]
   }
-  const [staffList, overrides] = await Promise.all([fetchStaff(), fetchStaffRoleOverrides()])
+  const [staffList, overrides, courseTeachers] = await Promise.all([
+    fetchStaff(),
+    fetchStaffRoleOverrides(),
+    courseTeacherRecipients(),
+  ])
   for (const t of staffList) {
-    if (effectiveStaffRole(t, overrides) === "supervisor") invite(t.email, staffName(t))
+    if (effectiveStaffRole(t, overrides) === "supervisor") {
+      invite(t.email, staffName(t))
+      tell(t.email, staffName(t))
+    }
   }
+  for (const t of courseTeachers) tell(t.email, t.name)
   if (staff) invite(session.user.email, session.user.name)
+  tell(session.user.email, session.user.name)
 
   const bookedBy = session.user.name || session.user.email || "SailFuture Academy staff"
   try {
@@ -253,7 +332,21 @@ export async function POST(req: Request) {
         bookedBy: lower(session.user.email),
       },
     })
-    return Response.json({ meeting: toMeeting(event) })
+
+    // The booking stands whether or not the confirmation goes out.
+    const emailError = await sendBookingConfirmation({
+      to: [...notify.values()],
+      studentName: studentName(student),
+      advisorNames: withNames,
+      dateLabel: longDate(date),
+      timeLabel: formatSlot(startMinutes),
+      location: "SailFuture Academy",
+      bookedBy,
+      replyTo: lower(session.user.email) || undefined,
+      eventUrl: event.htmlLink || undefined,
+    })
+    if (emailError) console.error("[thesis-meetings] confirmation email failed:", emailError)
+    return Response.json({ meeting: toMeeting(event), emailed: !emailError })
   } catch (err) {
     console.error("[thesis-meetings] booking failed:", err)
     const detail = err instanceof GoogleCalendarError && staff ? ` (${err.message})` : ""

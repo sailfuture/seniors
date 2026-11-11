@@ -93,6 +93,11 @@ export function missingCalendarSettings(): string[] {
   return missing
 }
 
+/** The shared calendar's ID (an address, not a secret), or "" when unknown. */
+export function thesisCalendarId(): string {
+  return readConfig().calendarId
+}
+
 /** Whether the app can write to the thesis meetings calendar. */
 export function isThesisCalendarConfigured(): boolean {
   return getConfig() !== null
@@ -213,6 +218,8 @@ export interface CalendarEvent {
   attendees: CalendarAttendee[]
   /** The app's own notes on an event it created (`extendedProperties.private`). */
   tags: Record<string, string>
+  /** Where the event opens in Google Calendar, or "". */
+  htmlLink: string
 }
 
 function toEvent(item: Record<string, unknown>): CalendarEvent {
@@ -238,6 +245,7 @@ function toEvent(item: Record<string, unknown>): CalendarEvent {
           .filter((a) => a.email.includes("@"))
       : [],
     tags,
+    htmlLink: typeof item.htmlLink === "string" ? item.htmlLink : "",
   }
 }
 

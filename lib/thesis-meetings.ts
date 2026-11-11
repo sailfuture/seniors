@@ -59,6 +59,14 @@ export interface ThesisMeeting {
   mentions: string[]
 }
 
+export interface CalendarSubscription {
+  /** Opens Google Calendar with the shared calendar ready to add. */
+  google: string
+  /** The calendar's public iCal address, for Apple Calendar, Outlook and the
+      rest. Missing when the calendar isn't public. */
+  ical?: string
+}
+
 export interface ThesisMeetingsResponse {
   /** False until the calendar is connected at all. */
   configured: boolean
@@ -66,6 +74,8 @@ export interface ThesisMeetingsResponse {
   canBook?: boolean
   /** Staff only: the settings this deployment still lacks before it can book. */
   missing?: string[]
+  /** Ways to add the shared calendar to your own, when the server knows it. */
+  subscribe?: CalendarSubscription
   /** False when the calendar couldn't be read. */
   ok: boolean
   meetings: ThesisMeeting[]
@@ -91,7 +101,9 @@ export interface BookingRequest {
   startMinutes: number
 }
 
-export type BookingResult = { ok: true; meeting: ThesisMeeting } | { ok: false; error: string }
+export type BookingResult =
+  | { ok: true; meeting: ThesisMeeting; /** Whether the confirmation email went out. */ emailed: boolean }
+  | { ok: false; error: string }
 
 /** Books an hour with a student; Google emails the invitations. */
 export async function bookThesisMeeting(request: BookingRequest): Promise<BookingResult> {
@@ -101,8 +113,12 @@ export async function bookThesisMeeting(request: BookingRequest): Promise<Bookin
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
     })
-    const body = (await res.json().catch(() => null)) as { meeting?: ThesisMeeting; error?: string } | null
-    if (res.ok && body?.meeting) return { ok: true, meeting: body.meeting }
+    const body = (await res.json().catch(() => null)) as {
+      meeting?: ThesisMeeting
+      emailed?: boolean
+      error?: string
+    } | null
+    if (res.ok && body?.meeting) return { ok: true, meeting: body.meeting, emailed: body.emailed === true }
     return { ok: false, error: body?.error ?? "The meeting couldn’t be booked. Please try again." }
   } catch {
     return { ok: false, error: "The meeting couldn’t be booked. Please try again." }
