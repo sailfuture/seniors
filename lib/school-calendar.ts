@@ -274,6 +274,28 @@ export function schoolMinutesOf(ms: number): number {
   return schoolNow(new Date(ms)).minutes
 }
 
+/** The instant (ms epoch) of a time of day on a calendar date, on the
+    school's clock: `schoolInstant("2026-11-12", 12 * 60)` is noon Eastern. */
+export function schoolInstant(isoDate: string, minutes: number): number {
+  const [y, m, d] = isoDate.split("-").map(Number)
+  const naive = Date.UTC(y, m - 1, d, 0, minutes)
+  const offsetAt = (ms: number) => {
+    const at = schoolNow(new Date(ms))
+    const [ay, am, ad] = at.date.split("-").map(Number)
+    return Date.UTC(ay, am - 1, ad, 0, at.minutes) - Math.floor(ms / 60_000) * 60_000
+  }
+  // Two passes, so the offset is the one in force at the local time itself.
+  const first = naive - offsetAt(naive)
+  return naive - offsetAt(first)
+}
+
+/** "12:00 pm" for minutes after midnight. */
+export function formatMinutes(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`
+}
+
 /** "Thu, Nov 26", with the year when it isn't the current one. */
 export function formatCalendarDate(isoDate: string, today = schoolNow().date): string {
   const sameYear = isoDate.slice(0, 4) === today.slice(0, 4)

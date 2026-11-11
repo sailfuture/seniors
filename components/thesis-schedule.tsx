@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Calendar03Icon, CalendarAdd01Icon, UserMultiple02Icon } from "@hugeicons/core-free-icons"
 import { ScheduleCard, useSchoolCalendarData } from "@/components/class-schedule"
@@ -10,22 +11,32 @@ import { advisorAllowsProduct, advisorName, type Advisor } from "@/lib/advisors"
 import { classYearOf, currentClassYear, studentName, type RosterStudent } from "@/lib/students"
 import { useAdvisorAssignments, useAdvisors, useStudents } from "@/lib/queries"
 import {
-  THESIS_BOOKING_URL,
-  bookingEmbedUrl,
-  bookingSourceUrl,
+  MEETING_MINUTES,
+  bookThesisMeeting,
+  bookingStartTimes,
+  cancelThesisMeeting,
   fetchThesisMeetings,
   formatMeetingTime,
+  formatSlot,
   meetingIncludes,
   meetingsForStudent,
   type StudentMeetings,
   type ThesisMeeting,
+  type ThesisMeetingsResponse,
 } from "@/lib/thesis-meetings"
 import { relativeTime } from "@/lib/format-time"
 import {
   CLASS_MEETING,
+  addDays,
+  defaultYear,
   eventCategory,
   formatCalendarDate,
   formatEventTime,
+  meetingOutlook,
+  schoolInstant,
+  schoolNow,
+  termsOfYear,
+  yearsWithDays,
   type MeetingSession,
 } from "@/lib/school-calendar"
 import {
@@ -44,9 +55,28 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -59,6 +89,15 @@ import {
 /** A student who hasn't met in this long, with nothing booked, needs a nudge. */
 const STALE_DAYS = 21
 const DAY_MS = 86_400_000
+/** Class days offered for booking when the school calendar can't say how
+    long the year runs. */
+const BOOKING_WEEKS = 8
+
+/** What the booking dialog opens on: a student, a class day, both or neither. */
+interface BookingRequest {
+  studentId?: string
+  date?: string
+}
 
 export function useThesisMeetings() {
   return useQuery({
@@ -77,10 +116,11 @@ interface StudentRow {
 }
 
 /**
- * Thesis meetings: when the class meets, the booking page, every upcoming
- * booking, and a per-student breakdown of whether meetings are
- * happening. Thesis supervisors and advisors book; students never do, they
- * are only guests on the meeting.
+ * Thesis meetings: when the class meets, every upcoming booking, and a
+ * per-student breakdown of whether meetings are happening. Thesis
+ * supervisors and advisors book an hour during class right here; the meeting
+ * goes on the shared calendar and Google invites the student, their advisor
+ * and the thesis supervisor. Students never book.
  *
  * Staff (the Schedule page) see every senior. With `advisorId` (an advisor's
  * home page) it covers only that advisor's own Business Thesis students, and
@@ -100,12 +140,14 @@ export function ThesisSchedule({
   const forAdvisor = advisorId != null
   const [day, setDay] = useState<MeetingSession | null>(null)
   const [openStudentId, setOpenStudentId] = useState<string | null>(null)
+  const [booking, setBooking] = useState<BookingRequest | null>(null)
   const calendarQuery = useSchoolCalendarData()
   const meetingsQuery = useThesisMeetings()
   const advisorsQuery = useAdvisors()
   const assignmentsQuery = useAdvisorAssignments()
   const studentsQuery = useStudents()
   const [now] = useState(() => Date.now())
+  const [today] = useState(() => schoolNow().date)
 
   const data = meetingsQuery.data
   const meetings = useMemo(() => (data?.ok ? data.meetings : []), [data])
@@ -162,6 +204,29 @@ export function ThesisSchedule({
   )
 
   const configured = data?.configured !== false
+  /** Null while the meetings are still loading. */
+  const canBook = data ? data.canBook === true : null
+
+  // The class days a meeting can still be booked on: the rest of the school
+  // year, or the coming weeks when the calendar can't say.
+  const bookableDays = useMemo(() => {
+    const cal = calendarQuery.data
+    let through = addDays(today, BOOKING_WEEKS * 7 - 1)
+    if (cal) {
+      const year = defaultYear(yearsWithDays(cal), today)
+      const terms = year ? termsOfYear(cal, year.id) : []
+      const last = terms[terms.length - 1]
+      if (last && last.end >= today) through = last.end
+    }
+    return meetingOutlook(cal?.days ?? [], { from: today, through }, undefined, cal?.events ?? []).sessions.filter(
+      (s) => s.status !== "off"
+    )
+  }, [calendarQuery.data, today])
+
+  // An advisor cancels only meetings they are on; staff cancel any.
+  const viewerEmail = forAdvisor
+    ? (advisorsQuery.data?.find((a) => Number(a.id) === Number(advisorId))?.email ?? "")
+    : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -180,11 +245,12 @@ export function ThesisSchedule({
         studentsByEmail={studentsByEmail}
         loading={meetingsQuery.isPending}
         configured={configured}
-        forAdvisor={forAdvisor}
+        onBook={canBook === null ? undefined : (date) => setBooking({ date })}
       />
 
       <UpcomingCard
         forAdvisor={forAdvisor}
+        onBook={canBook === null ? undefined : () => setBooking({})}
         meetings={upcoming}
         rows={rows}
         loading={meetingsQuery.isPending}
@@ -197,7 +263,19 @@ export function ThesisSchedule({
         meetings={meetings}
         now={now}
         forAdvisor={forAdvisor}
+        viewerEmail={viewerEmail}
+        canCancel={canBook === true}
+        onBook={canBook === null ? undefined : (studentId) => setBooking({ studentId })}
         onClose={() => setOpenStudentId(null)}
+      />
+      <BookingDialog
+        request={booking}
+        onClose={() => setBooking(null)}
+        forAdvisor={forAdvisor}
+        canBook={canBook === true}
+        rows={rows ?? []}
+        days={bookableDays}
+        meetings={meetings}
       />
 
       <Card>
@@ -367,97 +445,280 @@ function IconTile({ icon }: { icon: typeof Calendar03Icon }) {
   )
 }
 
-/**
- * "Book a thesis meeting": opens Google's booking page framed in a dialog,
- * so booking never leaves the dashboard.
- */
-function BookingButton({
-  forAdvisor,
+/** "Book a thesis meeting": opens the booking dialog. */
+function BookButton({
+  onBook,
   label = "Book a thesis meeting",
+  size,
   className,
 }: {
-  forAdvisor: boolean
+  /** Undefined until the meetings have loaded. */
+  onBook: (() => void) | undefined
   label?: string
+  size?: "sm"
   className?: string
 }) {
-  const [open, setOpen] = useState(false)
   return (
-    <>
-      <Button className={cn("gap-2", className)} onClick={() => setOpen(true)}>
-        <HugeiconsIcon icon={CalendarAdd01Icon} strokeWidth={2} className="size-4" />
-        {label}
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-3 sm:max-w-4xl">
-          <DialogHeader className="pr-8">
-            <DialogTitle>Book a thesis meeting</DialogTitle>
-            <DialogDescription>
-              {forAdvisor
-                ? "Pick an open time during class to meet with one of your students, then add the student as a guest so it lands on their calendar and counts here."
-                : "Pick an open time during class, then add the student as a guest. Each booking lands on the shared Senior Thesis Meetings calendar."}
-            </DialogDescription>
-          </DialogHeader>
-          {open && <BookingEmbed forAdvisor={forAdvisor} className="h-[70svh]" />}
-        </DialogContent>
-      </Dialog>
-    </>
+    <Button size={size} className={cn("gap-2", className)} disabled={!onBook} onClick={onBook}>
+      <HugeiconsIcon icon={CalendarAdd01Icon} strokeWidth={2} className="size-4" />
+      {label}
+    </Button>
   )
 }
 
-/** Google's booking page, inline when it can be framed, else as a link. */
-/** The saved booking link, cleaned up, and whether it can be framed as is. */
-const BOOKING_SOURCE = bookingSourceUrl(THESIS_BOOKING_URL)
-const DIRECT_EMBED = BOOKING_SOURCE ? bookingEmbedUrl(BOOKING_SOURCE) : null
+/** Two stretches of time that share at least a minute. */
+const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) => aStart < bEnd && bStart < aEnd
 
 /**
- * The embeddable booking URL. A short link is resolved on the server to the
- * full appointments page, once per session.
+ * Booking a thesis meeting, in the app: one student, a class day and an hour
+ * inside the class session. Saving puts the meeting on the shared calendar
+ * and Google emails the student, their advisor and the thesis supervisor.
  */
-function useBookingEmbed() {
-  return useQuery({
-    queryKey: ["thesis-booking-embed"],
-    enabled: Boolean(BOOKING_SOURCE) && !DIRECT_EMBED,
-    staleTime: Infinity,
-    queryFn: async () => {
-      const res = await fetch("/api/thesis-meetings/booking")
-      const body = (await res.json().catch(() => null)) as { embedUrl?: string | null } | null
-      return body?.embedUrl ?? null
-    },
-  })
+function BookingDialog({
+  request,
+  onClose,
+  forAdvisor,
+  canBook,
+  rows,
+  days,
+  meetings,
+}: {
+  /** What to open on; null while closed. */
+  request: BookingRequest | null
+  onClose: () => void
+  forAdvisor: boolean
+  canBook: boolean
+  rows: StudentRow[]
+  days: MeetingSession[]
+  meetings: ThesisMeeting[]
+}) {
+  return (
+    <Dialog open={request !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader className="pr-8">
+          <DialogTitle>Book a thesis meeting</DialogTitle>
+          <DialogDescription>
+            An hour during the senior class, {CLASS_MEETING.startLabel} – {CLASS_MEETING.endLabel} Eastern.
+            More than one meeting can run at the same time.
+          </DialogDescription>
+        </DialogHeader>
+        {request &&
+          (canBook ? (
+            <BookingForm
+              request={request}
+              onClose={onClose}
+              forAdvisor={forAdvisor}
+              rows={rows}
+              days={days}
+              meetings={meetings}
+            />
+          ) : (
+            <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
+              {forAdvisor
+                ? "Booking isn’t open yet. SailFuture Academy staff are connecting the meetings calendar."
+                : "Booking isn’t connected to the meetings calendar yet. Add GOOGLE_CALENDAR_CLIENT_EMAIL, GOOGLE_CALENDAR_PRIVATE_KEY and GOOGLE_CALENDAR_IMPERSONATE to this project in Vercel (the same values the apply portal uses), then redeploy."}
+            </p>
+          ))}
+      </DialogContent>
+    </Dialog>
+  )
 }
 
-function BookingEmbed({ forAdvisor, className }: { forAdvisor: boolean; className?: string }) {
-  const resolved = useBookingEmbed()
-  const embed = DIRECT_EMBED ?? resolved.data ?? null
-  if (BOOKING_SOURCE && !embed && resolved.isPending) {
-    return <Skeleton className={cn("h-[640px] w-full rounded-lg", className)} />
+function BookingForm({
+  request,
+  onClose,
+  forAdvisor,
+  rows,
+  days,
+  meetings,
+}: {
+  request: BookingRequest
+  onClose: () => void
+  forAdvisor: boolean
+  rows: StudentRow[]
+  days: MeetingSession[]
+  meetings: ThesisMeeting[]
+}) {
+  const queryClient = useQueryClient()
+  const [now] = useState(() => Date.now())
+  // An advisor's own student is already chosen; staff pick from the class.
+  const [studentId, setStudentId] = useState(
+    () => request.studentId ?? (forAdvisor && rows[0] ? String(rows[0].student.id) : "")
+  )
+  const [date, setDate] = useState(() => request.date ?? days[0]?.date ?? "")
+  const [picked, setPicked] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const row = rows.find((r) => String(r.student.id) === studentId) ?? null
+  const day = days.find((d) => d.date === date) ?? null
+  // A day opened from the schedule may not be in the list (the calendar is
+  // still loading); it is still offered.
+  const dayOptions = date && !day ? [{ date, conflict: false, isToday: false }, ...days] : days
+
+  const times = useMemo(
+    () =>
+      bookingStartTimes().map((minutes) => {
+        const start = date ? schoolInstant(date, minutes) : 0
+        const end = start + MEETING_MINUTES * 60_000
+        const sameTime = date
+          ? meetings.filter((m) => !m.canceled && overlaps(m.start, m.end, start, end))
+          : []
+        return {
+          minutes,
+          past: Boolean(date) && start <= now,
+          // One student can't be in two meetings at once.
+          taken: Boolean(row) && sameTime.some((m) => meetingIncludes(m, row!.student.studentEmail)),
+          others: sameTime.length,
+        }
+      }),
+    [date, meetings, row, now]
+  )
+  const open = times.filter((t) => !t.past && !t.taken)
+  const startMinutes = picked !== null && open.some((t) => t.minutes === picked) ? picked : (open[0]?.minutes ?? null)
+  const chosen = times.find((t) => t.minutes === startMinutes) ?? null
+
+  const first = row?.student.firstName || "the student"
+  const guests = !row
+    ? null
+    : forAdvisor
+      ? `Google Calendar emails an invitation to ${first}, you and the thesis supervisor.`
+      : row.advisors.length
+        ? `Google Calendar emails an invitation to ${first}, ${row.advisors.map(advisorName).join(" and ")}, the thesis supervisor and you.`
+        : `${first} has no thesis advisor yet, so the invitation goes to ${first}, the thesis supervisor and you.`
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!row || !date || startMinutes === null || saving) return
+    setSaving(true)
+    setError(null)
+    const result = await bookThesisMeeting({ studentId, date, startMinutes })
+    if (!result.ok) {
+      setSaving(false)
+      setError(result.error)
+      return
+    }
+    // Show it at once, then let the calendar confirm.
+    queryClient.setQueryData<ThesisMeetingsResponse>(["thesis-meetings"], (old) =>
+      old?.ok ? { ...old, meetings: [...old.meetings, result.meeting].sort((a, b) => a.start - b.start) } : old
+    )
+    void queryClient.invalidateQueries({ queryKey: ["thesis-meetings"] })
+    toast.success(`Booked with ${studentName(row.student)}`, {
+      description: `${formatCalendarDate(date)}, ${formatSlot(startMinutes)}. Invitations are on their way.`,
+    })
+    onClose()
   }
-  if (embed) {
+
+  if (rows.length === 0) {
     return (
-      <iframe
-        src={embed}
-        title="Book a thesis meeting"
-        className={cn("h-[640px] w-full rounded-lg border-0", className)}
-        loading="lazy"
-      />
+      <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
+        {forAdvisor ? "No Business Thesis students are assigned to you yet." : "No seniors on the roster yet."}
+      </p>
     )
   }
-  if (BOOKING_SOURCE) {
-    // Only when Google's page can't be found to frame at all.
-    return (
-      <Button asChild>
-        <a href={BOOKING_SOURCE} target="_blank" rel="noopener noreferrer">
-          Open the booking page
-        </a>
-      </Button>
-    )
-  }
+
   return (
-    <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-      {forAdvisor
-        ? "Booking isn’t open yet. SailFuture Academy staff are setting up the meeting times."
-        : "The booking page isn’t connected yet. Once the appointment schedule exists in Google Calendar, set its inline embed link as NEXT_PUBLIC_THESIS_BOOKING_URL in Vercel and redeploy."}
-    </p>
+    <form onSubmit={submit} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="booking-student">Student</Label>
+        {rows.length === 1 && row ? (
+          <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
+            <Avatar className="size-7">
+              <AvatarImage src={row.student.profileImage || undefined} alt="" />
+              <AvatarFallback className="text-[10px]">{initialsOf(row.student)}</AvatarFallback>
+            </Avatar>
+            <span className="text-sm font-medium">{studentName(row.student)}</span>
+          </div>
+        ) : (
+          <Select value={studentId} onValueChange={setStudentId}>
+            <SelectTrigger id="booking-student" className="w-full">
+              <SelectValue placeholder="Choose a student" />
+            </SelectTrigger>
+            <SelectContent>
+              {[...rows]
+                .sort((a, b) => studentName(a.student).localeCompare(studentName(b.student)))
+                .map((r) => (
+                  <SelectItem key={r.student.id} value={String(r.student.id)}>
+                    {studentName(r.student)}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="booking-day">Class day</Label>
+        {dayOptions.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No class days are left on the school calendar.</p>
+        ) : (
+          <Select value={date} onValueChange={setDate}>
+            <SelectTrigger id="booking-day" className="w-full">
+              <SelectValue placeholder="Choose a class day" />
+            </SelectTrigger>
+            <SelectContent>
+              {dayOptions.map((d) => (
+                <SelectItem key={d.date} value={d.date}>
+                  {formatCalendarDate(d.date)}
+                  {d.isToday && " · today"}
+                  {d.conflict && " · school event during class"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label id="booking-time-label">Time</Label>
+        <div role="radiogroup" aria-labelledby="booking-time-label" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {times.map((t) => {
+            const selected = t.minutes === startMinutes
+            const unavailable = t.past || t.taken
+            return (
+              <Button
+                key={t.minutes}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                variant={selected ? "default" : "outline"}
+                disabled={unavailable || !date}
+                title={t.taken ? `${first} already has a meeting then` : t.past ? "Already passed" : undefined}
+                className="tabular-nums"
+                onClick={() => setPicked(t.minutes)}
+              >
+                {formatSlot(t.minutes)}
+              </Button>
+            )
+          })}
+        </div>
+        <p className="text-muted-foreground text-xs">
+          {open.length === 0 && date
+            ? times.some((t) => t.taken)
+              ? `${first} is already booked for this class. Pick another day.`
+              : "This class has passed. Pick another day."
+            : chosen && chosen.others > 0
+              ? `${chosen.others} other ${chosen.others === 1 ? "meeting is" : "meetings are"} booked at this time, which is fine.`
+              : "Every meeting is an hour."}
+        </p>
+      </div>
+
+      {guests && <p className="text-muted-foreground text-sm">{guests}</p>}
+      {error && (
+        <p role="alert" className="text-destructive text-sm">
+          {error}
+        </p>
+      )}
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+          Not now
+        </Button>
+        <Button type="submit" disabled={!row || !date || startMinutes === null || saving}>
+          {saving ? "Booking…" : "Book meeting"}
+        </Button>
+      </DialogFooter>
+    </form>
   )
 }
 
@@ -473,8 +734,8 @@ const clock = (ms: number) =>
   })
 
 /**
- * One class day: what's already booked on it, then the booking page so a
- * supervisor or advisor can book a time without leaving the schedule.
+ * One class day: what's already booked on it, and a button to book an hour
+ * on that day.
  */
 function DaySheet({
   day,
@@ -483,7 +744,7 @@ function DaySheet({
   studentsByEmail,
   loading,
   configured,
-  forAdvisor,
+  onBook,
 }: {
   day: MeetingSession | null
   onClose: () => void
@@ -491,7 +752,8 @@ function DaySheet({
   studentsByEmail: Map<string, RosterStudent>
   loading: boolean
   configured: boolean
-  forAdvisor: boolean
+  /** Opens booking on this day; undefined until the meetings have loaded. */
+  onBook: ((date: string) => void) | undefined
 }) {
   const booked = useMemo(
     () =>
@@ -575,15 +837,18 @@ function DaySheet({
               </ul>
             </section>
           )}
-          <section>
-            <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-              Book a time
-            </p>
-            <p className="text-muted-foreground mt-1 mb-3 text-sm">
-              Pick a time on this day, then add the student as a guest.
-            </p>
-            <BookingButton forAdvisor={forAdvisor} label="Book a time" />
-          </section>
+          {day && !day.isPast && (
+            <section>
+              <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                Book a time
+              </p>
+              <p className="text-muted-foreground mt-1 mb-3 text-sm">
+                An hour with a student during this class. The student, their advisor and the
+                thesis supervisor get a calendar invitation.
+              </p>
+              <BookButton label="Book a time" onBook={onBook && (() => onBook(day.date))} />
+            </section>
+          )}
         </div>
       </SheetContent>
     </Sheet>
@@ -596,6 +861,7 @@ function DaySheet({
  */
 function UpcomingCard({
   forAdvisor,
+  onBook,
   meetings,
   rows,
   loading,
@@ -604,6 +870,7 @@ function UpcomingCard({
   onOpenStudent,
 }: {
   forAdvisor: boolean
+  onBook: (() => void) | undefined
   meetings: ThesisMeeting[]
   rows: StudentRow[] | null
   loading: boolean
@@ -623,7 +890,7 @@ function UpcomingCard({
               student&rsquo;s meetings.
             </CardDescription>
           </div>
-          <BookingButton forAdvisor={forAdvisor} />
+          <BookButton onBook={onBook} />
         </div>
       </CardHeader>
       <CardContent className="px-0">
@@ -718,19 +985,26 @@ function meetingState(m: ThesisMeeting, studentEmail: string, now: number): Meet
 
 /**
  * One student's thesis meetings: a row per meeting on the shared calendar
- * (upcoming first, then past), and links into their thesis.
+ * (upcoming first, then past), booking another, and links into their thesis.
  */
 function StudentMeetingsSheet({
   row,
   meetings,
   now,
   forAdvisor,
+  viewerEmail,
+  canCancel,
+  onBook,
   onClose,
 }: {
   row: StudentRow | null
   meetings: ThesisMeeting[]
   now: number
   forAdvisor: boolean
+  /** An advisor's own email: they cancel only meetings they are on. Null for staff. */
+  viewerEmail: string | null
+  canCancel: boolean
+  onBook: ((studentId: string) => void) | undefined
   onClose: () => void
 }) {
   const student = row?.student
@@ -746,6 +1020,10 @@ function StudentMeetingsSheet({
     return [...upcoming, ...past]
   }, [meetings, email, now])
   const id = student ? String(student.id) : ""
+  const [canceling, setCanceling] = useState<ThesisMeeting | null>(null)
+  const cancelable = (m: ThesisMeeting, state: MeetingState) =>
+    canCancel && state === "Upcoming" && (viewerEmail === null || meetingIncludes(m, viewerEmail))
+  const anyCancelable = list.some((m) => cancelable(m, meetingState(m, email, now)))
 
   return (
     <Sheet open={row !== null} onOpenChange={(o) => !o && onClose()}>
@@ -771,7 +1049,8 @@ function StudentMeetingsSheet({
           </div>
           {student && (
             <div className="flex flex-wrap gap-2">
-              <Button asChild size="sm">
+              <BookButton size="sm" label="Book a meeting" onBook={onBook && (() => onBook(id))} />
+              <Button asChild size="sm" variant="outline">
                 <Link href={`/admin/business-thesis/${id}`}>Open Business Thesis</Link>
               </Button>
               <Button asChild size="sm" variant="outline">
@@ -798,6 +1077,7 @@ function StudentMeetingsSheet({
                     <TableHead className="pl-4">Date</TableHead>
                     <TableHead>Time</TableHead>
                     <TableHead className="pr-4">Status</TableHead>
+                    {anyCancelable && <TableHead className="w-0 pr-4" />}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -821,6 +1101,20 @@ function StudentMeetingsSheet({
                             {state}
                           </span>
                         </TableCell>
+                        {anyCancelable && (
+                          <TableCell className="pr-4 text-right">
+                            {cancelable(mt, state) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                aria-label={`Cancel the meeting on ${formatDay(mt.start)}`}
+                                onClick={() => setCanceling(mt)}
+                              >
+                                Cancel
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     )
                   })}
@@ -829,12 +1123,70 @@ function StudentMeetingsSheet({
             </div>
           )}
         </div>
+        <CancelMeetingDialog
+          meeting={canceling}
+          studentName={student ? studentName(student) : "this student"}
+          onClose={() => setCanceling(null)}
+        />
       </SheetContent>
     </Sheet>
   )
 }
 
-/** Shown until THESIS_MEETINGS_ICS_URL is set on the server. */
+/** Confirms before a meeting leaves the calendar, since Google tells the guests. */
+function CancelMeetingDialog({
+  meeting,
+  studentName: name,
+  onClose,
+}: {
+  meeting: ThesisMeeting | null
+  studentName: string
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [working, setWorking] = useState(false)
+
+  async function confirm(e: React.MouseEvent) {
+    e.preventDefault()
+    if (!meeting || working) return
+    setWorking(true)
+    const error = await cancelThesisMeeting(meeting.id)
+    setWorking(false)
+    if (error) {
+      toast.error(error)
+      return
+    }
+    queryClient.setQueryData<ThesisMeetingsResponse>(["thesis-meetings"], (old) =>
+      old?.ok ? { ...old, meetings: old.meetings.filter((m) => m.id !== meeting.id) } : old
+    )
+    void queryClient.invalidateQueries({ queryKey: ["thesis-meetings"] })
+    toast.success("Meeting canceled")
+    onClose()
+  }
+
+  return (
+    <AlertDialog open={meeting !== null} onOpenChange={(o) => !o && !working && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Cancel this meeting?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {meeting
+              ? `${formatDay(meeting.start)}, ${clock(meeting.start)} – ${clock(meeting.end)} with ${name}. It comes off the shared calendar and Google tells everyone invited.`
+              : ""}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={working}>Keep it</AlertDialogCancel>
+          <AlertDialogAction onClick={confirm} disabled={working}>
+            {working ? "Canceling…" : "Cancel meeting"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+/** Shown until the meetings calendar is connected on the server. */
 function SetupSteps() {
   return (
     <div className="px-6 text-sm">
@@ -849,16 +1201,13 @@ function SetupSteps() {
           (see all event details).
         </li>
         <li>
-          Create an appointment schedule for the class times, saving bookings to that calendar.
-          Thesis supervisors and advisors book it from this page; students don&rsquo;t book.
+          Copy the calendar&rsquo;s secret iCal address into THESIS_MEETINGS_ICS_URL in Vercel.
         </li>
         <li>
-          When booking, add the student as a guest. A meeting counts for a student only when
-          their email is on it.
-        </li>
-        <li>
-          Copy the calendar&rsquo;s secret iCal address into THESIS_MEETINGS_ICS_URL in Vercel,
-          and the schedule&rsquo;s inline embed link into NEXT_PUBLIC_THESIS_BOOKING_URL.
+          Add GOOGLE_CALENDAR_CLIENT_EMAIL, GOOGLE_CALENDAR_PRIVATE_KEY and
+          GOOGLE_CALENDAR_IMPERSONATE (the same values the apply portal uses), and make sure the
+          impersonated account can make changes to the calendar. Supervisors and advisors then
+          book from this page; students don&rsquo;t book.
         </li>
       </ol>
     </div>

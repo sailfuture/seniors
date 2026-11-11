@@ -5,7 +5,7 @@ import { ThesisSchedule } from "@/components/thesis-schedule"
 
 /**
  * Thesis meetings: the class schedule term by term (each class day opens its
- * bookings and the booking page), what's booked next, and whether each
+ * bookings and books an hour on it), what's booked next, and whether each
  * student is meeting. Staff see every senior; a thesis advisor sees only their own
  * students. Students never book, so they're sent home.
  */

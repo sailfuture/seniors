@@ -1,19 +1,43 @@
 /**
- * Thesis meetings: the bookings on the shared "Senior Thesis Meetings"
- * Google Calendar, read through `/api/thesis-meetings` (which fetches the
- * calendar's secret iCal address, so nothing here needs Google sign-in).
+ * Thesis meetings: the events on the shared "Senior Thesis Meetings" Google
+ * Calendar. Supervisors and advisors book them here, in the app: an hour
+ * inside a class session, saved straight to that calendar with the student,
+ * their advisor and the thesis supervisor as guests, so Google sends the
+ * invitations. Students never book.
  *
- * Setup lives in Google Calendar, not in this app:
- *  - THESIS_MEETINGS_ICS_URL (server): the calendar's "Secret address in
- *    iCal format", from its Settings → Integrate calendar.
- *  - NEXT_PUBLIC_THESIS_BOOKING_URL (browser, baked at build time): the
- *    appointment schedule's embed link, from Share → Website embed → Inline.
+ * Everything goes through `/api/thesis-meetings` (see
+ * lib/google-calendar.server.ts for the Google side and its env vars). Until
+ * the service account is set, the route can still read the calendar from its
+ * secret iCal address (THESIS_MEETINGS_ICS_URL), but nothing can be booked.
  */
 
 import type { RosterStudent } from "@/lib/students"
+import { CLASS_MEETING, formatMinutes } from "@/lib/school-calendar"
 
-/** The booking page shown on the Schedule tab; blank until it's set up. */
-export const THESIS_BOOKING_URL = process.env.NEXT_PUBLIC_THESIS_BOOKING_URL ?? ""
+/** Every thesis meeting runs an hour. */
+export const MEETING_MINUTES = 60
+
+/**
+ * When a meeting may start (minutes after midnight, school time): every
+ * quarter hour that still ends inside the class session, plus the last start
+ * that does. Any number of meetings can share a time; only the same student
+ * can't be in two at once.
+ */
+export function bookingStartTimes(): number[] {
+  const last = CLASS_MEETING.endMinutes - MEETING_MINUTES
+  const times: number[] = []
+  for (let t = CLASS_MEETING.startMinutes; t <= last; t += 15) times.push(t)
+  if (last >= CLASS_MEETING.startMinutes && times[times.length - 1] !== last) times.push(last)
+  return times
+}
+
+/** "12:00 – 1:00 pm" for a meeting starting at `startMinutes`. */
+export function formatSlot(startMinutes: number): string {
+  const start = formatMinutes(startMinutes)
+  const end = formatMinutes(startMinutes + MEETING_MINUTES)
+  const [s, sPeriod] = start.split(" ")
+  return sPeriod === end.split(" ")[1] ? `${s} – ${end}` : `${start} – ${end}`
+}
 
 export interface MeetingAttendee {
   email: string
@@ -36,8 +60,10 @@ export interface ThesisMeeting {
 }
 
 export interface ThesisMeetingsResponse {
-  /** False until THESIS_MEETINGS_ICS_URL is set. */
+  /** False until the calendar is connected at all. */
   configured: boolean
+  /** Whether meetings can be booked (and canceled) from the app. */
+  canBook?: boolean
   /** False when the calendar couldn't be read. */
   ok: boolean
   meetings: ThesisMeeting[]
@@ -52,6 +78,44 @@ export async function fetchThesisMeetings(): Promise<ThesisMeetingsResponse> {
     return { configured: true, ok: false, meetings: [], error: `meetings returned ${res.status}` }
   } catch {
     return { configured: true, ok: false, meetings: [], error: "meetings unavailable" }
+  }
+}
+
+export interface BookingRequest {
+  studentId: string
+  /** YYYY-MM-DD, a class day. */
+  date: string
+  /** One of `bookingStartTimes()`. */
+  startMinutes: number
+}
+
+export type BookingResult = { ok: true; meeting: ThesisMeeting } | { ok: false; error: string }
+
+/** Books an hour with a student; Google emails the invitations. */
+export async function bookThesisMeeting(request: BookingRequest): Promise<BookingResult> {
+  try {
+    const res = await fetch("/api/thesis-meetings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    const body = (await res.json().catch(() => null)) as { meeting?: ThesisMeeting; error?: string } | null
+    if (res.ok && body?.meeting) return { ok: true, meeting: body.meeting }
+    return { ok: false, error: body?.error ?? "The meeting couldn’t be booked. Please try again." }
+  } catch {
+    return { ok: false, error: "The meeting couldn’t be booked. Please try again." }
+  }
+}
+
+/** Cancels an upcoming meeting. Returns an error message, or null when done. */
+export async function cancelThesisMeeting(id: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/thesis-meetings/${encodeURIComponent(id)}`, { method: "DELETE" })
+    if (res.ok) return null
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    return body?.error ?? "The meeting couldn’t be canceled. Please try again."
+  } catch {
+    return "The meeting couldn’t be canceled. Please try again."
   }
 }
 
@@ -124,30 +188,4 @@ export function formatMeetingTime(ms: number): string {
     hour: "numeric",
     minute: "2-digit",
   })
-}
-
-/**
- * The booking link as saved, cleaned up: the whole embed snippet
- * (<iframe src="…">) works too, so whatever was copied from Google is fine.
- */
-export function bookingSourceUrl(raw: string): string {
-  const text = raw.trim()
-  const src = text.match(/src\s*=\s*["']([^"']+)["']/i)?.[1]
-  return (src ?? text).replace(/&amp;/g, "&").trim()
-}
-
-/**
- * Google's inline embed needs the schedule URL with `gv=true`. A short
- * calendar.app.google link can't be framed; /api/thesis-meetings/booking
- * follows it to the full schedule URL.
- */
-export function bookingEmbedUrl(url: string): string | null {
-  try {
-    const u = new URL(url)
-    if (!u.hostname.endsWith("calendar.google.com") || !u.pathname.includes("/appointments/")) return null
-    u.searchParams.set("gv", "true")
-    return u.toString()
-  } catch {
-    return null
-  }
 }
