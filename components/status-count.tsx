@@ -39,7 +39,7 @@ export function StatusCount({
   return (
     <span
       className={cn(
-        "bg-background inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold tabular-nums",
+        "bg-background inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 shadow-(--shadow-border) text-xs font-semibold tabular-nums",
         size === "sm" ? "h-7" : "h-8"
       )}
       title={`${count} ${k.label}`}

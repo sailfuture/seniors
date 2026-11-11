@@ -354,16 +354,22 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
 
   if (advisorsQuery.isPending) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-        <Skeleton className="h-16 w-80" />
-        <Skeleton className="h-24 w-full rounded-xl" />
+      <div className={DETAIL_PAGE}>
+        <Skeleton className="h-7 w-32" />
+        <Skeleton className="h-14 w-80 max-w-full" />
+        <div className="grid grid-cols-2 gap-3 md:gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-28 w-full rounded-xl" />
         <Skeleton className="h-96 w-full rounded-xl" />
       </div>
     )
   }
   if (!advisor) {
     return (
-      <div className="flex flex-1 flex-col items-start gap-4 p-4 md:p-6">
+      <div className={cn(DETAIL_PAGE, "gap-4")}>
         <BackLink />
         <p className="text-muted-foreground text-sm">That advisor isn&rsquo;t in the directory anymore.</p>
       </div>
@@ -383,7 +389,7 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
   const studentById = new Map((students ?? []).map((s) => [String(s.id), s]))
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+    <div className={DETAIL_PAGE}>
       <BackLink />
 
       <div className="flex flex-wrap items-center gap-4">
@@ -398,14 +404,17 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
           </div>
           <p className="text-muted-foreground mt-0.5 text-sm">
             Thesis advisor ·{" "}
-            <a href={`mailto:${advisor.email}`} className="hover:underline">
+            <a
+              href={`mailto:${advisor.email}`}
+              className="rounded-sm underline-offset-4 outline-none hover:underline focus-visible:underline"
+            >
               {advisor.email}
             </a>
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4">
         <Kpi
           icon={Comment01Icon}
           label="Comments written"
@@ -455,137 +464,141 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
         />
       </div>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle>Activity</CardTitle>
-            <CardDescription>
-              {advisorName(advisor)}&rsquo;s own comments, review decisions (revision requests and reopened work) and
-              meetings, newest first.
-            </CardDescription>
-            <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="mt-2">
-              <TabsList aria-label="Kind of activity">
-                {FILTERS.map((f) => (
-                  <TabsTrigger key={f.value} value={f.value}>
-                    {f.label}
-                    {activity && <span className="text-muted-foreground tabular-nums">{counts[f.value]}</span>}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </CardHeader>
-          <CardContent>
-            {failed ? (
-              <p className="text-muted-foreground text-sm">
-                The activity couldn&rsquo;t be loaded just now. Try again in a minute.
-              </p>
-            ) : loading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-14 w-full" />
-                ))}
-              </div>
-            ) : items.length === 0 ? (
-              <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-                {filter === "all"
-                  ? students && students.length === 0
-                    ? "No students are assigned to this advisor yet, so there’s nothing to show."
-                    : "Nothing yet. Comments, revision requests and meetings show here as they happen."
-                  : `No ${FILTERS.find((f) => f.value === filter)!.label.toLowerCase()} yet.`}
-              </p>
-            ) : (
-              <ActivityStream
-                items={items}
-                now={now}
-                studentById={studentById}
-                showStudent={(students?.length ?? 0) > 1}
-              />
-            )}
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle>{students?.length === 1 ? "Student" : "Students"}</CardTitle>
+          <CardDescription>Who they advise, and what&rsquo;s waiting on a review.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!students ? (
+            <Skeleton className="h-12 w-full" />
+          ) : students.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No students assigned yet.</p>
+          ) : (
+            <ul className="-my-1.5 flex flex-col">
+              {students.map((s) => {
+                const p = progressQuery.data?.byStudent.get(String(s.id))
+                return (
+                  <li key={s.id} className="border-b py-1 last:border-b-0">
+                    <Link
+                      href={`${CFG.adminBasePath}/${s.id}/review`}
+                      className="hover:bg-muted/60 focus-visible:ring-ring/50 -mx-2 flex min-h-11 items-center gap-3 rounded-lg px-2 py-1.5 transition-colors outline-none focus-visible:ring-[3px]"
+                    >
+                      <Avatar className="size-8">
+                        <AvatarImage src={s.profileImage || undefined} alt="" />
+                        <AvatarFallback className="text-xs">{studentInitials(s)}</AvatarFallback>
+                      </Avatar>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">{studentName(s)}</span>
+                      <StatusCount kind="ready" count={p?.pending ?? 0} size="sm" />
+                      <StatusCount kind="revision" count={p?.revisions ?? 0} size="sm" />
+                      <HugeiconsIcon
+                        icon={ArrowRight01Icon}
+                        strokeWidth={2}
+                        className="text-muted-foreground size-4 shrink-0"
+                      />
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardHeader className="border-b">
-              <CardTitle>{students?.length === 1 ? "Student" : "Students"}</CardTitle>
-              <CardDescription>Who they advise, and what&rsquo;s waiting on a review.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!students ? (
-                <Skeleton className="h-12 w-full" />
-              ) : students.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No students assigned yet.</p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {students.map((s) => {
-                    const p = progressQuery.data?.byStudent.get(String(s.id))
-                    return (
-                      <li key={s.id}>
-                        <Link
-                          href={`${CFG.adminBasePath}/${s.id}/review`}
-                          className="bg-background hover:bg-muted/60 focus-visible:ring-ring/50 flex items-center gap-3 rounded-lg border px-3 py-2 shadow-xs transition-colors outline-none focus-visible:ring-[3px]"
-                        >
-                          <Avatar className="size-8">
-                            <AvatarImage src={s.profileImage || undefined} alt="" />
-                            <AvatarFallback className="text-xs">{studentInitials(s)}</AvatarFallback>
-                          </Avatar>
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{studentName(s)}</span>
-                          <StatusCount kind="ready" count={p?.pending ?? 0} size="sm" />
-                          <StatusCount kind="revision" count={p?.revisions ?? 0} size="sm" />
-                          <HugeiconsIcon
-                            icon={ArrowRight01Icon}
-                            strokeWidth={2}
-                            className="text-muted-foreground size-4 shrink-0"
-                          />
-                        </Link>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle>Activity</CardTitle>
+          <CardDescription>
+            {advisorName(advisor)}&rsquo;s own comments, review decisions (revision requests and reopened work) and
+            meetings, newest first.
+          </CardDescription>
+          <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="mt-2 min-w-0">
+            <TabsList
+              aria-label="Kind of activity"
+              className="max-w-full justify-start overflow-x-auto [scrollbar-width:none]"
+            >
+              {FILTERS.map((f) => (
+                <TabsTrigger key={f.value} value={f.value}>
+                  {f.label}
+                  {activity && <span className="text-muted-foreground tabular-nums">{counts[f.value]}</span>}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </CardHeader>
+        <CardContent>
+          {failed ? (
+            <p className="text-muted-foreground text-sm">
+              The activity couldn&rsquo;t be loaded just now. Try again in a minute.
+            </p>
+          ) : loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : items.length === 0 ? (
+            <p className="text-muted-foreground py-6 text-center text-sm text-pretty">
+{filter === "all"
+                ? students && students.length === 0
+                  ? "No students are assigned to this advisor yet, so there’s nothing to show."
+                  : "Nothing yet. Comments, revision requests and meetings show here as they happen."
+                : `No ${FILTERS.find((f) => f.value === filter)!.label.toLowerCase()} yet.`}
+            </p>
+          ) : (
+            <ActivityStream
+              items={items}
+              now={now}
+              studentById={studentById}
+              showStudent={(students?.length ?? 0) > 1}
+            />
+          )}
+        </CardContent>
+      </Card>
 
-          <Card>
-            <CardHeader className="border-b">
-              <CardTitle>Meetings</CardTitle>
-              <CardDescription>Thesis meetings with this advisor on the invitation.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {meetingsQuery.isPending || !activity ? (
-                <Skeleton className="h-12 w-full" />
-              ) : !meetingsReadable ? (
-                <p className="text-muted-foreground text-sm">The meetings calendar couldn&rsquo;t be read just now.</p>
-              ) : activity.meetingsUpcoming.length + activity.meetingsHeld.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No meetings yet.</p>
-              ) : (
-                <ul className="divide-y">
-                  {[...activity.meetingsUpcoming, ...activity.meetingsHeld].map((m) => {
-                    const upcoming = m.start > now
-                    const who = (students ?? []).filter((s) => meetingIncludes(m, s.studentEmail)).map(studentName)
-                    return (
-                      <li key={m.id} className="flex items-baseline gap-3 py-2.5 first:pt-0 last:pb-0">
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium">{formatMeetingTime(m.start)}</span>
-                          <span className="text-muted-foreground block truncate text-xs">
-                            {who.length ? who.join(", ") : m.title || "Thesis meeting"}
-                          </span>
-                        </span>
-                        <span className={cn("text-xs font-medium", upcoming ? "text-primary" : "text-muted-foreground")}>
-                          {upcoming ? "Upcoming" : "Held"}
-                        </span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle>Meetings</CardTitle>
+          <CardDescription>Thesis meetings with this advisor on the invitation.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {meetingsQuery.isPending || !activity ? (
+            <Skeleton className="h-12 w-full" />
+          ) : !meetingsReadable ? (
+            <p className="text-muted-foreground text-sm">The meetings calendar couldn&rsquo;t be read just now.</p>
+          ) : activity.meetingsUpcoming.length + activity.meetingsHeld.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No meetings yet.</p>
+          ) : (
+            <ul className="divide-y">
+              {[...activity.meetingsUpcoming, ...activity.meetingsHeld].map((m) => {
+                const upcoming = m.start > now
+                const who = (students ?? []).filter((s) => meetingIncludes(m, s.studentEmail)).map(studentName)
+                return (
+                  <li key={m.id} className="flex items-baseline gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">{formatMeetingTime(m.start)}</span>
+                      <span className="text-muted-foreground block truncate text-xs">
+                        {who.length ? who.join(", ") : m.title || "Thesis meeting"}
+                      </span>
+                    </span>
+                    <span
+                      className={cn("shrink-0 text-xs font-medium", upcoming ? "text-primary" : "text-muted-foreground")}
+                    >
+                      {upcoming ? "Upcoming" : "Held"}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
+
+/** One advisor's page is a single centred column. */
+const DETAIL_PAGE = "mx-auto flex w-full max-w-4xl flex-1 flex-col items-stretch gap-6 p-4 md:p-6"
 
 function BackLink() {
   return (
@@ -654,7 +667,7 @@ function ActivityStream({
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-baseline gap-x-2">
                       <span className="text-sm font-medium">{item.title}</span>
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-muted-foreground text-xs tabular-nums">
                         {showStudent && student ? `${studentName(student)} · ` : ""}
                         {timeOfDay(item.at)}
                       </span>
