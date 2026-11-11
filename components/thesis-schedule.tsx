@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Alert02Icon,
+  ArrowDown01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
   Calendar03Icon,
@@ -14,6 +15,7 @@ import {
   CalendarDownload01Icon,
   Copy01Icon,
   Delete02Icon,
+  Tick02Icon,
   UserMultiple02Icon,
 } from "@hugeicons/core-free-icons"
 import { ScheduleCard, useSchoolCalendarData } from "@/components/class-schedule"
@@ -95,6 +97,7 @@ import {
 import { InputGroupAddon } from "@/components/ui/input-group"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Table,
   TableBody,
@@ -591,6 +594,147 @@ const monthLabel = (key: string) =>
 /** "Thu, Nov 12" */
 const tileLabel = (iso: string) =>
   utcDay(iso).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })
+/** "Thu 12": inside the calendar the month is already in its heading. */
+const tileDay = (iso: string) =>
+  `${utcDay(iso).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short" })} ${Number(iso.slice(8, 10))}`
+/** The reason in as few words as a calendar tile has room for. */
+const shortReason = (s: MeetingSession): string | null =>
+  s.status === "off" ? (s.kind === "holiday" ? "Holiday" : s.kind === "break" ? "School break" : "No class") : blockReason(s)
+
+/** The closed face of a dropdown field: the chosen value, a note and a chevron. */
+const FIELD_TRIGGER =
+  "border-input bg-background dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 data-[state=open]:border-ring flex h-9 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-3 text-left text-sm transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+
+/** The class day as a dropdown: the chosen day on its face, the month
+    calendar (blocked days and their reasons included) behind it. */
+function ClassDayField({
+  id,
+  sessions,
+  value,
+  onChange,
+  meetings,
+  disabled,
+}: {
+  id: string
+  sessions: MeetingSession[]
+  value: string
+  onChange: (date: string) => void
+  meetings: ThesisMeeting[]
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const chosen = sessions.find((s) => s.date === value)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" id={id} disabled={disabled} className={FIELD_TRIGGER}>
+          <span className={cn("min-w-0 flex-1 truncate", !value && "text-muted-foreground")}>
+            {value ? tileLabel(value) : "Choose a class day"}
+          </span>
+          {chosen?.isToday && <span className="text-muted-foreground shrink-0 text-xs">Today</span>}
+          <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-4 shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[26rem] max-w-[calc(100vw-2rem)] p-3">
+        <ClassDayPicker
+          label="Class day"
+          sessions={sessions}
+          value={value}
+          onChange={(d) => {
+            onChange(d)
+            setOpen(false)
+          }}
+          meetings={meetings}
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+interface TimeOption {
+  minutes: number
+  /** Already gone by. */
+  past: boolean
+  /** The student is in another meeting then. */
+  taken: boolean
+  /** Other meetings booked at the same time. */
+  others: number
+}
+
+/** The hour as a dropdown: the chosen time on its face, every start time
+    behind it with what's already booked then. */
+function TimeField({
+  id,
+  times,
+  value,
+  onChange,
+  disabled,
+  studentFirst,
+}: {
+  id: string
+  times: TimeOption[]
+  value: number | null
+  onChange: (minutes: number) => void
+  disabled?: boolean
+  studentFirst: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" id={id} disabled={disabled} className={FIELD_TRIGGER}>
+          <span className={cn("min-w-0 flex-1 truncate tabular-nums", value === null && "text-muted-foreground")}>
+            {value === null ? "No times open" : formatSlot(value)}
+          </span>
+          <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-4 shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-(--radix-popover-trigger-width) min-w-72 gap-0 p-1">
+        <div role="radiogroup" aria-label="Time" className="flex flex-col">
+          {times.map((t) => {
+            const selected = t.minutes === value
+            const unavailable = t.past || t.taken
+            const note = t.past
+              ? "Already passed"
+              : t.taken
+                ? `${studentFirst} is booked then`
+                : t.others
+                  ? `${t.others} other${t.others === 1 ? "" : "s"} booked`
+                  : ""
+            return (
+              <button
+                key={t.minutes}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                disabled={unavailable}
+                onClick={() => {
+                  onChange(t.minutes)
+                  setOpen(false)
+                }}
+                className={cn(
+                  "focus-visible:bg-accent flex min-w-0 items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 text-left text-sm outline-none",
+                  unavailable ? "text-muted-foreground cursor-not-allowed" : "hover:bg-accent cursor-pointer"
+                )}
+              >
+                <span className={cn("shrink-0 tabular-nums", unavailable && "line-through", selected && "font-medium")}>
+                  {formatSlot(t.minutes)}
+                </span>
+                <span className="text-muted-foreground min-w-0 flex-1 truncate text-right text-xs">{note}</span>
+                <HugeiconsIcon
+                  icon={Tick02Icon}
+                  strokeWidth={2}
+                  className={cn("size-4 shrink-0", !selected && "invisible")}
+                  aria-hidden
+                />
+              </button>
+            )
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 /**
  * The class days as a small calendar: a month at a time, a row per week and
@@ -598,14 +742,14 @@ const tileLabel = (iso: string) =>
  * struck out, with the reason beside it.
  */
 function ClassDayPicker({
-  labelledBy,
+  label,
   sessions,
   value,
   onChange,
   meetings,
   disabled,
 }: {
-  labelledBy: string
+  label: string
   sessions: MeetingSession[]
   value: string
   onChange: (date: string) => void
@@ -679,14 +823,14 @@ function ClassDayPicker({
           </Button>
         </div>
       </div>
-      <div role="radiogroup" aria-labelledby={labelledBy} className="grid grid-cols-2 gap-2">
+      <div role="radiogroup" aria-label={label} className="grid grid-cols-2 gap-2">
         {month.weeks.map(([weekKey, row]) =>
           row.map((s, column) => {
             if (!s) return <div key={`${weekKey}-${column}`} aria-hidden />
             const reason = blockReason(s)
             const selected = s.date === value
             const count = booked.get(s.date) ?? 0
-            const note = reason ?? (s.isToday ? "Today" : count ? `${count} booked` : "")
+            const note = shortReason(s) ?? (s.isToday ? "Today" : count ? `${count} booked` : "")
             return (
               <button
                 key={s.date}
@@ -707,7 +851,7 @@ function ClassDayPicker({
                 )}
               >
                 <span className={cn("shrink-0 font-medium tabular-nums", reason && "line-through")}>
-                  {tileLabel(s.date)}
+                  {tileDay(s.date)}
                 </span>
                 {note && (
                   <span
@@ -999,46 +1143,36 @@ function BookingForm({
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label id="booking-day-label">Class day</Label>
-        {dayOptions.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No class days are left on the school calendar.</p>
-        ) : (
-          <ClassDayPicker
-            labelledBy="booking-day-label"
-            sessions={dayOptions}
-            value={date}
-            onChange={(d) => {
-              setDate(d)
-              setPicked(null)
-            }}
-            meetings={meetings}
-            disabled={saving}
-          />
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label id="booking-time-label">Time</Label>
-        <div role="radiogroup" aria-labelledby="booking-time-label" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {times.map((t) => {
-            const selected = t.minutes === startMinutes
-            const unavailable = t.past || t.taken
-            return (
-              <Button
-                key={t.minutes}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                variant={selected ? "default" : "outline"}
-                disabled={unavailable || !date}
-                title={t.taken ? `${first} already has a meeting then` : t.past ? "Already passed" : undefined}
-                className="tabular-nums"
-                onClick={() => setPicked(t.minutes)}
-              >
-                {formatSlot(t.minutes)}
-              </Button>
-            )
-          })}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label htmlFor="booking-day">Class day</Label>
+            {dayOptions.length === 0 ? (
+              <p className="text-muted-foreground text-sm">No class days are left on the school calendar.</p>
+            ) : (
+              <ClassDayField
+                id="booking-day"
+                sessions={dayOptions}
+                value={date}
+                onChange={(d) => {
+                  setDate(d)
+                  setPicked(null)
+                }}
+                meetings={meetings}
+                disabled={saving}
+              />
+            )}
+          </div>
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label htmlFor="booking-time">Time</Label>
+            <TimeField
+              id="booking-time"
+              times={times}
+              value={startMinutes}
+              onChange={setPicked}
+              disabled={saving || !date}
+              studentFirst={first}
+            />
+          </div>
         </div>
         <p className="text-muted-foreground text-xs">
           {open.length === 0 && date
