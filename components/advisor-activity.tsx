@@ -106,7 +106,7 @@ export function AdvisorActivityIndex() {
   const progress = progressQuery.data
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+    <div className={PAGE}>
       <div>
         <h1 className="text-2xl font-bold">Advisor activity</h1>
         <p className="text-muted-foreground mt-1">
@@ -354,7 +354,7 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
 
   if (advisorsQuery.isPending) {
     return (
-      <div className={DETAIL_PAGE}>
+      <div className={PAGE}>
         <Skeleton className="h-7 w-32" />
         <Skeleton className="h-14 w-80 max-w-full" />
         <div className="grid grid-cols-2 gap-3 md:gap-4">
@@ -369,7 +369,7 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
   }
   if (!advisor) {
     return (
-      <div className={cn(DETAIL_PAGE, "gap-4")}>
+      <div className={cn(PAGE, "gap-4")}>
         <BackLink />
         <p className="text-muted-foreground text-sm">That advisor isn&rsquo;t in the directory anymore.</p>
       </div>
@@ -389,7 +389,7 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
   const studentById = new Map((students ?? []).map((s) => [String(s.id), s]))
 
   return (
-    <div className={DETAIL_PAGE}>
+    <div className={PAGE}>
       <BackLink />
 
       <div className="flex flex-wrap items-center gap-4">
@@ -597,8 +597,8 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
   )
 }
 
-/** One advisor's page is a single centred column. */
-const DETAIL_PAGE = "mx-auto flex w-full max-w-4xl flex-1 flex-col items-stretch gap-6 p-4 md:p-6"
+/** Both pages are a single centred column. */
+const PAGE = "mx-auto flex w-full max-w-4xl flex-1 flex-col items-stretch gap-6 p-4 md:p-6"
 
 function BackLink() {
   return (
