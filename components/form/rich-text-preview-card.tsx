@@ -1,6 +1,7 @@
 "use client"
 
 import { AI_BLOCK_THRESHOLD, normalizeAiPercent } from "@/lib/ai-submission-check"
+import { formatWhen } from "@/lib/format-time"
 import { extractPlainText, richTextWordCount } from "@/lib/rich-text"
 
 const SNIPPET_WORDS = 50
@@ -18,38 +19,46 @@ function toPercent(val: unknown): number {
   return n <= 1 ? Math.round(n * 100) : Math.round(n)
 }
 
-/** Compact GPTZero score report — shown after a submission so the student can
- *  see why an AI-flagged essay was rejected. */
+/** The GPTZero scores as one footer line, the same way every other question
+ *  type shows them, so the student can see why an AI-flagged essay was
+ *  rejected. */
 function AiScoreReport({ data }: { data: PlagiarismData }) {
   const ai = toPercent(data.class_probability_ai ?? 0)
   const human = toPercent(data.class_probability_human ?? 0)
   const mixed = toPercent(data.mixed ?? 0)
   const max = Math.max(ai, human, mixed)
   const aiIsMax = ai === max && ai > 0
+  const humanIsMax = human === max && human > 0
   // Same unrounded comparison as the submission gate, so the card agrees.
   const rejected = normalizeAiPercent(data.class_probability_ai) > AI_BLOCK_THRESHOLD
+  const checked = formatWhen(data.created_at as string | number | null | undefined)
 
   return (
-    <div
-      className={`shrink-0 rounded-md border px-2.5 py-1.5 text-right text-[11px] ${
-        rejected ? "border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-500/10" : "bg-muted/40"
-      }`}
-    >
-      <p className={`font-semibold ${rejected ? "text-red-600" : "text-muted-foreground"}`}>
-        {rejected ? "AI content detected" : "Originality check"}
-      </p>
-      <div className="mt-0.5 flex items-center justify-end gap-2">
-        <span className={aiIsMax ? "font-bold text-red-600" : "text-muted-foreground"}>AI {ai}%</span>
-        <span className="text-muted-foreground/40">&bull;</span>
-        <span className={human === max && human > 0 ? "font-bold text-green-600" : "text-muted-foreground"}>
-          Human {human}%
-        </span>
-        <span className="text-muted-foreground/40">&bull;</span>
-        <span className={mixed === max && mixed > 0 && !aiIsMax ? "font-bold text-amber-600" : "text-muted-foreground"}>
-          Mixed {mixed}%
-        </span>
-      </div>
-    </div>
+    <span className="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 text-xs">
+      {rejected && (
+        <>
+          <span className="font-semibold text-red-600">AI content detected</span>
+          <span className="text-muted-foreground/40">&mdash;</span>
+        </>
+      )}
+      <span className={aiIsMax ? "font-bold text-red-600" : "text-muted-foreground"}>AI: {ai}%</span>
+      <span className="text-muted-foreground/40">&bull;</span>
+      <span className={humanIsMax ? "font-bold text-green-600" : "text-muted-foreground"}>Human: {human}%</span>
+      <span className="text-muted-foreground/40">&bull;</span>
+      <span
+        className={
+          mixed === max && mixed > 0 && !aiIsMax && !humanIsMax ? "font-bold text-amber-600" : "text-muted-foreground"
+        }
+      >
+        Mixed: {mixed}%
+      </span>
+      {checked && (
+        <>
+          <span className="text-muted-foreground/40">&mdash;</span>
+          <span className="text-muted-foreground">{checked}</span>
+        </>
+      )}
+    </span>
   )
 }
 
@@ -86,7 +95,7 @@ export function RichTextPreviewCard({
           {words.length > SNIPPET_WORDS && <span className="text-muted-foreground"> …</span>}
         </p>
       )}
-      <div className="mt-3 flex items-end justify-between gap-3">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         {/* The button that opened the editor now lives in the question's
             header row, inline with the submission actions. */}
         {minWords ? (
@@ -98,7 +107,7 @@ export function RichTextPreviewCard({
             {isEmpty ? "" : `${wordCount} ${wordCount === 1 ? "word" : "words"}`}
           </span>
         )}
-        {/* Lower-right: the AI score report once a submission has been checked. */}
+        {/* Lower-right: the AI scores once a submission has been checked. */}
         {plagiarism && <AiScoreReport data={plagiarism} />}
       </div>
     </div>
