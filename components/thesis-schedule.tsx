@@ -8,8 +8,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Alert02Icon,
   ArrowDown01Icon,
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   Calendar03Icon,
   CalendarAdd01Icon,
   CalendarDownload01Icon,
@@ -49,7 +47,6 @@ import {
   schoolInstant,
   schoolNow,
   termsOfYear,
-  weekdayOf,
   yearsWithDays,
   type MeetingSession,
 } from "@/lib/school-calendar"
@@ -592,12 +589,9 @@ const utcDay = (iso: string) => {
 const monthLabel = (key: string) =>
   utcDay(`${key}-01`).toLocaleDateString("en-US", { timeZone: "UTC", month: "long", year: "numeric" })
 /** "Thu, Nov 12" */
-const tileLabel = (iso: string) =>
+const dayLabel = (iso: string) =>
   utcDay(iso).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })
-/** "Thu 12": inside the calendar the month is already in its heading. */
-const tileDay = (iso: string) =>
-  `${utcDay(iso).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short" })} ${Number(iso.slice(8, 10))}`
-/** The reason in as few words as a calendar tile has room for. */
+/** The reason in as few words as a dropdown row has room for. */
 const shortReason = (s: MeetingSession): string | null =>
   s.status === "off" ? (s.kind === "holiday" ? "Holiday" : s.kind === "break" ? "School break" : "No class") : blockReason(s)
 
@@ -605,8 +599,15 @@ const shortReason = (s: MeetingSession): string | null =>
 const FIELD_TRIGGER =
   "border-input bg-background dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 data-[state=open]:border-ring flex h-9 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-3 text-left text-sm transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
 
-/** The class day as a dropdown: the chosen day on its face, the month
-    calendar (blocked days and their reasons included) behind it. */
+/** One choice in a dropdown list: the value, a note on the right, a tick when chosen. */
+const FIELD_OPTION =
+  "focus-visible:bg-accent flex w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 text-left text-sm outline-none"
+
+/**
+ * The class day as a dropdown: the chosen day on its face, every class day
+ * left behind it, month by month. A day that can't be booked stays in the
+ * list, struck out, with the reason beside it.
+ */
 function ClassDayField({
   id,
   sessions,
@@ -623,29 +624,104 @@ function ClassDayField({
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const chosenRef = useRef<HTMLButtonElement>(null)
   const chosen = sessions.find((s) => s.date === value)
+
+  const months = useMemo(() => {
+    const byMonth = new Map<string, MeetingSession[]>()
+    for (const s of sessions) {
+      const key = s.date.slice(0, 7)
+      byMonth.set(key, [...(byMonth.get(key) ?? []), s])
+    }
+    return [...byMonth.entries()]
+  }, [sessions])
+
+  // How many meetings each day already holds.
+  const booked = useMemo(() => {
+    const count = new Map<string, number>()
+    for (const m of meetings) {
+      if (m.canceled) continue
+      const date = schoolNow(new Date(m.start)).date
+      count.set(date, (count.get(date) ?? 0) + 1)
+    }
+    return count
+  }, [meetings])
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // Modal, so the list scrolls: inside a dialog, a plain popover's wheel
+    // events are swallowed by the dialog's scroll lock.
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <button type="button" id={id} disabled={disabled} className={FIELD_TRIGGER}>
           <span className={cn("min-w-0 flex-1 truncate", !value && "text-muted-foreground")}>
-            {value ? tileLabel(value) : "Choose a class day"}
+            {value ? dayLabel(value) : "Choose a class day"}
           </span>
           {chosen?.isToday && <span className="text-muted-foreground shrink-0 text-xs">Today</span>}
           <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-4 shrink-0" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[26rem] max-w-[calc(100vw-2rem)] p-3">
-        <ClassDayPicker
-          label="Class day"
-          sessions={sessions}
-          value={value}
-          onChange={(d) => {
-            onChange(d)
-            setOpen(false)
-          }}
-          meetings={meetings}
-        />
+      <PopoverContent
+        align="start"
+        className="w-(--radix-popover-trigger-width) min-w-72 gap-0 p-0"
+        // Open on the chosen day rather than the top of the list.
+        onOpenAutoFocus={(e) => {
+          e.preventDefault()
+          chosenRef.current?.focus()
+        }}
+      >
+        <div role="radiogroup" aria-label="Class day" className="max-h-72 overflow-y-auto overscroll-contain p-1">
+          {months.map(([key, days]) => (
+            <div key={key} role="presentation">
+              <p className="bg-popover text-muted-foreground sticky -top-1 z-10 px-2.5 pt-2 pb-1 text-[11px] font-medium tracking-wide uppercase">
+                {monthLabel(key)}
+              </p>
+              {days.map((s) => {
+                const reason = blockReason(s)
+                const selected = s.date === value
+                const count = booked.get(s.date) ?? 0
+                const note = shortReason(s) ?? (s.isToday ? "Today" : count ? `${count} booked` : "")
+                return (
+                  <button
+                    key={s.date}
+                    ref={selected ? chosenRef : undefined}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    aria-label={`${formatCalendarDate(s.date)}${reason ? `, can’t be booked: ${reason}` : ""}`}
+                    title={reason ? `Can’t be booked: ${reason}` : undefined}
+                    disabled={Boolean(reason)}
+                    onClick={() => {
+                      onChange(s.date)
+                      setOpen(false)
+                    }}
+                    className={cn(
+                      FIELD_OPTION,
+                      reason ? "text-muted-foreground cursor-not-allowed" : "hover:bg-accent cursor-pointer"
+                    )}
+                  >
+                    <span className={cn("shrink-0 tabular-nums", reason && "line-through", selected && "font-medium")}>
+                      {dayLabel(s.date)}
+                    </span>
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate text-right text-xs",
+                        reason && s.conflict ? "text-amber-800 dark:text-amber-300" : "text-muted-foreground"
+                      )}
+                    >
+                      {note}
+                    </span>
+                    <HugeiconsIcon
+                      icon={Tick02Icon}
+                      strokeWidth={2}
+                      className={cn("size-4 shrink-0", !selected && "invisible")}
+                      aria-hidden
+                    />
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
       </PopoverContent>
     </Popover>
   )
@@ -713,7 +789,7 @@ function TimeField({
                   setOpen(false)
                 }}
                 className={cn(
-                  "focus-visible:bg-accent flex min-w-0 items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 text-left text-sm outline-none",
+                  FIELD_OPTION,
                   unavailable ? "text-muted-foreground cursor-not-allowed" : "hover:bg-accent cursor-pointer"
                 )}
               >
@@ -733,151 +809,6 @@ function TimeField({
         </div>
       </PopoverContent>
     </Popover>
-  )
-}
-
-/**
- * The class days as a small calendar: a month at a time, a row per week and
- * a column per class weekday. A day that can't be booked stays in its place,
- * struck out, with the reason beside it.
- */
-function ClassDayPicker({
-  label,
-  sessions,
-  value,
-  onChange,
-  meetings,
-  disabled,
-}: {
-  label: string
-  sessions: MeetingSession[]
-  value: string
-  onChange: (date: string) => void
-  meetings: ThesisMeeting[]
-  disabled?: boolean
-}) {
-  const columns = CLASS_MEETING.weekdays
-  const months = useMemo(() => {
-    const byMonth = new Map<string, Map<string, (MeetingSession | null)[]>>()
-    for (const s of sessions) {
-      const column = columns.indexOf(weekdayOf(s.date))
-      if (column < 0) continue
-      const key = s.date.slice(0, 7)
-      const weeks = byMonth.get(key) ?? new Map<string, (MeetingSession | null)[]>()
-      // A week is named for its first class day, whichever of them the month holds.
-      const weekKey = addDays(s.date, columns[0] - columns[column])
-      const row = weeks.get(weekKey) ?? columns.map(() => null)
-      row[column] = s
-      weeks.set(weekKey, row)
-      byMonth.set(key, weeks)
-    }
-    return [...byMonth.entries()].map(([key, weeks]) => ({ key, weeks: [...weeks.entries()] }))
-  }, [sessions, columns])
-
-  // How many meetings each day already holds.
-  const booked = useMemo(() => {
-    const count = new Map<string, number>()
-    for (const m of meetings) {
-      if (m.canceled) continue
-      const date = schoolNow(new Date(m.start)).date
-      count.set(date, (count.get(date) ?? 0) + 1)
-    }
-    return count
-  }, [meetings])
-
-  const [shown, setShown] = useState(() => (value || sessions[0]?.date || "").slice(0, 7))
-  const index = Math.max(
-    0,
-    months.findIndex((m) => m.key === shown)
-  )
-  const month = months[index]
-  if (!month) return null
-  const anyBlocked = month.weeks.some(([, row]) => row.some((s) => s && blockReason(s)))
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium" aria-live="polite">
-          {monthLabel(month.key)}
-        </span>
-        <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-sm"
-            aria-label="Earlier month"
-            disabled={index === 0}
-            onClick={() => setShown(months[index - 1].key)}
-          >
-            <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-sm"
-            aria-label="Later month"
-            disabled={index >= months.length - 1}
-            onClick={() => setShown(months[index + 1].key)}
-          >
-            <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
-          </Button>
-        </div>
-      </div>
-      <div role="radiogroup" aria-label={label} className="grid grid-cols-2 gap-2">
-        {month.weeks.map(([weekKey, row]) =>
-          row.map((s, column) => {
-            if (!s) return <div key={`${weekKey}-${column}`} aria-hidden />
-            const reason = blockReason(s)
-            const selected = s.date === value
-            const count = booked.get(s.date) ?? 0
-            const note = shortReason(s) ?? (s.isToday ? "Today" : count ? `${count} booked` : "")
-            return (
-              <button
-                key={s.date}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                aria-label={`${formatCalendarDate(s.date)}${reason ? `, can’t be booked: ${reason}` : ""}`}
-                title={reason ? `Can’t be booked: ${reason}` : undefined}
-                disabled={disabled || Boolean(reason)}
-                onClick={() => onChange(s.date)}
-                className={cn(
-                  "focus-visible:ring-ring/50 flex h-10 min-w-0 items-center justify-between gap-2 rounded-lg border px-3 text-left text-sm transition-colors outline-none focus-visible:ring-3",
-                  selected
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : reason
-                      ? "bg-muted/40 text-muted-foreground cursor-not-allowed border-dashed"
-                      : "bg-background hover:bg-muted cursor-pointer disabled:cursor-default disabled:opacity-60"
-                )}
-              >
-                <span className={cn("shrink-0 font-medium tabular-nums", reason && "line-through")}>
-                  {tileDay(s.date)}
-                </span>
-                {note && (
-                  <span
-                    className={cn(
-                      "truncate text-xs",
-                      selected
-                        ? "text-primary-foreground/80"
-                        : reason && s.conflict
-                          ? "text-amber-800 dark:text-amber-300"
-                          : "text-muted-foreground"
-                    )}
-                  >
-                    {note}
-                  </span>
-                )}
-              </button>
-            )
-          })
-        )}
-      </div>
-      {anyBlocked && (
-        <p className="text-muted-foreground text-xs">
-          A day with no class, or with a school event during class, can&rsquo;t be booked.
-        </p>
-      )}
-    </div>
   )
 }
 
@@ -1032,15 +963,16 @@ function BookingForm({
       bookingStartTimes().map((minutes) => {
         const start = date ? schoolInstant(date, minutes) : 0
         const end = start + MEETING_MINUTES * 60_000
-        const sameTime = date
-          ? meetings.filter((m) => !m.canceled && overlaps(m.start, m.end, start, end))
-          : []
+        const live = date ? meetings.filter((m) => !m.canceled) : []
         return {
           minutes,
           past: Boolean(date) && start <= now,
-          // One student can't be in two meetings at once.
-          taken: Boolean(row) && sameTime.some((m) => meetingIncludes(m, row!.student.studentEmail)),
-          others: sameTime.length,
+          // One student can't be in two meetings at once, so any overlap rules a time out.
+          taken:
+            Boolean(row) &&
+            live.some((m) => overlaps(m.start, m.end, start, end) && meetingIncludes(m, row!.student.studentEmail)),
+          // "Others booked" means booked for this very start time, not merely overlapping it.
+          others: live.filter((m) => m.start === start).length,
         }
       }),
     [date, meetings, row, now]
