@@ -33,6 +33,16 @@ export function reviewActor(user: Record<string, unknown> | null | undefined): R
   }
 }
 
+/**
+ * The column a comment or event carries when a thesis advisor wrote it, so
+ * an advisor's own activity can be told apart from staff's (staff rows carry
+ * `teachers_id` instead). Spread into the row being posted.
+ */
+export function advisorAuthor(user: Record<string, unknown> | null | undefined): { advisors_id?: number } {
+  const id = reviewActor(user).advisorsId
+  return id != null ? { advisors_id: Number(id) } : {}
+}
+
 /** The most recent event of a type for one question, or null. */
 export function latestEvent(
   events: ResponseEvent[],
@@ -94,8 +104,9 @@ export function postResponseEvent(
     eventType: ResponseEventType
     actorName: string
     teachersId?: string | null
-    /** Set when a thesis advisor acted (needs an advisors_id column on the
-     *  events table to be stored; the "(advisor)" name tag covers it until then). */
+    /** Set when a thesis advisor acted. The Business Thesis events table
+     *  stores it (since 2026-11-10); where the column is missing Xano drops
+     *  it, and the "(advisor)" name tag still says who it was. */
     advisorsId?: number | null
   }
 ): void {

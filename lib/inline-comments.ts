@@ -37,6 +37,8 @@ interface UseInlineCommentsArgs {
   viewer: "teacher" | "student"
   authorName: string
   teachersId?: string | null
+  /** Set when the reviewer is a thesis advisor rather than staff. */
+  advisorsId?: number | null
 }
 
 function ts(v: Comment["created_at"]): number {
@@ -65,6 +67,7 @@ export function useInlineComments({
   viewer,
   authorName,
   teachersId,
+  advisorsId,
 }: UseInlineCommentsArgs) {
   const [comments, setComments] = useState<Comment[]>([])
   const [loading, setLoading] = useState(true)
@@ -148,6 +151,7 @@ export function useInlineComments({
         isOld: false,
         isComplete: false,
         teacher_name: authorName,
+        ...(isTeacher && advisorsId != null ? { advisors_id: advisorsId } : {}),
         isStudentReply: !isTeacher,
       }
       try {
@@ -172,7 +176,7 @@ export function useInlineComments({
         return null
       }
     },
-    [commentsEndpoint, studentId, sectionId, sectionIdField, fieldName, templateId, templateIdField, viewer, authorName, teachersId]
+    [commentsEndpoint, studentId, sectionId, sectionIdField, fieldName, templateId, templateIdField, viewer, authorName, teachersId, advisorsId]
   )
 
   const createThread = useCallback(

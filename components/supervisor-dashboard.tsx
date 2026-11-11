@@ -59,6 +59,9 @@ import { formatMeetingTime, meetingIncludes, type ThesisMeeting } from "@/lib/th
 const PRODUCT: AdvisorProduct = "business-thesis"
 const CFG = BUSINESSTHESIS_API_CONFIG
 
+/** Kept here rather than imported: the advisor activity page imports this file. */
+const advisorActivityHref = (advisorId: number | string) => `/admin/advisor-activity/${advisorId}`
+
 const ROSTER_HREF = "/admin/business-thesis"
 const ADVISORS_HREF = "/admin/advisors"
 
@@ -96,7 +99,7 @@ interface StudentProgress {
   oldestPendingAt: number | null
 }
 
-interface ThesisProgress {
+export interface ThesisProgress {
   byStudent: Map<string, StudentProgress>
 }
 
@@ -169,7 +172,7 @@ function summarizeProgress(
   return { byStudent }
 }
 
-function useThesisProgress() {
+export function useThesisProgress() {
   return useQuery<ThesisProgress>({
     queryKey: ["supervisor-thesis-progress"],
     queryFn: async () => {
@@ -436,7 +439,7 @@ export function SupervisorDashboard() {
   )
 }
 
-function Kpi({
+export function Kpi({
   icon,
   label,
   value,
@@ -699,7 +702,11 @@ function AdvisorCard({
             <AvatarFallback>{advisorInitials(advisor)}</AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <CardTitle className="truncate">{advisorName(advisor)}</CardTitle>
+            <CardTitle className="truncate">
+              <Link href={advisorActivityHref(advisor.id)} className="hover:underline" title="See this advisor’s activity">
+                {advisorName(advisor)}
+              </Link>
+            </CardTitle>
             <CardDescription className="truncate" title={advisor.email}>
               {advisor.email}
             </CardDescription>

@@ -21,6 +21,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  Activity01Icon,
   BookOpen01Icon,
   BookOpen02Icon,
   Calendar03Icon,
@@ -607,6 +608,17 @@ function scheduleNavItem(pathname: string) {
   }
 }
 
+/** What each thesis advisor has commented, asked to be revised and met about. */
+function advisorActivityNavItem(pathname: string) {
+  return {
+    title: "Advisor Activity",
+    url: "/admin/advisor-activity",
+    icon: <HugeiconsIcon icon={Activity01Icon} strokeWidth={2} />,
+    isActive: pathname.startsWith("/admin/advisor-activity"),
+    items: [],
+  }
+}
+
 /** An advisor outside a student's work: their product's rubric, and the
     meeting schedule for Business Thesis advisors. */
 function advisorNavItems(pathname: string, product: string | null) {
@@ -660,6 +672,7 @@ function buildTeacherBaseNav(sections: LifeMapSection[], btSections: BusinessThe
     },
     ...rubricNavItems(pathname, access.lifeMap),
     scheduleNavItem(pathname),
+    advisorActivityNavItem(pathname),
     // Thesis supervisors never edit the templates.
     ...(access.templates
       ? [

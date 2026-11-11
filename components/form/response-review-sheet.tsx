@@ -152,6 +152,8 @@ export function ResponseReviewSheet({
 
   const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
   const teachersId = ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null
+  // Set when the reviewer is a thesis advisor: their comments carry it.
+  const advisorsId = reviewActor(session?.user as Record<string, unknown>).advisorsId
 
   const postComment = useCallback(
     async (noteText: string, isRevisionFeedback = false): Promise<boolean> => {
@@ -166,6 +168,7 @@ export function ResponseReviewSheet({
         isOld: false,
         isComplete: false,
         teacher_name: teacherName,
+        ...(advisorsId != null ? { advisors_id: advisorsId } : {}),
         isRevisionFeedback,
       }
       try {
@@ -182,7 +185,7 @@ export function ResponseReviewSheet({
         return false
       }
     },
-    [target, studentId, fieldName, teacherName, teachersId, cfg.commentsEndpoint, F.sectionId, F.templateId]
+    [target, studentId, fieldName, teacherName, teachersId, advisorsId, cfg.commentsEndpoint, F.sectionId, F.templateId]
   )
 
   const handleDelete = useCallback(

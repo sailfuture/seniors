@@ -126,6 +126,8 @@ export function TeacherEssayReviewPage({
   const canApprove = useCanApprove()
   const teacherName = reviewActor(session?.user as Record<string, unknown>).actorName
   const teachersId = ((session?.user as Record<string, unknown>)?.teachers_id as string) ?? null
+  // Set when the reviewer is a thesis advisor: their comments carry it.
+  const advisorsId = reviewActor(session?.user as Record<string, unknown>).advisorsId
   const bumpSidebar = useBumpSidebar()
 
   const [loading, setLoading] = useState(true)
@@ -247,6 +249,7 @@ export function TeacherEssayReviewPage({
         isOld: false,
         isComplete: false,
         teacher_name: teacherName,
+        ...(advisorsId != null ? { advisors_id: advisorsId } : {}),
         isRevisionFeedback,
       }
       try {
@@ -263,7 +266,7 @@ export function TeacherEssayReviewPage({
         return false
       }
     },
-    [response, fieldName, studentId, teachersId, F.sectionId, F.templateId, questionId, sectionId, teacherName, cfg.commentsEndpoint]
+    [response, fieldName, studentId, teachersId, advisorsId, F.sectionId, F.templateId, questionId, sectionId, teacherName, cfg.commentsEndpoint]
   )
 
   const handleDelete = useCallback(
@@ -538,6 +541,7 @@ export function TeacherEssayReviewPage({
               viewer: "teacher",
               authorName: teacherName,
               teachersId,
+              advisorsId,
             }}
           />
         ) : (

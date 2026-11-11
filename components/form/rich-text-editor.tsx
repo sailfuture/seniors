@@ -77,6 +77,8 @@ export interface RichTextCommentConfig {
   viewer: "teacher" | "student"
   authorName: string
   teachersId?: string | null
+  /** Set when the reviewer is a thesis advisor rather than staff. */
+  advisorsId?: number | null
 }
 
 const DISABLED_COMMENTS = {

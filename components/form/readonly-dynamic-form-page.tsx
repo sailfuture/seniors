@@ -60,6 +60,7 @@ import {
   fetchResponseEvents,
   latestEvent,
   postResponseEvent,
+  advisorAuthor,
   reviewActor,
   type ResponseEvent,
 } from "@/lib/response-events"
@@ -473,6 +474,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         isOld: false,
         isComplete: false,
         teacher_name: teacherName,
+        ...advisorAuthor(session?.user as Record<string, unknown>),
       }
 
       const res = await fetch(cfg.commentsEndpoint, {
@@ -621,6 +623,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
               isComplete: false,
               isRevisionFeedback: true,
               teacher_name: teacherName,
+              ...advisorAuthor(session?.user as Record<string, unknown>),
             }),
           }).then(async (r) => {
             if (r.ok) {
@@ -659,6 +662,7 @@ export function ReadOnlyDynamicFormPage({ title, subtitle, sectionId, studentId,
         isOld: false,
         isComplete: false,
         teacher_name: teacherName,
+        ...advisorAuthor(session?.user as Record<string, unknown>),
         isRevisionFeedback: true,
       }
       if (groupId) payload[F.customGroupId] = groupId
@@ -1462,6 +1466,7 @@ function ReadonlyGroupCard({
                   isOld: false,
                   isComplete: false,
                   teacher_name: teacherName,
+                  ...advisorAuthor(session?.user as Record<string, unknown>),
                 }
                 const res = await fetch(cfg.commentsEndpoint, {
                   method: "POST",
