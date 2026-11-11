@@ -26,9 +26,16 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token"
 const API_BASE = "https://www.googleapis.com/calendar/v3"
 const TIME_ZONE = "America/New_York"
 
+/** A pasted env value without the quotes a .env line wraps it in. */
+function unquoted(v: string | undefined): string {
+  const s = (v ?? "").trim()
+  const wrapped = s.length >= 2 && (s[0] === '"' || s[0] === "'") && s[s.length - 1] === s[0]
+  return wrapped ? s.slice(1, -1).trim() : s
+}
+
 /** A pasted env value's first token: an email never contains whitespace. */
 function firstToken(v: string | undefined): string {
-  return (v ?? "").trim().split(/\s+/)[0] ?? ""
+  return unquoted(v).split(/\s+/)[0] ?? ""
 }
 
 /** The calendar id written into a secret iCal address, or "". */
@@ -49,16 +56,41 @@ interface CalendarConfig {
   calendarId: string
 }
 
+function readConfig(): CalendarConfig {
+  return {
+    clientEmail: firstToken(process.env.GOOGLE_CALENDAR_CLIENT_EMAIL),
+    // Vercel and .env files carry the PEM's newlines as literal "\n".
+    privateKey: unquoted(process.env.GOOGLE_CALENDAR_PRIVATE_KEY).replace(/\\n/g, "\n"),
+    impersonate: firstToken(process.env.GOOGLE_CALENDAR_IMPERSONATE),
+    calendarId:
+      firstToken(process.env.THESIS_MEETINGS_CALENDAR_ID) ||
+      calendarIdFromIcsUrl(process.env.THESIS_MEETINGS_ICS_URL),
+  }
+}
+
 function getConfig(): CalendarConfig | null {
-  const clientEmail = firstToken(process.env.GOOGLE_CALENDAR_CLIENT_EMAIL)
-  const rawKey = process.env.GOOGLE_CALENDAR_PRIVATE_KEY
-  const impersonate = firstToken(process.env.GOOGLE_CALENDAR_IMPERSONATE)
-  const calendarId =
-    firstToken(process.env.THESIS_MEETINGS_CALENDAR_ID) ||
-    calendarIdFromIcsUrl(process.env.THESIS_MEETINGS_ICS_URL)
-  if (!clientEmail || !rawKey || !impersonate || !calendarId) return null
-  // Vercel and .env files carry the PEM's newlines as literal "\n".
-  return { clientEmail, privateKey: rawKey.replace(/\\n/g, "\n"), impersonate, calendarId }
+  const c = readConfig()
+  return c.clientEmail && c.privateKey && c.impersonate && c.calendarId ? c : null
+}
+
+/**
+ * The settings this deployment still lacks before it can book, by name and
+ * never by value. Empty when booking is connected.
+ */
+export function missingCalendarSettings(): string[] {
+  const c = readConfig()
+  const missing: string[] = []
+  if (!c.clientEmail) missing.push("GOOGLE_CALENDAR_CLIENT_EMAIL")
+  if (!c.privateKey) missing.push("GOOGLE_CALENDAR_PRIVATE_KEY")
+  if (!c.impersonate) missing.push("GOOGLE_CALENDAR_IMPERSONATE")
+  if (!c.calendarId) {
+    missing.push(
+      unquoted(process.env.THESIS_MEETINGS_ICS_URL)
+        ? "THESIS_MEETINGS_CALENDAR_ID (the calendar ID couldn’t be read from THESIS_MEETINGS_ICS_URL)"
+        : "THESIS_MEETINGS_CALENDAR_ID (or THESIS_MEETINGS_ICS_URL)"
+    )
+  }
+  return missing
 }
 
 /** Whether the app can write to the thesis meetings calendar. */

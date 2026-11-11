@@ -24,6 +24,7 @@ import {
   createThesisEvent,
   isThesisCalendarConfigured,
   listThesisEvents,
+  missingCalendarSettings,
 } from "@/lib/google-calendar.server"
 import { APP_EVENT_TAG, advisorScope, lower, toMeeting } from "@/lib/thesis-meetings.server"
 import {
@@ -84,7 +85,9 @@ export async function GET() {
 
   const icsUrl = process.env.THESIS_MEETINGS_ICS_URL
   const canBook = isThesisCalendarConfigured()
-  if (!icsUrl && !canBook) return json({ configured: false, canBook, ok: true, meetings: [] })
+  // Staff are told which settings are missing, by name only.
+  const setup = !canBook && isStaffRole(role) ? { missing: missingCalendarSettings() } : {}
+  if (!icsUrl && !canBook) return json({ configured: false, canBook, ...setup, ok: true, meetings: [] })
 
   let meetings: ThesisMeeting[] | null = null
   if (canBook) {
@@ -99,11 +102,11 @@ export async function GET() {
     }
   }
   if (!meetings) {
-    if (!icsUrl) return json({ configured: true, canBook, ok: false, meetings: [], error: "calendar unavailable" }, 502)
+    if (!icsUrl) return json({ configured: true, canBook, ...setup, ok: false, meetings: [], error: "calendar unavailable" }, 502)
     try {
       meetings = await meetingsFromIcs(icsUrl)
     } catch {
-      return json({ configured: true, canBook, ok: false, meetings: [], error: "calendar unavailable" }, 502)
+      return json({ configured: true, canBook, ...setup, ok: false, meetings: [], error: "calendar unavailable" }, 502)
     }
   }
 
@@ -127,7 +130,7 @@ export async function GET() {
   }
 
   meetings.sort((a, b) => a.start - b.start)
-  return json({ configured: true, canBook, ok: true, meetings })
+  return json({ configured: true, canBook, ...setup, ok: true, meetings })
 }
 
 function refuse(error: string, status: number) {

@@ -64,6 +64,8 @@ export interface ThesisMeetingsResponse {
   configured: boolean
   /** Whether meetings can be booked (and canceled) from the app. */
   canBook?: boolean
+  /** Staff only: the settings this deployment still lacks before it can book. */
+  missing?: string[]
   /** False when the calendar couldn't be read. */
   ok: boolean
   meetings: ThesisMeeting[]

@@ -273,6 +273,7 @@ export function ThesisSchedule({
         onClose={() => setBooking(null)}
         forAdvisor={forAdvisor}
         canBook={canBook === true}
+        missing={data?.missing ?? []}
         rows={rows ?? []}
         days={bookableDays}
         meetings={meetings}
@@ -479,6 +480,7 @@ function BookingDialog({
   onClose,
   forAdvisor,
   canBook,
+  missing,
   rows,
   days,
   meetings,
@@ -488,6 +490,8 @@ function BookingDialog({
   onClose: () => void
   forAdvisor: boolean
   canBook: boolean
+  /** The settings the deployment lacks, when the server names them (staff only). */
+  missing: string[]
   rows: StudentRow[]
   days: MeetingSession[]
   meetings: ThesisMeeting[]
@@ -513,11 +517,33 @@ function BookingDialog({
               meetings={meetings}
             />
           ) : (
-            <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-              {forAdvisor
-                ? "Booking isn’t open yet. SailFuture Academy staff are connecting the meetings calendar."
-                : "Booking isn’t connected to the meetings calendar yet. Add GOOGLE_CALENDAR_CLIENT_EMAIL, GOOGLE_CALENDAR_PRIVATE_KEY and GOOGLE_CALENDAR_IMPERSONATE to this project in Vercel (the same values the apply portal uses), then redeploy."}
-            </p>
+            <div className="text-muted-foreground flex flex-col gap-2 rounded-lg border border-dashed p-4 text-sm">
+              {forAdvisor ? (
+                <p>Booking isn’t open yet. SailFuture Academy staff are connecting the meetings calendar.</p>
+              ) : missing.length > 0 ? (
+                <>
+                  <p>
+                    Booking isn’t connected to the meetings calendar yet. This deployment is missing{" "}
+                    {missing.length === 1 ? "one setting" : `${missing.length} settings`}:
+                  </p>
+                  <ul className="text-foreground list-disc pl-5 font-mono text-xs break-words">
+                    {missing.map((name) => (
+                      <li key={name}>{name}</li>
+                    ))}
+                  </ul>
+                  <p>
+                    Add {missing.length === 1 ? "it" : "them"} to this project in Vercel for the Production
+                    environment, then redeploy.
+                  </p>
+                </>
+              ) : (
+                <p>
+                  Booking isn’t connected to the meetings calendar yet. Add GOOGLE_CALENDAR_CLIENT_EMAIL,
+                  GOOGLE_CALENDAR_PRIVATE_KEY and GOOGLE_CALENDAR_IMPERSONATE to this project in Vercel (the same
+                  values the apply portal uses), then redeploy.
+                </p>
+              )}
+            </div>
           ))}
       </DialogContent>
     </Dialog>
