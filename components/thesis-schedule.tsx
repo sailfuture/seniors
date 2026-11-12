@@ -35,6 +35,7 @@ import {
   type CalendarSubscription,
   type ThesisMeetingsResponse,
 } from "@/lib/thesis-meetings"
+import { absenceDays, absenceOn, fetchStudentAbsences, type StudentAbsence } from "@/lib/student-absences"
 import { relativeTime } from "@/lib/format-time"
 import {
   CLASS_MEETING,
@@ -170,6 +171,13 @@ export function ThesisSchedule({
 
   const data = meetingsQuery.data
   const meetings = useMemo(() => (data?.ok ? data.meetings : []), [data])
+  // Who school attendance has out, and when. Nothing is flagged until it
+  // loads, or when it can't be read.
+  const absences = useQuery({
+    queryKey: ["student-absences"],
+    queryFn: fetchStudentAbsences,
+    staleTime: 5 * 60_000,
+  }).data
 
   const rows = useMemo<StudentRow[] | null>(() => {
     const advisors = advisorsQuery.data
@@ -269,6 +277,7 @@ export function ThesisSchedule({
         onClose={() => setDay(null)}
         meetings={meetings}
         studentsByEmail={studentsByEmail}
+        absences={absences}
         rows={rows}
         loading={meetingsQuery.isPending}
         configured={configured}
@@ -280,6 +289,7 @@ export function ThesisSchedule({
         onBook={canBook === null ? undefined : () => setBooking({})}
         subscribe={data?.subscribe}
         meetings={upcoming}
+        absences={absences}
         rows={rows}
         loading={meetingsQuery.isPending}
         configured={configured}
@@ -305,6 +315,7 @@ export function ThesisSchedule({
         rows={rows}
         days={bookableDays}
         meetings={meetings}
+        absences={absences}
       />
 
       <Card>
@@ -512,6 +523,7 @@ function BookingDialog({
   rows,
   days,
   meetings,
+  absences,
 }: {
   /** What to open on; null while closed. */
   request: BookingRequest | null
@@ -524,6 +536,7 @@ function BookingDialog({
   rows: StudentRow[] | null
   days: MeetingSession[]
   meetings: ThesisMeeting[]
+  absences: StudentAbsence[] | undefined
 }) {
   // The student picker's popup mounts inside the dialog; a modal dialog
   // blocks clicks and scrolling anywhere else.
@@ -551,6 +564,7 @@ function BookingDialog({
               rows={rows}
               days={days}
               meetings={meetings}
+              absences={absences}
             />
           ) : (
             <div className="text-muted-foreground flex flex-col gap-2 rounded-lg border border-dashed p-4 text-sm">
@@ -583,6 +597,27 @@ function BookingDialog({
           ))}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** "today", "on Thu, Nov 12" or "Nov 9 – Nov 12", to finish "is out of school …". */
+const absenceWhen = (a: StudentAbsence) =>
+  a.from === a.through && absenceDays(a) !== "today" ? `on ${absenceDays(a)}` : absenceDays(a)
+
+/** School attendance has the student out on the day of a meeting. */
+function OutBadge({ absence, name }: { absence: StudentAbsence; name: string }) {
+  return (
+    <Badge
+      variant="outline"
+      title={
+        absence.partial
+          ? `School attendance has ${name} out for part of this day.`
+          : `School attendance has ${name} out of school ${absenceWhen(absence)}.`
+      }
+      className="shrink-0 border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+    >
+      {absence.partial ? "Out part of day" : "Out of school"}
+    </Badge>
   )
 }
 
@@ -619,7 +654,8 @@ const FIELD_OPTION =
 /**
  * The class day as a dropdown: the chosen day on its face, every class day
  * left behind it, month by month. A day that can't be booked stays in the
- * list, struck out, with the reason beside it.
+ * list, struck out, with the reason beside it; so does a day school
+ * attendance has the chosen student out for.
  */
 function ClassDayField({
   id,
@@ -627,6 +663,8 @@ function ClassDayField({
   value,
   onChange,
   meetings,
+  away,
+  studentFirst,
   disabled,
 }: {
   id: string
@@ -634,6 +672,9 @@ function ClassDayField({
   value: string
   onChange: (date: string) => void
   meetings: ThesisMeeting[]
+  /** The days the chosen student is out, by date. */
+  away: Map<string, StudentAbsence>
+  studentFirst: string
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -689,10 +730,15 @@ function ClassDayField({
                 {monthLabel(key)}
               </p>
               {days.map((s) => {
-                const reason = blockReason(s)
+                const absence = away.get(s.date)
+                const out = absence && !absence.partial ? `${studentFirst} is out` : null
+                const reason = blockReason(s) ?? out
                 const selected = s.date === value
                 const count = booked.get(s.date) ?? 0
-                const note = shortReason(s) ?? (s.isToday ? "Today" : count ? `${count} booked` : "")
+                const note =
+                  shortReason(s) ??
+                  out ??
+                  (absence ? "Out part of the day" : s.isToday ? "Today" : count ? `${count} booked` : "")
                 return (
                   <button
                     key={s.date}
@@ -718,7 +764,7 @@ function ClassDayField({
                     <span
                       className={cn(
                         "min-w-0 flex-1 truncate text-right text-xs",
-                        reason && s.conflict ? "text-amber-800 dark:text-amber-300" : "text-muted-foreground"
+                        (reason && s.conflict) || absence ? "text-amber-800 dark:text-amber-300" : "text-muted-foreground"
                       )}
                     >
                       {note}
@@ -927,6 +973,7 @@ function BookingForm({
   rows,
   days,
   meetings,
+  absences,
 }: {
   request: BookingRequest
   onClose: () => void
@@ -936,6 +983,8 @@ function BookingForm({
   rows: StudentRow[]
   days: MeetingSession[]
   meetings: ThesisMeeting[]
+  /** Who school attendance has out; undefined until it loads. */
+  absences: StudentAbsence[] | undefined
 }) {
   const queryClient = useQueryClient()
   const [now] = useState(() => Date.now())
@@ -943,11 +992,17 @@ function BookingForm({
   const [studentId, setStudentId] = useState(
     () => request.studentId ?? (forAdvisor && rows[0] ? String(rows[0].student.id) : "")
   )
-  // The day asked for, unless it can't be booked; otherwise the next one that can.
+  // The day asked for, unless it can't be booked; otherwise the next one that
+  // can, skipping the days an already chosen student is out.
   const [date, setDate] = useState(() => {
     const asked = request.date ? days.find((d) => d.date === request.date) : undefined
     if (request.date && (!asked || !blockReason(asked))) return request.date
-    return days.find((d) => !blockReason(d))?.date ?? ""
+    const open = days.filter((d) => !blockReason(d))
+    const isOut = (d: MeetingSession) => {
+      const a = absenceOn(absences, studentId, d.date)
+      return Boolean(a && !a.partial)
+    }
+    return (open.find((d) => !isOut(d)) ?? open[0])?.date ?? ""
   })
   const [picked, setPicked] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
@@ -990,6 +1045,19 @@ function BookingForm({
       }),
     [date, meetings, row, now]
   )
+  // The days school attendance has this student out, among the ones offered.
+  const away = useMemo(() => {
+    const map = new Map<string, StudentAbsence>()
+    for (const d of dayOptions) {
+      const a = absenceOn(absences, studentId, d.date)
+      if (a) map.set(d.date, a)
+    }
+    return map
+  }, [absences, studentId, dayOptions])
+  const absence = away.get(date) ?? null
+  /** Out for the whole day chosen: it can't be booked. */
+  const out = Boolean(absence && !absence.partial)
+
   const open = times.filter((t) => !t.past && !t.taken)
   const startMinutes = picked !== null && open.some((t) => t.minutes === picked) ? picked : (open[0]?.minutes ?? null)
   const chosen = times.find((t) => t.minutes === startMinutes) ?? null
@@ -1005,7 +1073,7 @@ function BookingForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!row || !date || startMinutes === null || saving) return
+    if (!row || !date || startMinutes === null || saving || out) return
     setSaving(true)
     setError(null)
     const result = await bookThesisMeeting({ studentId, date, startMinutes })
@@ -1103,6 +1171,8 @@ function BookingForm({
                   setPicked(null)
                 }}
                 meetings={meetings}
+                away={away}
+                studentFirst={first}
                 disabled={saving}
               />
             )}
@@ -1119,6 +1189,13 @@ function BookingForm({
             />
           </div>
         </div>
+        {absence && (
+          <p role="status" className="text-xs font-medium text-amber-800 dark:text-amber-300">
+            {absence.partial
+              ? `School attendance has ${first} out for part of ${dayLabel(date)}. Check that ${first} will be in class before you book.`
+              : `School attendance has ${first} out of school ${absenceWhen(absence)}. Pick another day.`}
+          </p>
+        )}
         <p className="text-muted-foreground text-xs">
           {open.length === 0 && date
             ? times.some((t) => t.taken)
@@ -1141,7 +1218,7 @@ function BookingForm({
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
           Not now
         </Button>
-        <Button type="submit" disabled={!row || !date || startMinutes === null || saving}>
+        <Button type="submit" disabled={!row || !date || startMinutes === null || saving || out}>
           {saving ? "Booking…" : "Book meeting"}
         </Button>
       </DialogFooter>
@@ -1169,6 +1246,7 @@ function DaySheet({
   onClose,
   meetings,
   studentsByEmail,
+  absences,
   rows,
   loading,
   configured,
@@ -1178,6 +1256,8 @@ function DaySheet({
   onClose: () => void
   meetings: ThesisMeeting[]
   studentsByEmail: Map<string, RosterStudent>
+  /** Who school attendance has out; undefined until it loads. */
+  absences: StudentAbsence[] | undefined
   /** Each senior with their thesis advisors; null while loading. */
   rows: StudentRow[] | null
   loading: boolean
@@ -1244,6 +1324,8 @@ function DaySheet({
                       const advisors = [
                         ...new Set(who.flatMap((s) => (advisorsOf.get(String(s.id)) ?? []).map(advisorName))),
                       ].join(", ")
+                      const outStudent = who.find((s) => absenceOn(absences, s.id, day?.date))
+                      const absence = outStudent ? absenceOn(absences, outStudent.id, day?.date) : null
                       return (
                         <TableRow key={m.id} className="hover:bg-transparent">
                           <TableCell className="pl-4 font-medium tabular-nums">
@@ -1252,8 +1334,14 @@ function DaySheet({
                           <TableCell>
                             <span className="flex min-w-0 items-center gap-2.5">
                               {who[0] && <StudentPhoto student={who[0]} className="size-7" />}
-                              <span className="truncate font-medium" title={names || undefined}>
-                                {names || m.title || "Thesis meeting"}
+                              {/* The badge sits under the name: beside it, the column is too narrow for both. */}
+                              <span className="flex min-w-0 flex-col items-start gap-1">
+                                <span className="max-w-full truncate font-medium" title={names || undefined}>
+                                  {names || m.title || "Thesis meeting"}
+                                </span>
+                                {outStudent && absence && (
+                                  <OutBadge absence={absence} name={outStudent.firstName || studentName(outStudent)} />
+                                )}
                               </span>
                             </span>
                           </TableCell>
@@ -1329,6 +1417,7 @@ function UpcomingCard({
   onBook,
   subscribe,
   meetings,
+  absences,
   rows,
   loading,
   configured,
@@ -1340,6 +1429,8 @@ function UpcomingCard({
   /** Links for adding the shared calendar to your own, when there are any. */
   subscribe: CalendarSubscription | undefined
   meetings: ThesisMeeting[]
+  /** Who school attendance has out; undefined until it loads. */
+  absences: StudentAbsence[] | undefined
   rows: StudentRow[] | null
   loading: boolean
   configured: boolean
@@ -1399,6 +1490,8 @@ function UpcomingCard({
               {meetings.map((m) => {
                 const who = (rows ?? []).filter((r) => meetingIncludes(m, r.student.studentEmail))
                 const first = who[0]
+                const outRow = who.find((r) => absenceOn(absences, r.student.id, dayKey(m.start)))
+                const absence = outRow ? absenceOn(absences, outRow.student.id, dayKey(m.start)) : null
                 return (
                   <TableRow
                     key={m.id}
@@ -1416,6 +1509,9 @@ function UpcomingCard({
                             <AvatarFallback className="text-[10px]">{initialsOf(first!.student)}</AvatarFallback>
                           </Avatar>
                           <span className="font-medium">{who.map((r) => studentName(r.student)).join(", ")}</span>
+                          {outRow && absence && (
+                            <OutBadge absence={absence} name={outRow.student.firstName || studentName(outRow.student)} />
+                          )}
                         </div>
                       ) : (
                         <span className="text-muted-foreground">{m.title || "Thesis meeting"}</span>

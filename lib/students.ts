@@ -37,6 +37,8 @@ export interface RosterStudent {
   profileImage: string
   yearGroup?: string
   crewName?: string
+  /** The student's id in Toddle, which the school's attendance is keyed by. */
+  toddleID?: string
 }
 
 export function studentName(s: RosterStudent): string {

@@ -316,6 +316,17 @@ export async function createThesisEvent(input: NewThesisEvent): Promise<Calendar
   return event
 }
 
+/** Writes the app's own notes onto an event. Guests aren't told and never
+    see them. Pass every note the event should keep, not only the new one. */
+export async function tagThesisEvent(eventId: string, tags: Record<string, string>): Promise<void> {
+  const res = await calendarFetch(`/events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    query: { sendUpdates: "none" },
+    body: JSON.stringify({ extendedProperties: { private: tags } }),
+  })
+  if (!res.ok) throw await failure("update", res)
+}
+
 /** Removes the event; Google emails the guests. Already gone counts as done. */
 export async function deleteThesisEvent(eventId: string): Promise<void> {
   const res = await calendarFetch(`/events/${encodeURIComponent(eventId)}`, {

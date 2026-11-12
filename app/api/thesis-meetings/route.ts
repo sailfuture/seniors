@@ -31,7 +31,9 @@ import {
   thesisCalendarId,
 } from "@/lib/google-calendar.server"
 import { courseTeacherRecipients, sendBookingConfirmation } from "@/lib/thesis-meeting-email.server"
-import { APP_EVENT_TAG, advisorScope, lower, toMeeting } from "@/lib/thesis-meetings.server"
+import { APP_EVENT_TAG, advisorScope, longDate, lower, toMeeting } from "@/lib/thesis-meetings.server"
+import { absenceOn } from "@/lib/student-absences"
+import { loadStudentAbsences } from "@/lib/student-absences.server"
 import {
   MEETING_MINUTES,
   bookingStartTimes,
@@ -54,7 +56,8 @@ import {
  * goes on the shared calendar with the student, their advisor, the thesis
  * supervisor and whoever booked as guests, and Google emails the invitations.
  * The adults also get the app's own confirmation email. A class day the
- * school calendar closes, or puts an event on during class, can't be booked.
+ * school calendar closes, or puts an event on during class, can't be booked,
+ * and neither can a day school attendance has the student out for.
  */
 export const dynamic = "force-dynamic"
 
@@ -196,18 +199,6 @@ async function blockedOn(date: string): Promise<string | null> {
   }
 }
 
-/** "Thursday, November 12, 2026" */
-function longDate(isoDate: string): string {
-  const [y, m, d] = isoDate.split("-").map(Number)
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
-    timeZone: "UTC",
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  })
-}
-
 export async function POST(req: Request) {
   const session = await getAppSession()
   const role = session?.user.role
@@ -252,6 +243,15 @@ export async function POST(req: Request) {
   const studentEmail = lower(student.studentEmail)
   if (!studentEmail) return refuse("That student has no school email to invite.", 422)
   if (blocked) return refuse(blocked, 409)
+  // A day the school already knows the student is out for. Part of a day
+  // doesn't rule it out, and attendance that can't be read blocks nothing.
+  const away = absenceOn(await loadStudentAbsences([student], { through: date }), studentId, date)
+  if (away && !away.partial) {
+    return refuse(
+      `${studentName(student)} is out of school on ${longDate(date)}, according to school attendance. Pick another day.`,
+      409
+    )
+  }
 
   // Who is invited: the student, their advisor, the thesis supervisor, and
   // whoever booked. An advisor books for themselves; staff book on behalf of

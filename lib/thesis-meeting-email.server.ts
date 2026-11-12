@@ -3,11 +3,15 @@ import { APP_URL, escapeHtml, renderBrandedEmail } from "@/lib/email-template"
 import { fetchStaff } from "@/lib/staff"
 
 /**
- * The confirmation that goes out once a thesis meeting is booked: who, when
- * and where, with a link to the event in Google Calendar. It goes to the
- * adults around the meeting (the thesis advisor, the thesis supervisor, the
- * course teacher and whoever booked). The student isn't on it; Google's own
- * invitation already reaches them.
+ * The app's own emails about thesis meetings, to the adults around one (the
+ * thesis advisor, the thesis supervisor, the course teachers and whoever
+ * booked). The student isn't on them; Google's own invitation reaches them.
+ *
+ *  - The confirmation once a meeting is booked: who, when and where, with a
+ *    link to the event in Google Calendar.
+ *  - The notice that school attendance has the student out on the day of a
+ *    booked meeting, so an advisor doesn't come in for nothing. It says which
+ *    days, never why.
  */
 
 const FROM =
@@ -105,6 +109,88 @@ export async function sendBookingConfirmation(c: BookingConfirmation): Promise<s
       ...(c.replyTo ? { replyTo: c.replyTo } : {}),
       subject: `Thesis meeting booked: ${c.studentName}, ${c.dateLabel}`,
       html: bookingConfirmationHtml(c),
+    })
+    return error ? error.message : null
+  } catch (err) {
+    return err instanceof Error ? err.message : "email failed"
+  }
+}
+
+/** The lowercased, de-duplicated addresses in a recipient list. */
+function addresses(list: Recipient[]): string[] {
+  const seen = new Set<string>()
+  return list
+    .map((r) => r.email.trim().toLowerCase())
+    .filter((e) => e.includes("@") && !seen.has(e) && Boolean(seen.add(e)))
+}
+
+export interface AbsenceNotice {
+  to: Recipient[]
+  studentName: string
+  /** The student's thesis advisors, by name; empty when they have none. */
+  advisorNames: string[]
+  /** The meeting's day: "Thursday, November 12, 2026" */
+  dateLabel: string
+  /** "12:00 pm – 1:00 pm" */
+  timeLabel: string
+  /** The days the student is out: "today", "Thu, Nov 12" or "Nov 9 – Nov 12". */
+  outLabel: string
+  /** Out for only part of the day, so class may be unaffected. */
+  partial: boolean
+  /** Marked out in today's attendance, rather than told ahead of time. */
+  markedToday: boolean
+  /** Replies go to the senior class teachers. */
+  replyTo?: string[]
+}
+
+export function absenceNoticeHtml(n: AbsenceNotice): string {
+  const student = escapeHtml(n.studentName)
+  const date = escapeHtml(n.dateLabel)
+  const lead = n.partial
+    ? `School attendance has <strong>${student}</strong> out for part of <strong>${date}</strong>, the day of a booked Business Thesis meeting.`
+    : `School attendance has <strong>${student}</strong> out of school on <strong>${date}</strong>, the day of a booked Business Thesis meeting.`
+  const advice = n.partial
+    ? `${student} may still be in class at the meeting time. If you are coming in for it, please check with the senior class teachers first.`
+    : `The meeting is still on the calendar in case that changes. If you were coming in for it, please don’t make the trip without checking with the senior class teachers first.`
+  return renderBrandedEmail({
+    title: "Student out for a thesis meeting",
+    subtitle: `${n.studentName} · ${n.dateLabel}`,
+    preheader: `${n.studentName} is out ${n.partial ? "for part of" : "on"} ${n.dateLabel}`,
+    paragraphs: [lead, advice],
+    tiles: [
+      { label: "Student", body: n.studentName },
+      { label: "Meeting", body: `${n.dateLabel}, ${n.timeLabel} Eastern` },
+      {
+        label: n.advisorNames.length > 1 ? "Thesis advisors" : "Thesis advisor",
+        body: n.advisorNames.length ? n.advisorNames.join(", ") : "None assigned yet",
+      },
+      {
+        label: "Attendance",
+        body: n.partial
+          ? "Out for part of the day"
+          : n.markedToday
+            ? "Marked out today"
+            : `Out ${n.outLabel}`,
+      },
+    ],
+    cta: { label: "Open the Schedule page", url: `${APP_URL}/schedule` },
+    footnote: `To cancel this meeting and book another class day, open the <a href="${APP_URL}/schedule" style="color:#0d2345;">Schedule page</a> in the SailFuture Academy Senior Dashboard. This notice comes from the school’s attendance records and is sent once per meeting. Replies go to the senior class teachers.`,
+  })
+}
+
+/** Sends the notice. Returns an error message, or null when it went. */
+export async function sendAbsenceNotice(n: AbsenceNotice): Promise<string | null> {
+  const to = addresses(n.to)
+  if (to.length === 0) return "no one to email"
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) return "RESEND_API_KEY is missing"
+  try {
+    const { error } = await new Resend(apiKey).emails.send({
+      from: FROM,
+      to,
+      ...(n.replyTo?.length ? { replyTo: n.replyTo } : {}),
+      subject: `Student out: ${n.studentName}, thesis meeting ${n.dateLabel}`,
+      html: absenceNoticeHtml(n),
     })
     return error ? error.message : null
   } catch (err) {

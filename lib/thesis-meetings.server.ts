@@ -33,6 +33,18 @@ export function toMeeting(e: CalendarEvent): ThesisMeeting {
 
 export const lower = (email: string | null | undefined) => (email ?? "").trim().toLowerCase()
 
+/** "Thursday, November 12, 2026" */
+export function longDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
 /** An advisor's own row and the students assigned to them. */
 export async function advisorScope(advisorId: number): Promise<{
   advisors: Advisor[]
