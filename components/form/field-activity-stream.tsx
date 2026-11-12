@@ -25,6 +25,9 @@ import { cn } from "@/lib/utils"
 import { Linkify } from "@/components/linkify"
 import type { Comment } from "@/lib/form-types"
 import type { ResponseEvent } from "@/lib/response-events"
+import { advisorName } from "@/lib/advisors"
+import { commentStaffName, loggedCommentAuthor } from "@/lib/comment-author"
+import { useAdvisors } from "@/lib/queries"
 
 function parseTimestamp(ts: string | number | undefined | null): number {
   if (!ts) return 0
@@ -166,6 +169,24 @@ export function FieldActivityStream({
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Who wrote each reviewer comment: the staff row it links to, else the
+  // review log's entry for the same moment, else the advisor it carries. The
+  // advisor directory is read only when a comment here needs it.
+  const namedWithoutDirectory = (c: Comment) =>
+    commentStaffName(c) ?? loggedCommentAuthor(c, events, { keepAdvisorTag: true })
+  const needsDirectory = comments.some(
+    (c) => c.isStudentReply !== true && Number(c.advisors_id ?? 0) > 0 && !namedWithoutDirectory(c)
+  )
+  const advisors = useAdvisors({ enabled: needsDirectory }).data
+  const reviewerName = (c: Comment): string => {
+    const known = namedWithoutDirectory(c)
+    if (known) return known
+    const advisorId = Number(c.advisors_id ?? 0)
+    const advisor = advisorId ? advisors?.find((a) => Number(a.id) === advisorId) : undefined
+    if (advisor) return advisorName(advisor)
+    return advisorId ? "Thesis advisor" : "Teacher"
+  }
+
   // Opening the thread counts as reading it: flag each unread teacher comment
   // once (the ref survives parent-state churn, so a comment isn't re-marked
   // while the parent's PATCH is still in flight).
@@ -281,7 +302,7 @@ export function FieldActivityStream({
         const isRevision = c.isRevisionFeedback === true
         const variant = isRevision ? "outline" : own ? "secondary" : "muted"
         const align = own ? "end" : "start"
-        const authorName = c.teacher_name || (isStudentAuthored ? "Student" : "Teacher")
+        const authorName = isStudentAuthored ? c.teacher_name || "Student" : reviewerName(c)
         const unreadForStudent = viewer === "student" && !isStudentAuthored && !c.isOld
         const readTime = c.isRead
           ? getRelativeTime(

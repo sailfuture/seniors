@@ -18,6 +18,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon, UserIcon } from "@hugeicons/core-free-icons"
 import { Badge } from "@/components/ui/badge"
 import { advisorName, fetchAdvisors } from "@/lib/advisors"
+import { SAME_ACTION_MS, commentStaffName, eventActorName } from "@/lib/comment-author"
 import type { FormApiConfig } from "@/lib/form-api-config"
 import { fetchResponseEvents, latestEvent, type ResponseEvent } from "@/lib/response-events"
 import { isStaffRole } from "@/lib/roles"
@@ -77,19 +78,10 @@ interface TeacherRef {
 }
 
 /** The staff member who wrote a comment, by name, when the row carries one. */
-function teacherOf(c: TeacherComment): string | undefined {
-  const t = (Array.isArray(c._teachers) ? c._teachers[0] : c._teachers) ?? c._teacher
-  const name = t ? `${t.firstName ?? ""} ${t.lastName ?? ""}`.trim() || (t.name ?? "") : ""
-  return name || c.teacher_name || undefined
-}
+const teacherOf = (c: TeacherComment): string | undefined => commentStaffName(c)
 
 /** A review event's actor without the "(advisor)" tag the log adds. */
-function actorOf(e: ResponseEvent | null | undefined): string | undefined {
-  return e?.actor_name?.replace(/\s*\(advisor\)\s*$/i, "").trim() || undefined
-}
-
-/** A revision note is saved moments after the request it goes with. */
-const SAME_ACTION_MS = 2 * 60_000
+const actorOf = (e: ResponseEvent | null | undefined): string | undefined => eventActorName(e)
 
 interface SectionInfo {
   id: number
