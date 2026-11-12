@@ -39,6 +39,7 @@ import { relativeTime } from "@/lib/format-time"
 import {
   CLASS_MEETING,
   addDays,
+  defaultTerm,
   defaultYear,
   eventCategory,
   formatCalendarDate,
@@ -225,20 +226,28 @@ export function ThesisSchedule({
   /** Null while the meetings are still loading. */
   const canBook = data ? data.canBook === true : null
 
-  // Every class day left in the school year (or the coming weeks when the
+  // Every class day left in the current term (or the coming weeks when the
   // calendar can't say), including the ones that can't be booked: the day
-  // picker shows those too, with the reason.
+  // picker shows those too, with the reason. A day opened from a later term's
+  // schedule brings that term's days instead.
+  const askedDate = booking?.date
   const bookableDays = useMemo(() => {
     const cal = calendarQuery.data
+    let from = today
     let through = addDays(today, BOOKING_WEEKS * 7 - 1)
     if (cal) {
       const year = defaultYear(yearsWithDays(cal), today)
-      const terms = year ? termsOfYear(cal, year.id) : []
-      const last = terms[terms.length - 1]
-      if (last && last.end >= today) through = last.end
+      const terms = (year ? termsOfYear(cal, year.id) : []).filter((t) => t.end >= today)
+      const term =
+        (askedDate ? terms.find((t) => t.start <= askedDate && askedDate <= t.end) : undefined) ??
+        defaultTerm(terms, today)
+      if (term) {
+        if (term.start > today) from = term.start
+        through = term.end
+      }
     }
-    return meetingOutlook(cal?.days ?? [], { from: today, through }, undefined, cal?.events ?? []).sessions
-  }, [calendarQuery.data, today])
+    return meetingOutlook(cal?.days ?? [], { from, through }, undefined, cal?.events ?? []).sessions
+  }, [calendarQuery.data, today, askedDate])
 
   // An advisor cancels only meetings they are on; staff cancel any.
   const viewerEmail = forAdvisor
@@ -1079,7 +1088,7 @@ function BookingForm({
           <div className="flex min-w-0 flex-col gap-2">
             <Label htmlFor="booking-day">Class day</Label>
             {dayOptions.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No class days are left on the school calendar.</p>
+              <p className="text-muted-foreground text-sm">No class days are left this term.</p>
             ) : (
               <ClassDayField
                 id="booking-day"
