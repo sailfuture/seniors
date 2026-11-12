@@ -25,9 +25,11 @@ import { loadStudentAbsences } from "@/lib/student-absences.server"
  *
  * It reads every upcoming meeting on the shared calendar and, for each one,
  * whether school attendance has the student out that day: an excusal on file
- * (known days ahead) or, for today's meetings, today's attendance. The adults
- * around the meeting get one email per meeting; the meeting itself is left
- * alone, since attendance can change and canceling is one click. That the
+ * (known days ahead) or, for today's meetings, today's homeroom (day-level)
+ * attendance. The student, their thesis advisor, the thesis supervisor, the
+ * course teachers and whoever booked get one email per meeting; the meeting
+ * itself is left alone, since attendance can change and canceling is one
+ * click. The student is on it so a wrong mark gets corrected quickly. That the
  * notice went is noted on the calendar event (`absenceNotice`), unseen by
  * guests, so the next run doesn't send it again.
  *
@@ -134,13 +136,13 @@ export async function GET(req: Request) {
       .filter((a) => a.type === "business-thesis" && String(a.students_id) === String(student.id))
       .map((a) => advisors.find((x) => Number(x.id) === Number(a.advisors_id)))
       .filter((a): a is Advisor => Boolean(a && a.isActive !== false && advisorAllowsProduct(a, "business-thesis")))
-    const studentEmail = lower(student.studentEmail)
     const to: Recipient[] = [
+      { email: student.studentEmail, name: studentName(student) },
       ...theirs.map((a) => ({ email: a.email, name: advisorName(a) })),
       ...supervisors,
       ...courseTeachers,
       ...(event.tags.bookedBy ? [{ email: event.tags.bookedBy }] : []),
-    ].filter((r) => lower(r.email) && lower(r.email) !== studentEmail)
+    ].filter((r) => lower(r.email))
     const outcome: Outcome = {
       eventId: event.id,
       date,
@@ -154,6 +156,7 @@ export async function GET(req: Request) {
     const error = await sendAbsenceNotice({
       to,
       studentName: studentName(student),
+      studentFirstName: student.firstName || studentName(student),
       advisorNames: theirs.map(advisorName),
       dateLabel: longDate(date),
       timeLabel: `${formatSchoolClock(event.start)} – ${formatSchoolClock(event.end)}`,

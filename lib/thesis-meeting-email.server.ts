@@ -3,15 +3,16 @@ import { APP_URL, escapeHtml, renderBrandedEmail } from "@/lib/email-template"
 import { fetchStaff } from "@/lib/staff"
 
 /**
- * The app's own emails about thesis meetings, to the adults around one (the
- * thesis advisor, the thesis supervisor, the course teachers and whoever
- * booked). The student isn't on them; Google's own invitation reaches them.
+ * The app's own emails about thesis meetings.
  *
  *  - The confirmation once a meeting is booked: who, when and where, with a
- *    link to the event in Google Calendar.
+ *    link to the event in Google Calendar. It goes to the adults around the
+ *    meeting (the thesis advisor, the thesis supervisor, the course teachers
+ *    and whoever booked); the student has Google's own invitation.
  *  - The notice that school attendance has the student out on the day of a
- *    booked meeting, so an advisor doesn't come in for nothing. It says which
- *    days, never why.
+ *    booked meeting, so an advisor doesn't come in for nothing. It goes to
+ *    the same adults and to the student, who can say so if the mark is wrong.
+ *    It says which days, never why.
  */
 
 const FROM =
@@ -127,6 +128,8 @@ function addresses(list: Recipient[]): string[] {
 export interface AbsenceNotice {
   to: Recipient[]
   studentName: string
+  /** Who the line asking the student to speak up is addressed to. */
+  studentFirstName: string
   /** The student's thesis advisors, by name; empty when they have none. */
   advisorNames: string[]
   /** The meeting's day: "Thursday, November 12, 2026" */
@@ -156,7 +159,11 @@ export function absenceNoticeHtml(n: AbsenceNotice): string {
     title: "Student out for a thesis meeting",
     subtitle: `${n.studentName} · ${n.dateLabel}`,
     preheader: `${n.studentName} is out ${n.partial ? "for part of" : "on"} ${n.dateLabel}`,
-    paragraphs: [lead, advice],
+    paragraphs: [
+      lead,
+      advice,
+      `<strong>${escapeHtml(n.studentFirstName)}</strong>, if you will be in class for this meeting after all, reply to this email so your teachers know.`,
+    ],
     tiles: [
       { label: "Student", body: n.studentName },
       { label: "Meeting", body: `${n.dateLabel}, ${n.timeLabel} Eastern` },
