@@ -302,7 +302,7 @@ export function ThesisSchedule({
         forAdvisor={forAdvisor}
         canBook={canBook === true}
         missing={data?.missing ?? []}
-        rows={rows ?? []}
+        rows={rows}
         days={bookableDays}
         meetings={meetings}
       />
@@ -520,7 +520,8 @@ function BookingDialog({
   canBook: boolean
   /** The settings the deployment lacks, when the server names them (staff only). */
   missing: string[]
-  rows: StudentRow[]
+  /** Null while the roster is still loading. */
+  rows: StudentRow[] | null
   days: MeetingSession[]
   meetings: ThesisMeeting[]
 }) {
@@ -538,7 +539,10 @@ function BookingDialog({
           </DialogDescription>
         </DialogHeader>
         {request &&
-          (canBook ? (
+          (canBook && rows === null ? (
+            // The form picks its student as it opens, so it waits for the roster.
+            <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">Loading students…</p>
+          ) : canBook && rows ? (
             <BookingForm
               request={request}
               onClose={onClose}
