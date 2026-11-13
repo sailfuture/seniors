@@ -255,7 +255,10 @@ function SlideFooter({ number, studentName }: { number: number; studentName: str
   )
 }
 
-/** A slide's headline: a short brand-color rule, then the title in the brand's headline face. */
+/**
+ * A slide's headline: a short brand-color rule, then the title in the heading
+ * face. A brand font stays on the heroes; here the title matches the page's sans.
+ */
 function SlideTitle({
   title,
   description,
@@ -282,7 +285,7 @@ function SlideTitle({
         />
         <h3
           className={cn(
-            "font-(family-name:--pf-display) leading-[1.05] font-bold tracking-[-0.02em] text-balance text-[var(--pf-ink)]",
+            "font-(family-name:--pf-heading) leading-[1.1] font-semibold tracking-[-0.02em] text-balance text-[var(--pf-ink)]",
             size === "slide" ? "text-[clamp(1.75rem,3.4vw,2.75rem)]" : "text-[clamp(1.375rem,2.2vw,1.875rem)]"
           )}
         >
