@@ -121,7 +121,7 @@ export function TitleCover({
               className="size-20 rounded-full object-cover ring-2 ring-white/25 sm:size-24"
             />
           )}
-          <h1 className="mt-6 font-(family-name:--pf-display) text-[clamp(3rem,10vw,8.5rem)] leading-[0.92] font-semibold tracking-[-0.035em] text-balance">
+          <h1 className="mt-6 font-(family-name:--pf-heading) text-[clamp(3rem,10vw,8.5rem)] leading-[0.92] font-semibold tracking-[-0.035em] text-balance">
             <WordReveal text={studentName || kind} onMount delay={0.2} />
           </h1>
           <motion.p
@@ -306,7 +306,7 @@ export function ThesisCover({
               </div>
             )}
           </motion.div>
-          <h1 className="mt-6 max-w-5xl font-(family-name:--pf-display) text-[clamp(2.75rem,7.5vw,6rem)] leading-[0.98] font-bold tracking-[-0.025em] text-balance">
+          <h1 className="mt-6 max-w-5xl font-(family-name:--pf-heading) text-[clamp(2.75rem,7.5vw,6rem)] leading-[0.98] font-bold tracking-[-0.025em] text-balance">
             <WordReveal text={brand.companyName || "Business Thesis"} onMount delay={0.25} />
           </h1>
           {brand.tagline && (
