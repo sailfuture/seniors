@@ -294,7 +294,7 @@ export function SectionHero({
           photo ? "from-black/45 via-black/10" : "from-black/20"
         )}
       />
-      {!deck && <GhostNumeral style={{ fontFamily: "var(--pf-display)" }}>{num}</GhostNumeral>}
+      {!deck && <GhostNumeral style={{ fontFamily: "var(--pf-heading)" }}>{num}</GhostNumeral>}
       {chrome && <div className="absolute inset-x-0 top-0 z-10 px-6 pt-6 sm:px-10 sm:pt-8 lg:px-12">{chrome}</div>}
 
       <div className="relative z-10 w-full px-6 pt-24 pb-8 sm:px-10 sm:pb-10 lg:px-12 lg:pb-12">
