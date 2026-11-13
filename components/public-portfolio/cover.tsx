@@ -221,7 +221,6 @@ export function ThesisCover({
   const { container, item } = useCoverVariants()
   const reduce = useReducedMotion()
 
-  const taglineFont = brand.secondaryFont ? { fontFamily: `"${brand.secondaryFont}", inherit` } : undefined
   const monogramBg = brand.accent ?? "#1f2937"
   const contact = brand.contact
   const hasContact =
@@ -314,7 +313,6 @@ export function ThesisCover({
               variants={item}
               data-reveal
               className="mt-4 max-w-2xl text-base leading-relaxed text-pretty text-white/80 sm:text-xl"
-              style={taglineFont}
             >
               {brand.tagline}
             </motion.p>
