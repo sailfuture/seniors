@@ -285,9 +285,9 @@ function SlideTitle({
         />
         <h3
           className={cn(
-            "font-(family-name:--pf-heading) font-semibold tracking-[-0.035em] text-balance text-[var(--pf-ink)]",
-            // A slide's title matches its section's hero title, never outgrows it.
-            size === "slide" ? "text-[clamp(1.75rem,3.6vw,2.625rem)]" : "text-[clamp(1.375rem,2.2vw,1.875rem)]",
+            "font-(family-name:--pf-heading) font-semibold tracking-[-0.03em] text-balance text-[var(--pf-ink)]",
+            // A step below the section hero's title, so the section always leads.
+            size === "slide" ? "text-[clamp(1.5rem,2.6vw,2rem)]" : "text-[clamp(1.25rem,1.9vw,1.5rem)]",
             // After the size: tailwind-merge drops a leading that comes before a font size.
             "leading-[1.08]"
           )}
