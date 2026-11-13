@@ -285,8 +285,9 @@ function SlideTitle({
         />
         <h3
           className={cn(
-            "font-(family-name:--pf-heading) leading-[1.1] font-semibold tracking-[-0.02em] text-balance text-[var(--pf-ink)]",
-            size === "slide" ? "text-[clamp(1.75rem,3.4vw,2.75rem)]" : "text-[clamp(1.375rem,2.2vw,1.875rem)]"
+            "font-(family-name:--pf-heading) leading-[1.08] font-semibold tracking-[-0.035em] text-balance text-[var(--pf-ink)]",
+            // A slide's title matches its section's hero title, never outgrows it.
+            size === "slide" ? "text-[clamp(1.75rem,3.6vw,2.625rem)]" : "text-[clamp(1.375rem,2.2vw,1.875rem)]"
           )}
         >
           {title}

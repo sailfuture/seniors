@@ -302,7 +302,7 @@ export function SectionHero({
           Section {num}
           <span className="text-white/40"> / {String(total).padStart(2, "0")}</span>
         </Eyebrow>
-        <h2 className="mt-4 max-w-3xl font-(family-name:--pf-heading) text-[clamp(1.75rem,3.6vw,2.625rem)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance">
+        <h2 className="mt-4 max-w-3xl font-(family-name:--pf-heading) text-[clamp(1.75rem,3.6vw,2.625rem)] leading-[1.08] font-semibold tracking-[-0.035em] text-balance">
           <WordReveal text={section.title} />
         </h2>
         {section.description && (
