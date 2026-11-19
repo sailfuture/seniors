@@ -33,7 +33,7 @@ import { formatMeetingTime, meetingIncludes } from "@/lib/thesis-meetings"
 import { cn } from "@/lib/utils"
 import { Kpi, useThesisProgress } from "@/components/supervisor-dashboard"
 import { StatusCount } from "@/components/status-count"
-import { useThesisMeetings } from "@/components/thesis-schedule"
+import { MeetingDetailsSheet, useThesisMeetings, type MeetingPerson } from "@/components/thesis-schedule"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -307,6 +307,23 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
   const progressQuery = useThesisProgress()
   const [now] = useState(() => Date.now())
   const [filter, setFilter] = useState<Filter>("all")
+  const [openMeetingId, setOpenMeetingId] = useState<string | null>(null)
+
+  // Names and faces for a meeting's guests: the roster and the advisors.
+  const people = useMemo(() => {
+    const map = new Map<string, MeetingPerson>()
+    for (const a of advisorsQuery.data ?? []) {
+      const email = (a.email ?? "").trim().toLowerCase()
+      if (email) map.set(email, { name: advisorName(a), role: "Thesis advisor", image: a.profileImage })
+    }
+    for (const s of studentsQuery.data ?? []) {
+      const email = (s.studentEmail ?? "").trim().toLowerCase()
+      if (email) {
+        map.set(email, { name: studentName(s), role: "Student", image: s.profileImage, studentId: String(s.id) })
+      }
+    }
+    return map
+  }, [advisorsQuery.data, studentsQuery.data])
 
   const advisor = advisorsQuery.data?.find((a) => Number(a.id) === advisorId) ?? null
   const students = useMemo(() => {
@@ -387,6 +404,8 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
   }
   const next = activity?.meetingsUpcoming[0]
   const studentById = new Map((students ?? []).map((s) => [String(s.id), s]))
+  const openMeeting =
+    (openMeetingId !== null && meetingsData?.ok && meetingsData.meetings.find((m) => m.id === openMeetingId)) || null
 
   return (
     <div className={PAGE}>
@@ -551,6 +570,7 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
               now={now}
               studentById={studentById}
               showStudent={(students?.length ?? 0) > 1}
+              onOpenMeeting={setOpenMeetingId}
             />
           )}
         </CardContent>
@@ -569,23 +589,37 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
           ) : activity.meetingsUpcoming.length + activity.meetingsHeld.length === 0 ? (
             <p className="text-muted-foreground text-sm">No meetings yet.</p>
           ) : (
-            <ul className="divide-y">
+            <ul className="-my-1.5 flex flex-col">
               {[...activity.meetingsUpcoming, ...activity.meetingsHeld].map((m) => {
                 const upcoming = m.start > now
                 const who = (students ?? []).filter((s) => meetingIncludes(m, s.studentEmail)).map(studentName)
                 return (
-                  <li key={m.id} className="flex items-baseline gap-3 py-2.5 first:pt-0 last:pb-0">
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium">{formatMeetingTime(m.start)}</span>
-                      <span className="text-muted-foreground block truncate text-xs">
-                        {who.length ? who.join(", ") : m.title || "Thesis meeting"}
-                      </span>
-                    </span>
-                    <span
-                      className={cn("shrink-0 text-xs font-medium", upcoming ? "text-primary" : "text-muted-foreground")}
+                  <li key={m.id} className="border-b py-1 last:border-b-0">
+                    <button
+                      type="button"
+                      onClick={() => setOpenMeetingId(m.id)}
+                      className={cn(ROW_BUTTON, "min-h-11 items-center py-1.5")}
                     >
-                      {upcoming ? "Upcoming" : "Held"}
-                    </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">{formatMeetingTime(m.start)}</span>
+                        <span className="text-muted-foreground block truncate text-xs">
+                          {who.length ? who.join(", ") : m.title || "Thesis meeting"}
+                        </span>
+                      </span>
+                      <span
+                        className={cn(
+                          "shrink-0 text-xs font-medium",
+                          upcoming ? "text-primary" : "text-muted-foreground"
+                        )}
+                      >
+                        {upcoming ? "Upcoming" : "Held"}
+                      </span>
+                      <HugeiconsIcon
+                        icon={ArrowRight01Icon}
+                        strokeWidth={2}
+                        className="text-muted-foreground size-4 shrink-0"
+                      />
+                    </button>
                   </li>
                 )
               })}
@@ -593,9 +627,20 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
           )}
         </CardContent>
       </Card>
+
+      <MeetingDetailsSheet
+        meeting={openMeeting}
+        now={now}
+        people={people}
+        onClose={() => setOpenMeetingId(null)}
+      />
     </div>
   )
 }
+
+/** A row that opens something, as the linked rows look. */
+const ROW_BUTTON =
+  "hover:bg-muted/60 focus-visible:ring-ring/50 -mx-2 flex w-[calc(100%+1rem)] cursor-pointer gap-3 rounded-lg px-2 text-left transition-colors outline-none focus-visible:ring-[3px]"
 
 /** Both pages are a single centred column. */
 const PAGE = "mx-auto flex w-full max-w-4xl flex-1 flex-col items-stretch gap-6 p-4 md:p-6"
@@ -638,12 +683,15 @@ function ActivityStream({
   now,
   studentById,
   showStudent,
+  onOpenMeeting,
 }: {
   items: ActivityItem[]
   now: number
   studentById: Map<string, RosterStudent>
   /** Name the student on each entry: only useful with more than one. */
   showStudent: boolean
+  /** A meeting entry opens its details rather than going anywhere. */
+  onOpenMeeting: (meetingId: string) => void
 }) {
   const days: { label: string; items: ActivityItem[] }[] = []
   for (const item of items) {
@@ -687,7 +735,16 @@ function ActivityStream({
               )
               return (
                 <li key={item.id}>
-                  {item.href ? (
+                  {item.meetingId ? (
+                    <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      onClick={() => onOpenMeeting(item.meetingId!)}
+                      className={cn(ROW_BUTTON, "items-start py-2")}
+                    >
+                      {body}
+                    </button>
+                  ) : item.href ? (
                     <Link
                       href={item.href}
                       className="hover:bg-muted/60 focus-visible:ring-ring/50 -mx-2 flex items-start gap-3 rounded-lg px-2 py-2 transition-colors outline-none focus-visible:ring-[3px]"

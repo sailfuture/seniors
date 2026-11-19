@@ -15,9 +15,10 @@ import {
   Delete02Icon,
   Tick02Icon,
   UserMultiple02Icon,
+  Video01Icon,
 } from "@hugeicons/core-free-icons"
 import { ScheduleCard, useSchoolCalendarData } from "@/components/class-schedule"
-import { advisorAllowsProduct, advisorName, type Advisor } from "@/lib/advisors"
+import { advisorAllowsProduct, advisorInitials, advisorName, type Advisor } from "@/lib/advisors"
 import { classYearOf, currentClassYear, studentName, type RosterStudent } from "@/lib/students"
 import { useAdvisorAssignments, useAdvisors, useStudents } from "@/lib/queries"
 import {
@@ -224,10 +225,14 @@ export function ThesisSchedule({
     [studentsQuery.data]
   )
 
+  // Everything on today's date, whether it's still to come, under way or
+  // already over, and then every later booking.
   const upcoming = useMemo(
     () =>
-      meetings.filter((m) => !m.canceled && m.start > now).sort((a, b) => a.start - b.start),
-    [meetings, now]
+      meetings
+        .filter((m) => !m.canceled && (m.start > now || dayKey(m.start) === today))
+        .sort((a, b) => a.start - b.start),
+    [meetings, now, today]
   )
 
   const configured = data?.configured !== false
@@ -289,6 +294,8 @@ export function ThesisSchedule({
         onBook={canBook === null ? undefined : () => setBooking({})}
         subscribe={data?.subscribe}
         meetings={upcoming}
+        now={now}
+        today={today}
         absences={absences}
         rows={rows}
         loading={meetingsQuery.isPending}
@@ -448,7 +455,7 @@ function MeetingRow({
       </TableCell>
       {!forAdvisor && (
         <TableCell className="text-muted-foreground">
-          {advisors.length ? advisors.map(advisorName).join(", ") : "None"}
+          {advisors.length ? <AdvisorChips advisors={advisors} /> : "None"}
         </TableCell>
       )}
       <TableCell className="text-right tabular-nums">{m?.held.length ?? "–"}</TableCell>
@@ -474,6 +481,23 @@ function MeetingRow({
         </span>
       </TableCell>
     </TableRow>
+  )
+}
+
+/** Each advisor's photo (or initials) beside their name. */
+function AdvisorChips({ advisors }: { advisors: Advisor[] }) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {advisors.map((a) => (
+        <span key={a.id} className="flex items-center gap-2">
+          <Avatar className="size-7">
+            <AvatarImage src={a.profileImage || undefined} alt="" />
+            <AvatarFallback className="text-[10px]">{advisorInitials(a)}</AvatarFallback>
+          </Avatar>
+          {advisorName(a)}
+        </span>
+      ))}
+    </span>
   )
 }
 
@@ -1412,14 +1436,18 @@ function DaySheet({
 }
 
 /**
- * Every upcoming booking, as a table: when, who and with which
- * advisor. A row with a student on it opens that student's meetings.
+ * Today's meetings and every later booking, as a table: when, who and with
+ * which advisor. Today's stay listed all day, marked while one is under way
+ * and once it's over. A row with a student on it opens that student's
+ * meetings.
  */
 function UpcomingCard({
   forAdvisor,
   onBook,
   subscribe,
   meetings,
+  now,
+  today,
   absences,
   rows,
   loading,
@@ -1431,7 +1459,11 @@ function UpcomingCard({
   onBook: (() => void) | undefined
   /** Links for adding the shared calendar to your own, when there are any. */
   subscribe: CalendarSubscription | undefined
+  /** Today's meetings and every later one, soonest first. */
   meetings: ThesisMeeting[]
+  now: number
+  /** Today's date at school, YYYY-MM-DD. */
+  today: string
   /** Who school attendance has out; undefined until it loads. */
   absences: StudentAbsence[] | undefined
   rows: StudentRow[] | null
@@ -1446,10 +1478,10 @@ function UpcomingCard({
         <div className="flex flex-wrap items-center gap-3">
           <IconTile icon={Calendar03Icon} />
           <div className="min-w-0 flex-1">
-            <CardTitle>Upcoming meetings</CardTitle>
+            <CardTitle>Today and upcoming meetings</CardTitle>
             <CardDescription>
-              From the shared Senior Thesis Meetings calendar. Select a meeting to see that
-              student&rsquo;s meetings.
+              From the shared Senior Thesis Meetings calendar: today&rsquo;s meetings, then every later booking,
+              each with its Google Meet link. Select a meeting to see that student&rsquo;s meetings.
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1477,7 +1509,7 @@ function UpcomingCard({
           </p>
         ) : meetings.length === 0 ? (
           <p className="text-muted-foreground mx-6 rounded-lg border border-dashed p-3 text-sm">
-            Nothing booked yet.
+            No meetings today, and nothing booked after.
           </p>
         ) : (
           <Table>
@@ -1486,7 +1518,8 @@ function UpcomingCard({
                 <TableHead className="pl-6">Date</TableHead>
                 <TableHead>Time</TableHead>
                 <TableHead>Student</TableHead>
-                {!forAdvisor && <TableHead className="pr-6">Advisor</TableHead>}
+                {!forAdvisor && <TableHead>Advisor</TableHead>}
+                <TableHead className="pr-6">Video call</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1495,14 +1528,35 @@ function UpcomingCard({
                 const first = who[0]
                 const outRow = who.find((r) => absenceOn(absences, r.student.id, dayKey(m.start)))
                 const absence = outRow ? absenceOn(absences, outRow.student.id, dayKey(m.start)) : null
+                const isToday = dayKey(m.start) === today
+                const underWay = m.start <= now && m.end > now
+                const over = m.end <= now
                 return (
                   <TableRow
                     key={m.id}
                     {...(first ? rowButtonProps(() => onOpenStudent(String(first.student.id))) : {})}
                   >
-                    <TableCell className="pl-6 font-medium">{formatDay(m.start)}</TableCell>
+                    <TableCell className={cn("pl-6 font-medium", over && "text-muted-foreground")}>
+                      {isToday ? (
+                        <>
+                          Today
+                          <span className="text-muted-foreground ml-1.5 font-normal">{formatDay(m.start)}</span>
+                        </>
+                      ) : (
+                        formatDay(m.start)
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
-                      {clock(m.start)} – {clock(m.end)}
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {clock(m.start)} – {clock(m.end)}
+                        {underWay ? (
+                          <Badge>Now</Badge>
+                        ) : over ? (
+                          <Badge variant="outline" className="text-muted-foreground">
+                            Ended
+                          </Badge>
+                        ) : null}
+                      </span>
                     </TableCell>
                     <TableCell>
                       {who.length ? (
@@ -1521,10 +1575,30 @@ function UpcomingCard({
                       )}
                     </TableCell>
                     {!forAdvisor && (
-                      <TableCell className="text-muted-foreground pr-6">
-                        {first?.advisors.length ? first.advisors.map(advisorName).join(", ") : "–"}
+                      <TableCell className="text-muted-foreground">
+                        {first?.advisors.length ? <AdvisorChips advisors={first.advisors} /> : "–"}
                       </TableCell>
                     )}
+                    <TableCell className="pr-6">
+                      {m.meetUrl && !over ? (
+                        <Button asChild size="sm" variant={underWay ? "default" : "outline"} className="gap-1.5">
+                          {/* The row opens the student's meetings; the link only joins the call. */}
+                          <a
+                            href={m.meetUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Join the Google Meet call on ${formatDay(m.start)} at ${clock(m.start)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
+                            <HugeiconsIcon icon={Video01Icon} strokeWidth={2} className="size-4" />
+                            Join Meet
+                          </a>
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground">{over ? "–" : "No link yet"}</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 )
               })}
@@ -1545,15 +1619,20 @@ const formatDay = (ms: number) =>
     day: "numeric",
   })
 
-type MeetingState = "Held" | "Upcoming" | "Canceled" | "Declined"
+type MeetingState = "Held" | "Now" | "Upcoming" | "Canceled" | "Declined"
 
 function meetingState(m: ThesisMeeting, studentEmail: string, now: number): MeetingState {
   if (m.canceled) return "Canceled"
   if (m.attendees.some((a) => a.email === studentEmail && a.response === "DECLINED")) return "Declined"
-  return m.start > now ? "Upcoming" : "Held"
+  if (m.start > now) return "Upcoming"
+  return m.end > now ? "Now" : "Held"
 }
 
-/** A meeting's state as a badge: navy to come, green held, red declined, gray canceled. */
+/** A meeting that can still be joined: to come, or under way. */
+const stillOn = (state: MeetingState) => state === "Upcoming" || state === "Now"
+
+/** A meeting's state as a badge: solid navy under way, pale navy to come,
+    green held, red declined, gray canceled. */
 function MeetingStateBadge({ state }: { state: MeetingState }) {
   if (state === "Declined") return <Badge variant="destructive">Declined</Badge>
   if (state === "Canceled") {
@@ -1563,6 +1642,7 @@ function MeetingStateBadge({ state }: { state: MeetingState }) {
       </Badge>
     )
   }
+  if (state === "Now") return <Badge>Now</Badge>
   return (
     <Badge
       variant="secondary"
@@ -1609,8 +1689,9 @@ function StudentMeetingsSheet({
       (m) =>
         m.mentions.includes(email) || m.attendees.some((a) => a.email === email)
     )
-    const upcoming = mine.filter((m) => m.start > now).sort((a, b) => a.start - b.start)
-    const past = mine.filter((m) => m.start <= now).sort((a, b) => b.start - a.start)
+    // One under way leads the list, with the ones still to come.
+    const upcoming = mine.filter((m) => m.end > now).sort((a, b) => a.start - b.start)
+    const past = mine.filter((m) => m.end <= now).sort((a, b) => b.start - a.start)
     return [...upcoming, ...past]
   }, [meetings, email, now])
   const id = student ? String(student.id) : ""
@@ -1618,8 +1699,8 @@ function StudentMeetingsSheet({
   const cancelable = (m: ThesisMeeting, state: MeetingState) =>
     canCancel && state === "Upcoming" && (viewerEmail === null || meetingIncludes(m, viewerEmail))
   const anyCancelable = list.some((m) => cancelable(m, meetingState(m, email, now)))
-  // A video link only matters for a meeting still to come.
-  const joinable = (m: ThesisMeeting, state: MeetingState) => (state === "Upcoming" && m.meetUrl ? m.meetUrl : null)
+  // A video link only matters for a meeting to come or under way.
+  const joinable = (m: ThesisMeeting, state: MeetingState) => (stillOn(state) && m.meetUrl ? m.meetUrl : null)
   const anyJoinable = list.some((m) => joinable(m, meetingState(m, email, now)))
 
   return (
@@ -1807,6 +1888,197 @@ function CancelMeetingDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+/** Someone on a meeting's invitation, as the app knows them. */
+export interface MeetingPerson {
+  name: string
+  /** "Student", "Thesis advisor": what they are to the meeting. */
+  role: string
+  image?: string | null
+  /** Set for a student: the sheet links into their thesis. */
+  studentId?: string
+}
+
+const RESPONSE_LABEL: Record<string, string> = {
+  ACCEPTED: "Accepted",
+  DECLINED: "Declined",
+  TENTATIVE: "Maybe",
+}
+
+const initialsFrom = (name: string) =>
+  name
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p.charAt(0))
+    .join("")
+    .toUpperCase() || "?"
+
+const fullDay = (ms: number) =>
+  new Date(ms).toLocaleDateString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
+
+/**
+ * One thesis meeting, read only: when it is, whether it happened, its Google
+ * Meet link, and who is on the invitation with how each of them answered.
+ */
+export function MeetingDetailsSheet({
+  meeting,
+  now,
+  people,
+  onClose,
+}: {
+  meeting: ThesisMeeting | null
+  now: number
+  /** Who the guests are, by lowercased email. Anyone else shows under the
+      name Google has for them. */
+  people: Map<string, MeetingPerson>
+  onClose: () => void
+}) {
+  // Keeps the last meeting on screen while the sheet slides shut.
+  const [shown, setShown] = useState(meeting)
+  if (meeting && meeting !== shown) setShown(meeting)
+  const m = meeting ?? shown
+
+  const guests = (m?.attendees ?? []).map((a) => {
+    const known = people.get(a.email)
+    return {
+      email: a.email,
+      name: known?.name || a.name || a.email,
+      role: known?.role ?? "",
+      image: known?.image ?? null,
+      studentId: known?.studentId,
+      response: a.response ?? "",
+    }
+  })
+  // The student first, then everyone else as invited.
+  guests.sort((a, b) => Number(Boolean(b.studentId)) - Number(Boolean(a.studentId)))
+  const student = guests.find((g) => g.studentId)
+  const state = m ? meetingState(m, student?.email ?? "", now) : "Held"
+  const upcoming = stillOn(state)
+
+  return (
+    <Sheet open={meeting !== null} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-lg">
+        <SheetHeader className="shrink-0 gap-3 border-b px-6 py-5 pr-12">
+          <div className="flex items-center gap-3">
+            {student && (
+              <Avatar className="size-11">
+                <AvatarImage src={student.image || undefined} alt="" />
+                <AvatarFallback>{initialsFrom(student.name)}</AvatarFallback>
+              </Avatar>
+            )}
+            <div className="min-w-0">
+              <SheetTitle className="truncate text-lg font-semibold">
+                {student ? `Thesis meeting with ${student.name}` : m?.title || "Thesis meeting"}
+              </SheetTitle>
+              <SheetDescription className="truncate">
+                {m ? `${formatDay(m.start)}, ${clock(m.start)} – ${clock(m.end)} Eastern` : ""}
+              </SheetDescription>
+            </div>
+          </div>
+          {(student?.studentId || (upcoming && m?.meetUrl)) && (
+            <div className="flex flex-wrap gap-2">
+              {upcoming && m?.meetUrl && (
+                <Button asChild size="sm">
+                  <a href={m.meetUrl} target="_blank" rel="noopener noreferrer">
+                    Join Meet
+                  </a>
+                </Button>
+              )}
+              {student?.studentId && (
+                <>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/admin/business-thesis/${student.studentId}`}>Open Business Thesis</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/admin/business-thesis/${student.studentId}/review`}>Review</Link>
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </SheetHeader>
+        {m && (
+          <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+            <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-3 text-sm">
+              <dt className="text-muted-foreground">Date</dt>
+              <dd className="font-medium">{fullDay(m.start)}</dd>
+              <dt className="text-muted-foreground">Time</dt>
+              <dd className="font-medium tabular-nums">
+                {clock(m.start)} – {clock(m.end)} <span className="text-muted-foreground font-normal">Eastern</span>
+              </dd>
+              <dt className="text-muted-foreground">Status</dt>
+              <dd>
+                <MeetingStateBadge state={state} />
+              </dd>
+              <dt className="text-muted-foreground">Video call</dt>
+              <dd className="min-w-0">
+                {m.meetUrl ? (
+                  <a
+                    href={m.meetUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary rounded-sm font-medium break-all underline-offset-4 outline-none hover:underline focus-visible:underline"
+                  >
+                    {m.meetUrl.replace(/^https:\/\//, "")}
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {upcoming ? "No Google Meet link yet" : "No Google Meet link"}
+                  </span>
+                )}
+              </dd>
+            </dl>
+
+            <section>
+              <h3 className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
+                On the invitation
+              </h3>
+              {guests.length === 0 ? (
+                <p className="text-muted-foreground mt-2 text-sm">No one is on this event’s guest list.</p>
+              ) : (
+                <ul className="mt-1 divide-y">
+                  {guests.map((g) => (
+                    <li key={g.email} className="flex items-center gap-3 py-2.5">
+                      <Avatar className="size-8">
+                        <AvatarImage src={g.image || undefined} alt="" />
+                        <AvatarFallback className="text-xs">{initialsFrom(g.name)}</AvatarFallback>
+                      </Avatar>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{g.name}</span>
+                        <span className="text-muted-foreground block truncate text-xs">
+                          {g.role || (g.name === g.email ? "Guest" : g.email)}
+                        </span>
+                      </span>
+                      <span
+                        className={cn(
+                          "shrink-0 text-xs font-medium",
+                          g.response === "ACCEPTED"
+                            ? "text-emerald-700 dark:text-emerald-300"
+                            : g.response === "DECLINED"
+                              ? "text-destructive"
+                              : "text-muted-foreground"
+                        )}
+                      >
+                        {RESPONSE_LABEL[g.response] ?? "No reply"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 }
 

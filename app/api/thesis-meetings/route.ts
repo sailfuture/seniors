@@ -25,6 +25,7 @@ import {
 import {
   GoogleCalendarError,
   createThesisEvent,
+  ensureMeetLinks,
   isThesisCalendarConfigured,
   listThesisEvents,
   missingCalendarSettings,
@@ -50,7 +51,8 @@ import {
  * is set (so a booking shows up at once), otherwise from the calendar's
  * secret iCal address (THESIS_MEETINGS_ICS_URL), read at most every five
  * minutes. Staff see every meeting; a thesis advisor sees only meetings with
- * themselves or the students assigned to them.
+ * themselves or the students assigned to them. Reading through the Calendar
+ * API also gives any upcoming meeting without a Google Meet link one.
  *
  * POST books one: an hour inside a class session with one student. The event
  * goes on the shared calendar with a Google Meet call and the student, their
@@ -125,9 +127,9 @@ export async function GET() {
   if (canBook) {
     try {
       const now = Date.now()
-      meetings = (await listThesisEvents(now - HISTORY_MS, now + AHEAD_MS))
-        .filter((e) => e.start > 0)
-        .map(toMeeting)
+      const events = (await listThesisEvents(now - HISTORY_MS, now + AHEAD_MS)).filter((e) => e.start > 0)
+      // A meeting still to come that has no Google Meet link gets one here.
+      meetings = (await ensureMeetLinks(events, now)).map(toMeeting)
     } catch (err) {
       // The iCal address, when there is one, still answers.
       console.error("[thesis-meetings] Calendar API read failed:", err)

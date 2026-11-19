@@ -370,6 +370,72 @@ export async function createThesisEvent(input: NewThesisEvent): Promise<Calendar
   return event
 }
 
+/**
+ * Puts a Google Meet call on an event that has none, and returns the event
+ * as it now stands. Guests using Google Calendar see the link on their own
+ * copy with no email; guests on another calendar get an updated invitation,
+ * the only way the link can reach them (`sendUpdates=externalOnly`).
+ *
+ * The request id is the event's own, so two readers adding a link to the
+ * same event at once end up with one call, not two.
+ */
+export async function addMeetLink(eventId: string): Promise<CalendarEvent> {
+  const res = await calendarFetch(`/events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    query: { sendUpdates: "externalOnly", conferenceDataVersion: "1" },
+    body: JSON.stringify({
+      conferenceData: {
+        createRequest: { requestId: `meet-${eventId}`.slice(0, 64), conferenceSolutionKey: { type: "hangoutsMeet" } },
+      },
+    }),
+  })
+  if (!res.ok) throw await failure("add Meet link", res)
+  return toEvent((await res.json()) as Record<string, unknown>)
+}
+
+/** How many events get a Meet link per read; the rest wait for the next one. */
+const MEET_BACKFILL_LIMIT = 20
+const MEET_BACKFILL_AT_ONCE = 5
+/** After Google turns one down, leave it alone for a while. */
+const MEET_BACKFILL_RETRY_MS = 15 * 60_000
+let meetBackfillBlockedUntil = 0
+/** Events Google answered without a link (still making it, or a link someone
+    took off by hand), by when they were last tried. */
+const meetBackfillTried = new Map<string, number>()
+
+/**
+ * Gives every meeting still to come a Google Meet link: the ones booked
+ * before the app asked for one, and any made by hand in Google Calendar.
+ * Past, canceled and all-day events are left as they are. Returns the list
+ * with the newly linked events in place; a failure changes nothing and is
+ * not retried for fifteen minutes.
+ */
+export async function ensureMeetLinks(events: CalendarEvent[], now = Date.now()): Promise<CalendarEvent[]> {
+  if (now < meetBackfillBlockedUntil) return events
+  const missing = events
+    .filter((e) => e.id && e.start > now && e.status !== "cancelled" && !e.meetUrl)
+    .filter((e) => now - (meetBackfillTried.get(e.id) ?? 0) >= MEET_BACKFILL_RETRY_MS)
+    .slice(0, MEET_BACKFILL_LIMIT)
+  if (missing.length === 0) return events
+
+  const linked = new Map<string, CalendarEvent>()
+  for (let i = 0; i < missing.length && now >= meetBackfillBlockedUntil; i += MEET_BACKFILL_AT_ONCE) {
+    await Promise.all(
+      missing.slice(i, i + MEET_BACKFILL_AT_ONCE).map(async (e) => {
+        try {
+          const updated = await addMeetLink(e.id)
+          if (updated.id === e.id && updated.meetUrl) linked.set(e.id, updated)
+          else meetBackfillTried.set(e.id, Date.now())
+        } catch (err) {
+          meetBackfillBlockedUntil = Date.now() + MEET_BACKFILL_RETRY_MS
+          console.error("[google-calendar] couldn’t add a Meet link to an existing meeting:", err)
+        }
+      })
+    )
+  }
+  return linked.size ? events.map((e) => linked.get(e.id) ?? e) : events
+}
+
 /** Writes the app's own notes onto an event. Guests aren't told and never
     see them. Pass every note the event should keep, not only the new one. */
 export async function tagThesisEvent(eventId: string, tags: Record<string, string>): Promise<void> {

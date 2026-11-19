@@ -36,6 +36,8 @@ export interface ActivityItem {
   quote?: string
   /** Where in the student's thesis this happened. */
   href?: string
+  /** A meeting's id on the calendar: the entry opens its details instead. */
+  meetingId?: string
   /** Revision requests stand out from the other review decisions. */
   emphasis?: boolean
 }
@@ -198,7 +200,7 @@ export function buildAdvisorActivity(input: {
       at: m.start,
       studentId: student ? String(student.id) : "",
       title: student ? `Met with ${student.firstName || "their student"}` : m.title || "Thesis meeting",
-      href: student ? `${cfg.adminBasePath}/${student.id}` : undefined,
+      meetingId: m.id,
     })
   }
 
