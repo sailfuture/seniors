@@ -57,6 +57,9 @@ export interface ThesisMeeting {
   /** Emails written in the event's description (a booking form's answers),
    *  so a student who booked with a different address can still match. */
   mentions: string[]
+  /** The meeting's Google Meet link. Every meeting booked in the app has
+   *  one; an event made by hand in Google Calendar may not. */
+  meetUrl?: string
 }
 
 export interface CalendarSubscription {
@@ -105,7 +108,8 @@ export type BookingResult =
   | { ok: true; meeting: ThesisMeeting; /** Whether the confirmation email went out. */ emailed: boolean }
   | { ok: false; error: string }
 
-/** Books an hour with a student; Google emails the invitations. */
+/** Books an hour with a student; Google emails the invitations, each with
+    the meeting's Google Meet link (`meeting.meetUrl`). */
 export async function bookThesisMeeting(request: BookingRequest): Promise<BookingResult> {
   try {
     const res = await fetch("/api/thesis-meetings", {

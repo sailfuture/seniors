@@ -1,4 +1,4 @@
-import { createSign } from "crypto"
+import { createSign, randomUUID } from "crypto"
 
 /**
  * Google Calendar access for thesis meetings: the same service account with
@@ -10,7 +10,8 @@ import { createSign } from "crypto"
  * Calendar API as that user. Nobody signs in with Google for this and the
  * app's OAuth consent screen is not involved. Because guests are on the event
  * and it is saved with `sendUpdates=all`, Google emails the invitations and
- * tracks the replies.
+ * tracks the replies. Every event the app creates asks Google for a Meet
+ * call, so the invitation carries a video link.
  *
  * Env, the same three values as the apply portal:
  *  - GOOGLE_CALENDAR_CLIENT_EMAIL: the service account's client_email
@@ -220,6 +221,19 @@ export interface CalendarEvent {
   tags: Record<string, string>
   /** Where the event opens in Google Calendar, or "". */
   htmlLink: string
+  /** The event's Google Meet link, or "" when it has no video call. */
+  meetUrl: string
+}
+
+/** The video link on an event: Meet's own field, or else the conference's
+    video entry point. Only ever an https address. */
+function meetUrlOf(item: Record<string, unknown>): string {
+  const conference = item.conferenceData as { entryPoints?: { entryPointType?: string; uri?: string }[] } | undefined
+  const url =
+    (typeof item.hangoutLink === "string" && item.hangoutLink) ||
+    conference?.entryPoints?.find((p) => p.entryPointType === "video")?.uri ||
+    ""
+  return typeof url === "string" && url.startsWith("https://") ? url : ""
 }
 
 function toEvent(item: Record<string, unknown>): CalendarEvent {
@@ -246,6 +260,7 @@ function toEvent(item: Record<string, unknown>): CalendarEvent {
       : [],
     tags,
     htmlLink: typeof item.htmlLink === "string" ? item.htmlLink : "",
+    meetUrl: meetUrlOf(item),
   }
 }
 
@@ -293,26 +308,65 @@ export interface NewThesisEvent {
   tags: Record<string, string>
 }
 
-/** Adds the event to the shared calendar; Google emails every guest. */
+/**
+ * Adds the event to the shared calendar with a Google Meet call on it; Google
+ * emails every guest, and the invitation carries the video link.
+ *
+ * Should Google refuse the Meet call itself (a calendar or account that isn't
+ * allowed to make them), the event is still booked, without one: `meetUrl`
+ * comes back "" and the caller says so.
+ */
 export async function createThesisEvent(input: NewThesisEvent): Promise<CalendarEvent> {
-  const res = await calendarFetch("/events", {
-    method: "POST",
-    query: { sendUpdates: "all" },
-    body: JSON.stringify({
-      summary: input.summary,
-      description: input.description,
-      location: input.location,
-      start: { dateTime: new Date(input.start).toISOString(), timeZone: TIME_ZONE },
-      end: { dateTime: new Date(input.end).toISOString(), timeZone: TIME_ZONE },
-      attendees: input.guests.map((g) => ({ email: g.email, ...(g.name ? { displayName: g.name } : {}) })),
-      guestsCanInviteOthers: false,
-      guestsCanModify: false,
-      extendedProperties: { private: input.tags },
-    }),
-  })
+  const body = {
+    summary: input.summary,
+    description: input.description,
+    location: input.location,
+    start: { dateTime: new Date(input.start).toISOString(), timeZone: TIME_ZONE },
+    end: { dateTime: new Date(input.end).toISOString(), timeZone: TIME_ZONE },
+    attendees: input.guests.map((g) => ({ email: g.email, ...(g.name ? { displayName: g.name } : {}) })),
+    guestsCanInviteOthers: false,
+    guestsCanModify: false,
+    extendedProperties: { private: input.tags },
+  }
+  const insert = (withMeet: boolean) =>
+    calendarFetch("/events", {
+      method: "POST",
+      // Google ignores `conferenceData` unless the version says to read it.
+      query: { sendUpdates: "all", ...(withMeet ? { conferenceDataVersion: "1" } : {}) },
+      body: JSON.stringify(
+        withMeet
+          ? {
+              ...body,
+              conferenceData: {
+                createRequest: { requestId: randomUUID(), conferenceSolutionKey: { type: "hangoutsMeet" } },
+              },
+            }
+          : body
+      ),
+    })
+
+  let res = await insert(true)
+  let askedForMeet = true
+  if (res.status === 400) {
+    // Nothing was created. Only a refusal of the call itself is worth a
+    // second try without it; any other bad request is the caller's to hear.
+    const refused = await failure("create", res)
+    if (!/conference/i.test(refused.message)) throw refused
+    console.error("[google-calendar] Meet call refused; booking without one:", refused.message)
+    askedForMeet = false
+    res = await insert(false)
+  }
   if (!res.ok) throw await failure("create", res)
-  const event = toEvent((await res.json()) as Record<string, unknown>)
+  let event = toEvent((await res.json()) as Record<string, unknown>)
   if (!event.id) throw new GoogleCalendarError("Google Calendar create returned no event", 502)
+
+  // Google may still be making the call when the event comes back. Give it a
+  // moment so the link reaches the confirmation email and the page.
+  for (let tries = 0; askedForMeet && !event.meetUrl && tries < 3; tries++) {
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    const again = await getThesisEvent(event.id).catch(() => null)
+    if (again) event = again
+  }
   return event
 }
 

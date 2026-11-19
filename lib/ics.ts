@@ -25,6 +25,8 @@ export interface IcsEvent {
   allDay: boolean
   organizer?: string
   attendees: IcsAttendee[]
+  /** The event's Google Meet link (X-GOOGLE-CONFERENCE), when it has one. */
+  conferenceUrl?: string
 }
 
 interface ContentLine {
@@ -153,6 +155,7 @@ export function parseIcs(text: string, fallbackZone = "America/New_York"): IcsEv
             allDay: cur.allDay ?? false,
             organizer: cur.organizer,
             attendees: cur.attendees,
+            ...(cur.conferenceUrl ? { conferenceUrl: cur.conferenceUrl } : {}),
           })
         }
         cur = null
@@ -194,6 +197,11 @@ export function parseIcs(text: string, fallbackZone = "America/New_York"): IcsEv
       case "ORGANIZER":
         cur.organizer = mailto(line.value)
         break
+      case "X-GOOGLE-CONFERENCE": {
+        const url = line.value.trim()
+        if (url.startsWith("https://")) cur.conferenceUrl = url
+        break
+      }
       case "ATTENDEE": {
         const email = mailto(line.value)
         if (email.includes("@")) {

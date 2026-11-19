@@ -1066,10 +1066,10 @@ function BookingForm({
   const guests = !row
     ? null
     : forAdvisor
-      ? `Google Calendar emails an invitation to ${first}, you and the thesis supervisor.`
+      ? `Google Calendar emails an invitation with a Google Meet link to ${first}, you and the thesis supervisor.`
       : row.advisors.length
-        ? `Google Calendar emails an invitation to ${first}, ${row.advisors.map(advisorName).join(" and ")}, the thesis supervisor and you.`
-        : `${first} has no thesis advisor yet, so the invitation goes to ${first}, the thesis supervisor and you.`
+        ? `Google Calendar emails an invitation with a Google Meet link to ${first}, ${row.advisors.map(advisorName).join(" and ")}, the thesis supervisor and you.`
+        : `${first} has no thesis advisor yet, so the invitation, with its Google Meet link, goes to ${first}, the thesis supervisor and you.`
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -1087,9 +1087,12 @@ function BookingForm({
       old?.ok ? { ...old, meetings: [...old.meetings, result.meeting].sort((a, b) => a.start - b.start) } : old
     )
     void queryClient.invalidateQueries({ queryKey: ["thesis-meetings"] })
+    const sent = result.emailed ? "Invitations and a confirmation email are on their way" : "Invitations are on their way"
     toast.success(`Booked with ${studentName(row.student)}`, {
       description: `${formatCalendarDate(date)}, ${formatSlot(startMinutes)}. ${
-        result.emailed ? "Invitations and a confirmation email are on their way." : "Invitations are on their way."
+        result.meeting.meetUrl
+          ? `${sent}, with a Google Meet link.`
+          : `${sent}. Google couldn’t add a Meet link to this one, so add it in Google Calendar if you need a video call.`
       }`,
     })
     onClose()
@@ -1615,6 +1618,9 @@ function StudentMeetingsSheet({
   const cancelable = (m: ThesisMeeting, state: MeetingState) =>
     canCancel && state === "Upcoming" && (viewerEmail === null || meetingIncludes(m, viewerEmail))
   const anyCancelable = list.some((m) => cancelable(m, meetingState(m, email, now)))
+  // A video link only matters for a meeting still to come.
+  const joinable = (m: ThesisMeeting, state: MeetingState) => (state === "Upcoming" && m.meetUrl ? m.meetUrl : null)
+  const anyJoinable = list.some((m) => joinable(m, meetingState(m, email, now)))
 
   return (
     <Sheet open={row !== null} onOpenChange={(o) => !o && onClose()}>
@@ -1668,12 +1674,14 @@ function StudentMeetingsSheet({
                     <TableHead className="pl-4">Date</TableHead>
                     <TableHead>Time</TableHead>
                     <TableHead className="pr-4">Status</TableHead>
+                    {anyJoinable && <TableHead className="pr-4">Video call</TableHead>}
                     {anyCancelable && <TableHead className="w-0 pr-4" />}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {list.map((mt) => {
                     const state = meetingState(mt, email, now)
+                    const meetUrl = joinable(mt, state)
                     return (
                       <TableRow key={mt.id}>
                         <TableCell className="pl-4 font-medium">{formatDay(mt.start)}</TableCell>
@@ -1683,6 +1691,22 @@ function StudentMeetingsSheet({
                         <TableCell className="pr-4">
                           <MeetingStateBadge state={state} />
                         </TableCell>
+                        {anyJoinable && (
+                          <TableCell className="pr-4">
+                            {meetUrl && (
+                              <Button asChild size="sm" variant="outline">
+                                <a
+                                  href={meetUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={`Join the Google Meet call on ${formatDay(mt.start)}`}
+                                >
+                                  Join Meet
+                                </a>
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
                         {anyCancelable && (
                           <TableCell className="pr-4 text-right">
                             {cancelable(mt, state) && (

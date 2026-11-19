@@ -28,6 +28,7 @@ export function toMeeting(e: CalendarEvent): ThesisMeeting {
       response: RESPONSE[a.responseStatus] ?? "NEEDS-ACTION",
     })),
     mentions: emailsIn(e.description),
+    ...(e.meetUrl ? { meetUrl: e.meetUrl } : {}),
   }
 }
 

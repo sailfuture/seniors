@@ -68,10 +68,13 @@ export interface BookingConfirmation {
   replyTo?: string
   /** The event in Google Calendar; falls back to the Schedule page. */
   eventUrl?: string
+  /** The meeting's Google Meet link, when Google made one. */
+  meetUrl?: string
 }
 
 export function bookingConfirmationHtml(c: BookingConfirmation): string {
   const student = escapeHtml(c.studentName)
+  const meet = c.meetUrl?.startsWith("https://") ? c.meetUrl : ""
   return renderBrandedEmail({
     title: "Thesis meeting booked",
     subtitle: `${c.studentName} · ${c.dateLabel}`,
@@ -79,6 +82,11 @@ export function bookingConfirmationHtml(c: BookingConfirmation): string {
     paragraphs: [
       `<strong>${escapeHtml(c.bookedBy)}</strong> booked a Business Thesis meeting with <strong>${student}</strong> during the senior class.`,
       `It is on the shared Senior Thesis Meetings calendar, and Google Calendar has sent an invitation to ${student} and everyone attending.`,
+      ...(meet
+        ? [
+            `Anyone joining by video can use Google Meet: <a href="${escapeHtml(meet)}" style="color:#0d2345; font-weight:600;">${escapeHtml(meet.replace(/^https:\/\//, ""))}</a>. The same link is on the calendar invitation.`,
+          ]
+        : []),
     ],
     tiles: [
       { label: "Student", body: c.studentName },

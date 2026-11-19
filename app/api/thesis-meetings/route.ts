@@ -53,8 +53,9 @@ import {
  * themselves or the students assigned to them.
  *
  * POST books one: an hour inside a class session with one student. The event
- * goes on the shared calendar with the student, their advisor, the thesis
- * supervisor and whoever booked as guests, and Google emails the invitations.
+ * goes on the shared calendar with a Google Meet call and the student, their
+ * advisor, the thesis supervisor and whoever booked as guests, and Google
+ * emails the invitations.
  * The adults also get the app's own confirmation email. A class day the
  * school calendar closes, or puts an event on during class, can't be booked,
  * and neither can a day school attendance has the student out for.
@@ -84,6 +85,7 @@ async function meetingsFromIcs(url: string): Promise<ThesisMeeting[]> {
       canceled: e.status === "CANCELLED",
       attendees: e.attendees,
       mentions: emailsIn(e.description),
+      ...(e.conferenceUrl ? { meetUrl: e.conferenceUrl } : {}),
     }))
 }
 
@@ -344,6 +346,7 @@ export async function POST(req: Request) {
       bookedBy,
       replyTo: lower(session.user.email) || undefined,
       eventUrl: event.htmlLink || undefined,
+      meetUrl: event.meetUrl || undefined,
     })
     if (emailError) console.error("[thesis-meetings] confirmation email failed:", emailError)
     return Response.json({ meeting: toMeeting(event), emailed: !emailError })
