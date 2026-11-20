@@ -374,7 +374,7 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
       <div className={PAGE}>
         <Skeleton className="h-7 w-32" />
         <Skeleton className="h-14 w-80 max-w-full" />
-        <div className="grid grid-cols-2 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-24 rounded-xl" />
           ))}
@@ -433,7 +433,7 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
         <Kpi
           icon={Comment01Icon}
           label="Comments written"
@@ -642,8 +642,8 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
 const ROW_BUTTON =
   "hover:bg-muted/60 focus-visible:ring-ring/50 -mx-2 flex w-[calc(100%+1rem)] cursor-pointer gap-3 rounded-lg px-2 text-left transition-colors outline-none focus-visible:ring-[3px]"
 
-/** Both pages are a single centred column. */
-const PAGE = "mx-auto flex w-full max-w-4xl flex-1 flex-col items-stretch gap-6 p-4 md:p-6"
+/** Both pages fill the page's width, as the other staff pages do. */
+const PAGE = "flex flex-1 flex-col gap-6 p-4 md:p-6"
 
 function BackLink() {
   return (

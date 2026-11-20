@@ -537,7 +537,7 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
 
   if (loading) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 md:p-6">
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-4 w-96" />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -551,7 +551,7 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
 
   if (slug && !current) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:p-6">
+      <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
         <h1 className="text-2xl font-bold">{product.rubricName}</h1>
         <p className="text-muted-foreground">This section was not found. It may have been removed.</p>
         <div>
@@ -567,7 +567,7 @@ export function RubricPage({ product, slug: routeSlug }: { product: RubricProduc
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 md:p-6">
+    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div>
         <p className={LABEL}>{current ? `${product.rubricName} · Section Rubric` : product.name}</p>
         <h1 className="mt-1 text-2xl font-bold">
