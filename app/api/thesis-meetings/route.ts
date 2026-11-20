@@ -32,7 +32,7 @@ import {
   thesisCalendarId,
 } from "@/lib/google-calendar.server"
 import { courseTeacherRecipients, sendBookingConfirmation } from "@/lib/thesis-meeting-email.server"
-import { APP_EVENT_TAG, advisorScope, longDate, lower, toMeeting } from "@/lib/thesis-meetings.server"
+import { APP_EVENT_TAG, LOGGED_TAG, advisorScope, longDate, lower, toMeeting } from "@/lib/thesis-meetings.server"
 import { absenceOn } from "@/lib/student-absences"
 import { loadStudentAbsences } from "@/lib/student-absences.server"
 import {
@@ -61,6 +61,11 @@ import {
  * The adults also get the app's own confirmation email. A class day the
  * school calendar closes, or puts an event on during class, can't be booked,
  * and neither can a day school attendance has the student out for.
+ *
+ * POST with `logged: true` records a meeting that already happened instead:
+ * any day in the last year or so, at any time. It goes on the calendar with
+ * only the student and their thesis advisor on it (they are who met), nobody
+ * is emailed, there is no Meet call, and the class-day rules don't apply.
  */
 export const dynamic = "force-dynamic"
 
@@ -216,15 +221,30 @@ export async function POST(req: Request) {
   const studentId = typeof body?.studentId === "string" ? body.studentId : ""
   const date = typeof body?.date === "string" ? body.date : ""
   const startMinutes = Number(body?.startMinutes)
-  if (!studentId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !bookingStartTimes().includes(startMinutes)) {
-    return refuse("Choose a student, a class day and a time.", 400)
+  /** A meeting that already happened, written down after the fact. */
+  const logged = body?.logged === true
+  const timeOk = logged
+    ? Number.isInteger(startMinutes) && startMinutes >= 0 && startMinutes <= 24 * 60 - MEETING_MINUTES
+    : bookingStartTimes().includes(startMinutes)
+  if (!studentId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !timeOk) {
+    return refuse(logged ? "Choose a student, a date and a time." : "Choose a student, a class day and a time.", 400)
   }
-  if (!CLASS_MEETING.weekdays.includes(weekdayOf(date))) {
+  if (!logged && !CLASS_MEETING.weekdays.includes(weekdayOf(date))) {
     return refuse("Thesis meetings happen during class, on Thursdays and Fridays.", 400)
   }
   const start = schoolInstant(date, startMinutes)
   const end = start + MEETING_MINUTES * 60_000
-  if (!(start > Date.now())) return refuse("That time has already passed.", 400)
+  if (!Number.isFinite(start)) return refuse("That isn’t a date on the calendar.", 400)
+  if (logged) {
+    if (start > Date.now()) {
+      return refuse("That time hasn’t come yet. Book it as a meeting instead.", 400)
+    }
+    if (start < Date.now() - HISTORY_MS) {
+      return refuse("That is more than a year back, further than the meetings list reads.", 400)
+    }
+  } else if (!(start > Date.now())) {
+    return refuse("That time has already passed.", 400)
+  }
 
   const advisorId = Number(session.user.advisors_id)
   const [students, scope, blocked] = await Promise.all([
@@ -237,7 +257,8 @@ export async function POST(req: Request) {
           thesisStudentIds: null as Set<string> | null,
         }))
       : advisorScope(advisorId),
-    blockedOn(date),
+    // What the school calendar says about a day only matters ahead of time.
+    logged ? null : blockedOn(date),
   ])
   const student = students.find((s) => String(s.id) === studentId)
   if (!student) return refuse("That student isn’t on the roster.", 404)
@@ -249,7 +270,9 @@ export async function POST(req: Request) {
   if (blocked) return refuse(blocked, 409)
   // A day the school already knows the student is out for. Part of a day
   // doesn't rule it out, and attendance that can't be read blocks nothing.
-  const away = absenceOn(await loadStudentAbsences([student], { through: date }), studentId, date)
+  const away = logged
+    ? null
+    : absenceOn(await loadStudentAbsences([student], { through: date }), studentId, date)
   if (away && !away.partial) {
     return refuse(
       `${studentName(student)} is out of school on ${longDate(date)}, according to school attendance. Pick another day.`,
@@ -290,20 +313,23 @@ export async function POST(req: Request) {
     tell(myEmail, myName)
     withNames = [scope.me ? advisorName(scope.me) : session.user.name ?? "their advisor"]
   }
-  const [staffList, overrides, courseTeachers] = await Promise.all([
-    fetchStaff(),
-    fetchStaffRoleOverrides(),
-    courseTeacherRecipients(),
-  ])
-  for (const t of staffList) {
-    if (effectiveStaffRole(t, overrides) === "supervisor") {
-      invite(t.email, staffName(t))
-      tell(t.email, staffName(t))
+  // A logged meeting lists only who met: the student and their advisor.
+  if (!logged) {
+    const [staffList, overrides, courseTeachers] = await Promise.all([
+      fetchStaff(),
+      fetchStaffRoleOverrides(),
+      courseTeacherRecipients(),
+    ])
+    for (const t of staffList) {
+      if (effectiveStaffRole(t, overrides) === "supervisor") {
+        invite(t.email, staffName(t))
+        tell(t.email, staffName(t))
+      }
     }
+    for (const t of courseTeachers) tell(t.email, t.name)
+    if (staff) invite(session.user.email, session.user.name)
+    tell(session.user.email, session.user.name)
   }
-  for (const t of courseTeachers) tell(t.email, t.name)
-  if (staff) invite(session.user.email, session.user.name)
-  tell(session.user.email, session.user.name)
 
   const bookedBy = session.user.name || session.user.email || "SailFuture Academy staff"
   try {
@@ -316,7 +342,35 @@ export async function POST(req: Request) {
         e.attendees.some((a) => a.email === studentEmail && a.responseStatus !== "declined")
     )
     if (clash) {
-      return refuse(`${studentName(student)} already has a meeting at that time. Pick another time.`, 409)
+      return refuse(
+        logged
+          ? `${studentName(student)} already has a meeting on the calendar at that time.`
+          : `${studentName(student)} already has a meeting at that time. Pick another time.`,
+        409
+      )
+    }
+
+    if (logged) {
+      const event = await createThesisEvent({
+        summary: `Thesis meeting: ${studentName(student)}`,
+        description: [
+          `Business Thesis meeting with ${studentName(student)}${withNames.length ? ` and ${withNames.join(", ")}` : ""}.`,
+          `${longDate(date)}, ${formatSlot(startMinutes)} Eastern.`,
+          `Logged after it happened by ${bookedBy} in the SailFuture Academy Senior Dashboard.`,
+        ].join("\n"),
+        location: "SailFuture Academy",
+        start,
+        end,
+        guests: [...guests.values()],
+        tags: {
+          seniorDashboard: APP_EVENT_TAG,
+          studentId,
+          bookedBy: lower(session.user.email),
+          logged: LOGGED_TAG,
+        },
+        record: true,
+      })
+      return Response.json({ meeting: toMeeting(event), emailed: false })
     }
 
     const event = await createThesisEvent({
@@ -355,6 +409,9 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("[thesis-meetings] booking failed:", err)
     const detail = err instanceof GoogleCalendarError && staff ? ` (${err.message})` : ""
-    return refuse(`The meeting couldn’t be added to the calendar${detail}. Nothing was booked.`, 502)
+    return refuse(
+      `The meeting couldn’t be added to the calendar${detail}. Nothing was ${logged ? "saved" : "booked"}.`,
+      502
+    )
   }
 }

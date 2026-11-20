@@ -306,6 +306,9 @@ export interface NewThesisEvent {
   guests: { email: string; name?: string }[]
   /** Kept on the event for the app only; guests never see these. */
   tags: Record<string, string>
+  /** A record of a meeting that already happened: nobody is emailed, there
+      is no Meet call, and each guest is marked as having accepted. */
+  record?: boolean
 }
 
 /**
@@ -315,6 +318,9 @@ export interface NewThesisEvent {
  * Should Google refuse the Meet call itself (a calendar or account that isn't
  * allowed to make them), the event is still booked, without one: `meetUrl`
  * comes back "" and the caller says so.
+ *
+ * With `record`, the event is only a record of a meeting already held: it is
+ * saved quietly, with no invitations and no Meet call.
  */
 export async function createThesisEvent(input: NewThesisEvent): Promise<CalendarEvent> {
   const body = {
@@ -323,7 +329,11 @@ export async function createThesisEvent(input: NewThesisEvent): Promise<Calendar
     location: input.location,
     start: { dateTime: new Date(input.start).toISOString(), timeZone: TIME_ZONE },
     end: { dateTime: new Date(input.end).toISOString(), timeZone: TIME_ZONE },
-    attendees: input.guests.map((g) => ({ email: g.email, ...(g.name ? { displayName: g.name } : {}) })),
+    attendees: input.guests.map((g) => ({
+      email: g.email,
+      ...(g.name ? { displayName: g.name } : {}),
+      ...(input.record ? { responseStatus: "accepted" } : {}),
+    })),
     guestsCanInviteOthers: false,
     guestsCanModify: false,
     extendedProperties: { private: input.tags },
@@ -332,7 +342,7 @@ export async function createThesisEvent(input: NewThesisEvent): Promise<Calendar
     calendarFetch("/events", {
       method: "POST",
       // Google ignores `conferenceData` unless the version says to read it.
-      query: { sendUpdates: "all", ...(withMeet ? { conferenceDataVersion: "1" } : {}) },
+      query: { sendUpdates: input.record ? "none" : "all", ...(withMeet ? { conferenceDataVersion: "1" } : {}) },
       body: JSON.stringify(
         withMeet
           ? {
@@ -345,9 +355,9 @@ export async function createThesisEvent(input: NewThesisEvent): Promise<Calendar
       ),
     })
 
-  let res = await insert(true)
-  let askedForMeet = true
-  if (res.status === 400) {
+  let askedForMeet = !input.record
+  let res = await insert(askedForMeet)
+  if (askedForMeet && res.status === 400) {
     // Nothing was created. Only a refusal of the call itself is worth a
     // second try without it; any other bad request is the caller's to hear.
     const refused = await failure("create", res)
@@ -447,11 +457,12 @@ export async function tagThesisEvent(eventId: string, tags: Record<string, strin
   if (!res.ok) throw await failure("update", res)
 }
 
-/** Removes the event; Google emails the guests. Already gone counts as done. */
-export async function deleteThesisEvent(eventId: string): Promise<void> {
+/** Removes the event; Google emails the guests unless `notify` is false.
+    Already gone counts as done. */
+export async function deleteThesisEvent(eventId: string, { notify = true } = {}): Promise<void> {
   const res = await calendarFetch(`/events/${encodeURIComponent(eventId)}`, {
     method: "DELETE",
-    query: { sendUpdates: "all" },
+    query: { sendUpdates: notify ? "all" : "none" },
   })
   if (!res.ok && res.status !== 404 && res.status !== 410) throw await failure("delete", res)
 }

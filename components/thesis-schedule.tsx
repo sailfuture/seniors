@@ -10,6 +10,7 @@ import {
   ArrowDown01Icon,
   Calendar03Icon,
   CalendarAdd01Icon,
+  Clock01Icon,
   CalendarDownload01Icon,
   Copy01Icon,
   Delete02Icon,
@@ -162,6 +163,7 @@ export function ThesisSchedule({
   const [day, setDay] = useState<MeetingSession | null>(null)
   const [openStudentId, setOpenStudentId] = useState<string | null>(null)
   const [booking, setBooking] = useState<BookingRequest | null>(null)
+  const [logging, setLogging] = useState<{ studentId?: string } | null>(null)
   const calendarQuery = useSchoolCalendarData()
   const meetingsQuery = useThesisMeetings()
   const advisorsQuery = useAdvisors()
@@ -225,6 +227,21 @@ export function ThesisSchedule({
     [studentsQuery.data]
   )
 
+  // Names and faces for a meeting's guests: the roster and the advisors.
+  const people = useMemo(() => {
+    const map = new Map<string, MeetingPerson>()
+    for (const a of advisorsQuery.data ?? []) {
+      const email = (a.email ?? "").trim().toLowerCase()
+      if (email) map.set(email, { name: advisorName(a), role: "Thesis advisor", image: a.profileImage })
+    }
+    for (const [email, s] of studentsByEmail) {
+      if (email) {
+        map.set(email, { name: studentName(s), role: "Student", image: s.profileImage, studentId: String(s.id) })
+      }
+    }
+    return map
+  }, [advisorsQuery.data, studentsByEmail])
+
   // Everything on today's date, whether it's still to come, under way or
   // already over, and then every later booking.
   const upcoming = useMemo(
@@ -269,14 +286,6 @@ export function ThesisSchedule({
 
   return (
     <div className="flex flex-col gap-6">
-      {showClassSchedule && (
-        <ScheduleCard
-          calendar={calendarQuery.data}
-          status={calendarQuery.status}
-          onSelectDay={setDay}
-          termPicker={termPicker}
-        />
-      )}
       <DaySheet
         day={day}
         onClose={() => setDay(null)}
@@ -292,6 +301,7 @@ export function ThesisSchedule({
       <UpcomingCard
         forAdvisor={forAdvisor}
         onBook={canBook === null ? undefined : () => setBooking({})}
+        onLog={canBook === true ? () => setLogging({}) : undefined}
         subscribe={data?.subscribe}
         meetings={upcoming}
         now={now}
@@ -303,15 +313,33 @@ export function ThesisSchedule({
         failed={Boolean(data && data.configured && !data.ok)}
         onOpenStudent={setOpenStudentId}
       />
+      {/* What's on today and next leads; the class calendar follows it. */}
+      {showClassSchedule && (
+        <ScheduleCard
+          calendar={calendarQuery.data}
+          status={calendarQuery.status}
+          onSelectDay={setDay}
+          termPicker={termPicker}
+        />
+      )}
       <StudentMeetingsSheet
         row={rows?.find((r) => String(r.student.id) === openStudentId) ?? null}
         meetings={meetings}
+        people={people}
         now={now}
         forAdvisor={forAdvisor}
         viewerEmail={viewerEmail}
         canCancel={canBook === true}
         onBook={canBook === null ? undefined : (studentId) => setBooking({ studentId })}
+        onLog={canBook === true ? (studentId) => setLogging({ studentId }) : undefined}
         onClose={() => setOpenStudentId(null)}
+      />
+      <LogMeetingDialog
+        request={logging}
+        onClose={() => setLogging(null)}
+        forAdvisor={forAdvisor}
+        rows={rows}
+        meetings={meetings}
       />
       <BookingDialog
         request={booking}
@@ -526,6 +554,16 @@ function BookButton({
     <Button size={size} className={cn("gap-2", className)} disabled={!onBook} onClick={onBook}>
       <HugeiconsIcon icon={CalendarAdd01Icon} strokeWidth={2} className="size-4" />
       {label}
+    </Button>
+  )
+}
+
+/** "Log a past meeting": opens the dialog for one that already happened. */
+function LogButton({ onLog, size }: { onLog: () => void; size?: "sm" }) {
+  return (
+    <Button size={size} variant="outline" className="gap-2" onClick={onLog}>
+      <HugeiconsIcon icon={Clock01Icon} strokeWidth={2} className="size-4" />
+      Log a past meeting
     </Button>
   )
 }
@@ -1033,12 +1071,6 @@ function BookingForm({
   const [error, setError] = useState<string | null>(null)
 
   const row = rows.find((r) => String(r.student.id) === studentId) ?? null
-  const students = useMemo(
-    () => rows.map((r) => r.student).sort((a, b) => studentName(a).localeCompare(studentName(b))),
-    [rows]
-  )
-  const advisorsOf = useMemo(() => new Map(rows.map((r) => [String(r.student.id), r.advisors])), [rows])
-  const pickerAnchor = useComboboxAnchor()
   const day = days.find((d) => d.date === date) ?? null
   // A day opened from the schedule may not be in the list (the calendar is
   // still loading); it is still offered.
@@ -1134,52 +1166,15 @@ function BookingForm({
     <form onSubmit={submit} className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
         <Label htmlFor="booking-student">Student</Label>
-        {rows.length === 1 && row ? (
-          <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
-            <StudentPhoto student={row.student} className="size-7" />
-            <span className="text-sm font-medium">{studentName(row.student)}</span>
-          </div>
-        ) : (
-          <Combobox
-            items={students}
-            value={row?.student ?? null}
-            onValueChange={(s) => setStudentId(s ? String((s as RosterStudent).id) : "")}
-            itemToStringLabel={(s: RosterStudent) => studentName(s)}
-            disabled={saving}
-          >
-            <div ref={pickerAnchor}>
-              <ComboboxInput id="booking-student" placeholder="Search students…" className="w-full" disabled={saving}>
-                {/* The chosen student's photo sits in the field. */}
-                {row && (
-                  <InputGroupAddon align="inline-start" className="pl-1.5">
-                    <StudentPhoto student={row.student} className="size-6" />
-                  </InputGroupAddon>
-                )}
-              </ComboboxInput>
-            </div>
-            <ComboboxContent anchor={pickerAnchor} container={container}>
-              <ComboboxEmpty className="py-6">No students found.</ComboboxEmpty>
-              <ComboboxList className="max-h-[min(20rem,calc(var(--available-height)-1rem))]">
-                {(s: RosterStudent) => {
-                  const advisors = advisorsOf.get(String(s.id)) ?? []
-                  return (
-                    <ComboboxItem key={s.id} value={s} className="cursor-pointer gap-3 py-1.5 pr-9 pl-2">
-                      <StudentPhoto student={s} className="size-8" />
-                      <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                        <span className="truncate font-medium">{studentName(s)}</span>
-                        {!forAdvisor && (
-                          <span className="text-muted-foreground truncate text-xs">
-                            {advisors.length ? advisors.map(advisorName).join(", ") : "No thesis advisor yet"}
-                          </span>
-                        )}
-                      </span>
-                    </ComboboxItem>
-                  )
-                }}
-              </ComboboxList>
-            </ComboboxContent>
-          </Combobox>
-        )}
+        <StudentField
+          id="booking-student"
+          rows={rows}
+          row={row}
+          onChange={setStudentId}
+          container={container}
+          forAdvisor={forAdvisor}
+          disabled={saving}
+        />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -1247,6 +1242,307 @@ function BookingForm({
         </Button>
         <Button type="submit" disabled={!row || !date || startMinutes === null || saving || out}>
           {saving ? "Booking…" : "Book meeting"}
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+}
+
+/**
+ * Which student a meeting is with: a searchable list, or just the student
+ * when there is only one to choose from.
+ */
+function StudentField({
+  id,
+  rows,
+  row,
+  onChange,
+  container,
+  forAdvisor,
+  disabled,
+}: {
+  id: string
+  rows: StudentRow[]
+  row: StudentRow | null
+  /** The chosen student's id, or "" when the field is cleared. */
+  onChange: (studentId: string) => void
+  /** The dialog the list opens inside. */
+  container: RefObject<HTMLDivElement | null>
+  forAdvisor: boolean
+  disabled: boolean
+}) {
+  const students = useMemo(
+    () => rows.map((r) => r.student).sort((a, b) => studentName(a).localeCompare(studentName(b))),
+    [rows]
+  )
+  const advisorsOf = useMemo(() => new Map(rows.map((r) => [String(r.student.id), r.advisors])), [rows])
+  const pickerAnchor = useComboboxAnchor()
+  if (rows.length === 1 && row) {
+    return (
+      <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
+        <StudentPhoto student={row.student} className="size-7" />
+        <span className="text-sm font-medium">{studentName(row.student)}</span>
+      </div>
+    )
+  }
+  return (
+    <Combobox
+      items={students}
+      value={row?.student ?? null}
+      onValueChange={(s) => onChange(s ? String((s as RosterStudent).id) : "")}
+      itemToStringLabel={(s: RosterStudent) => studentName(s)}
+      disabled={disabled}
+    >
+      <div ref={pickerAnchor}>
+        <ComboboxInput id={id} placeholder="Search students…" className="w-full" disabled={disabled}>
+          {/* The chosen student's photo sits in the field. */}
+          {row && (
+            <InputGroupAddon align="inline-start" className="pl-1.5">
+              <StudentPhoto student={row.student} className="size-6" />
+            </InputGroupAddon>
+          )}
+        </ComboboxInput>
+      </div>
+      <ComboboxContent anchor={pickerAnchor} container={container}>
+        <ComboboxEmpty className="py-6">No students found.</ComboboxEmpty>
+        <ComboboxList className="max-h-[min(20rem,calc(var(--available-height)-1rem))]">
+          {(s: RosterStudent) => {
+            const advisors = advisorsOf.get(String(s.id)) ?? []
+            return (
+              <ComboboxItem key={s.id} value={s} className="cursor-pointer gap-3 py-1.5 pr-9 pl-2">
+                <StudentPhoto student={s} className="size-8" />
+                <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                  <span className="truncate font-medium">{studentName(s)}</span>
+                  {!forAdvisor && (
+                    <span className="text-muted-foreground truncate text-xs">
+                      {advisors.length ? advisors.map(advisorName).join(", ") : "No thesis advisor yet"}
+                    </span>
+                  )}
+                </span>
+              </ComboboxItem>
+            )
+          }}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  )
+}
+
+/** "13:05" for a time field, from minutes after midnight, and back. */
+const toTimeValue = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`
+const fromTimeValue = (value: string): number | null => {
+  const m = value.match(/^(\d{2}):(\d{2})/)
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null
+}
+
+/** How far back a meeting can be logged: what the meetings list reads. */
+const LOG_BACK_DAYS = 365
+
+/**
+ * Logging a meeting that already happened: one student, the date and the
+ * time it started. It goes on the shared calendar as a record, with the
+ * student and their thesis advisor on it, and nobody is emailed.
+ */
+function LogMeetingDialog({
+  request,
+  onClose,
+  forAdvisor,
+  rows,
+  meetings,
+}: {
+  /** What to open on; null while closed. */
+  request: { studentId?: string } | null
+  onClose: () => void
+  forAdvisor: boolean
+  /** Null while the roster is still loading. */
+  rows: StudentRow[] | null
+  meetings: ThesisMeeting[]
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  return (
+    <Dialog open={request !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent ref={dialogRef} className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+        <DialogHeader className="pr-8">
+          <DialogTitle>Log a past meeting</DialogTitle>
+          <DialogDescription>
+            For a thesis meeting that already happened and isn’t on the calendar. It’s added as a record, and no
+            one is emailed.
+          </DialogDescription>
+        </DialogHeader>
+        {request &&
+          (rows === null ? (
+            <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">Loading students…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
+              {forAdvisor ? "No Business Thesis students are assigned to you yet." : "No seniors on the roster yet."}
+            </p>
+          ) : (
+            <LogMeetingForm
+              request={request}
+              onClose={onClose}
+              container={dialogRef}
+              forAdvisor={forAdvisor}
+              rows={rows}
+              meetings={meetings}
+            />
+          ))}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function LogMeetingForm({
+  request,
+  onClose,
+  container,
+  forAdvisor,
+  rows,
+  meetings,
+}: {
+  request: { studentId?: string }
+  onClose: () => void
+  container: RefObject<HTMLDivElement | null>
+  forAdvisor: boolean
+  rows: StudentRow[]
+  meetings: ThesisMeeting[]
+}) {
+  const queryClient = useQueryClient()
+  const [now] = useState(() => Date.now())
+  const [today] = useState(() => schoolNow().date)
+  const [studentId, setStudentId] = useState(
+    () => request.studentId ?? (rows.length === 1 ? String(rows[0].student.id) : "")
+  )
+  const [date, setDate] = useState("")
+  // Meetings are held in class, so that is where the time starts.
+  const [time, setTime] = useState(() => toTimeValue(CLASS_MEETING.startMinutes))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const row = rows.find((r) => String(r.student.id) === studentId) ?? null
+  const first = row?.student.firstName || "the student"
+  const startMinutes = fromTimeValue(time)
+  const earliest = addDays(today, -LOG_BACK_DAYS)
+  const start = date && startMinutes !== null ? schoolInstant(date, startMinutes) : null
+  const end = start === null ? null : start + MEETING_MINUTES * 60_000
+
+  // What stops this one being saved, said before the server has to.
+  const problem =
+    start === null || end === null || !date
+      ? null
+      : date < earliest
+        ? "That is more than a year back, further than the meetings list reads."
+        : start > now
+          ? "That time hasn’t come yet. Use “Book a thesis meeting” for a meeting still to come."
+          : startMinutes !== null && startMinutes > 24 * 60 - MEETING_MINUTES
+            ? "Pick a start time before 11:00 pm."
+            : row &&
+                meetings.some(
+                  (m) =>
+                    !m.canceled && overlaps(m.start, m.end, start, end) && meetingIncludes(m, row.student.studentEmail)
+                )
+              ? `${first} already has a meeting on the calendar at that time.`
+              : null
+
+  const who = !row
+    ? null
+    : forAdvisor
+      ? `It’s saved with ${first} and you on it. No invitations go out.`
+      : row.advisors.length
+        ? `It’s saved with ${first} and ${row.advisors.map(advisorName).join(" and ")} on it, and counts as a meeting held for both. No invitations go out.`
+        : `${first} has no thesis advisor yet, so it’s saved with only ${first} on it. No invitations go out.`
+
+  const ready = Boolean(row && date && startMinutes !== null && !problem)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!row || !date || startMinutes === null || problem || saving) return
+    setSaving(true)
+    setError(null)
+    const result = await bookThesisMeeting({ studentId, date, startMinutes, logged: true })
+    if (!result.ok) {
+      setSaving(false)
+      setError(result.error)
+      return
+    }
+    queryClient.setQueryData<ThesisMeetingsResponse>(["thesis-meetings"], (old) =>
+      old?.ok ? { ...old, meetings: [...old.meetings, result.meeting].sort((a, b) => a.start - b.start) } : old
+    )
+    void queryClient.invalidateQueries({ queryKey: ["thesis-meetings"] })
+    toast.success(`Logged a meeting with ${studentName(row.student)}`, {
+      description: `${formatCalendarDate(date)}, ${formatSlot(startMinutes)}. It’s on the shared calendar, and no one was emailed.`,
+    })
+    onClose()
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="log-student">Student</Label>
+        <StudentField
+          id="log-student"
+          rows={rows}
+          row={row}
+          onChange={setStudentId}
+          container={container}
+          forAdvisor={forAdvisor}
+          disabled={saving}
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label htmlFor="log-date">Date</Label>
+            <Input
+              id="log-date"
+              type="date"
+              required
+              value={date}
+              min={earliest}
+              max={today}
+              onChange={(e) => setDate(e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label htmlFor="log-time">Started at</Label>
+            <Input
+              id="log-time"
+              type="time"
+              required
+              step={300}
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              disabled={saving}
+            />
+          </div>
+        </div>
+        {problem ? (
+          <p role="alert" className="text-destructive text-xs font-medium">
+            {problem}
+          </p>
+        ) : (
+          <p className="text-muted-foreground text-xs">
+            Eastern time. Every meeting is recorded as an hour
+            {startMinutes !== null && date ? `: ${formatSlot(startMinutes)}.` : "."}
+          </p>
+        )}
+      </div>
+
+      {who && <p className="text-muted-foreground text-sm">{who}</p>}
+      {error && (
+        <p role="alert" className="text-destructive text-sm">
+          {error}
+        </p>
+      )}
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+          Not now
+        </Button>
+        <Button type="submit" disabled={!ready || saving}>
+          {saving ? "Saving…" : "Log meeting"}
         </Button>
       </DialogFooter>
     </form>
@@ -1444,6 +1740,7 @@ function DaySheet({
 function UpcomingCard({
   forAdvisor,
   onBook,
+  onLog,
   subscribe,
   meetings,
   now,
@@ -1457,6 +1754,9 @@ function UpcomingCard({
 }: {
   forAdvisor: boolean
   onBook: (() => void) | undefined
+  /** Opens the dialog for a meeting that already happened; undefined until
+      the calendar can be written to. */
+  onLog: (() => void) | undefined
   /** Links for adding the shared calendar to your own, when there are any. */
   subscribe: CalendarSubscription | undefined
   /** Today's meetings and every later one, soonest first. */
@@ -1486,6 +1786,7 @@ function UpcomingCard({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {subscribe && <SubscribeButton links={subscribe} />}
+            {onLog && <LogButton onLog={onLog} />}
             <BookButton onBook={onBook} />
           </div>
         </div>
@@ -1628,6 +1929,15 @@ function meetingState(m: ThesisMeeting, studentEmail: string, now: number): Meet
   return m.end > now ? "Now" : "Held"
 }
 
+/** Marks a meeting written down after it happened, not booked ahead. */
+function LoggedNote() {
+  return (
+    <span className="text-muted-foreground text-xs" title="Added after it happened, not booked ahead of time.">
+      Logged afterward
+    </span>
+  )
+}
+
 /** A meeting that can still be joined: to come, or under way. */
 const stillOn = (state: MeetingState) => state === "Upcoming" || state === "Now"
 
@@ -1658,27 +1968,34 @@ function MeetingStateBadge({ state }: { state: MeetingState }) {
 }
 
 /**
- * One student's thesis meetings: a row per meeting on the shared calendar
- * (upcoming first, then past), booking another, and links into their thesis.
+ * One student's thesis meetings: a row per meeting on the shared calendar,
+ * oldest at the top and the latest at the bottom, booking another, and links
+ * into their thesis. A row opens that meeting's details.
  */
 function StudentMeetingsSheet({
   row,
   meetings,
+  people,
   now,
   forAdvisor,
   viewerEmail,
   canCancel,
   onBook,
+  onLog,
   onClose,
 }: {
   row: StudentRow | null
   meetings: ThesisMeeting[]
+  /** Who a meeting's guests are, for its details. */
+  people: Map<string, MeetingPerson>
   now: number
   forAdvisor: boolean
   /** An advisor's own email: they cancel only meetings they are on. Null for staff. */
   viewerEmail: string | null
   canCancel: boolean
   onBook: ((studentId: string) => void) | undefined
+  /** Logs a meeting with this student that already happened. */
+  onLog: ((studentId: string) => void) | undefined
   onClose: () => void
 }) {
   const student = row?.student
@@ -1689,22 +2006,34 @@ function StudentMeetingsSheet({
       (m) =>
         m.mentions.includes(email) || m.attendees.some((a) => a.email === email)
     )
-    // One under way leads the list, with the ones still to come.
-    const upcoming = mine.filter((m) => m.end > now).sort((a, b) => a.start - b.start)
-    const past = mine.filter((m) => m.end <= now).sort((a, b) => b.start - a.start)
-    return [...upcoming, ...past]
-  }, [meetings, email, now])
+    // In date order: the oldest at the top, the latest booking at the bottom.
+    return mine.sort((a, b) => a.start - b.start)
+  }, [meetings, email])
   const id = student ? String(student.id) : ""
   const [canceling, setCanceling] = useState<ThesisMeeting | null>(null)
+  // The meeting whose details are open over this sheet.
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const detail = (row !== null && detailId !== null && list.find((m) => m.id === detailId)) || null
+  // A meeting still to come can be canceled; one that already happened stays
+  // as the record, unless it was logged here and can be taken back off.
   const cancelable = (m: ThesisMeeting, state: MeetingState) =>
-    canCancel && state === "Upcoming" && (viewerEmail === null || meetingIncludes(m, viewerEmail))
+    canCancel &&
+    (state === "Upcoming" || (m.logged === true && state !== "Canceled")) &&
+    (viewerEmail === null || meetingIncludes(m, viewerEmail))
   const anyCancelable = list.some((m) => cancelable(m, meetingState(m, email, now)))
   // A video link only matters for a meeting to come or under way.
   const joinable = (m: ThesisMeeting, state: MeetingState) => (stillOn(state) && m.meetUrl ? m.meetUrl : null)
   const anyJoinable = list.some((m) => joinable(m, meetingState(m, email, now)))
 
   return (
-    <Sheet open={row !== null} onOpenChange={(o) => !o && onClose()}>
+    <Sheet
+      open={row !== null}
+      onOpenChange={(o) => {
+        if (o) return
+        setDetailId(null)
+        onClose()
+      }}
+    >
       <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-2xl">
         <SheetHeader className="shrink-0 gap-3 border-b px-6 py-5 pr-12">
           <div className="flex items-center gap-3">
@@ -1728,6 +2057,7 @@ function StudentMeetingsSheet({
           {student && (
             <div className="flex flex-wrap gap-2">
               <BookButton size="sm" label="Book a meeting" onBook={onBook && (() => onBook(id))} />
+              {onLog && <LogButton size="sm" onLog={() => onLog(id)} />}
               <Button asChild size="sm" variant="outline">
                 <Link href={`/admin/business-thesis/${id}`}>Open Business Thesis</Link>
               </Button>
@@ -1763,14 +2093,27 @@ function StudentMeetingsSheet({
                   {list.map((mt) => {
                     const state = meetingState(mt, email, now)
                     const meetUrl = joinable(mt, state)
+                    // The buttons in a row act on their own, without opening it.
+                    const own = {
+                      onClick: (e: React.MouseEvent) => e.stopPropagation(),
+                      onKeyDown: (e: React.KeyboardEvent) => e.stopPropagation(),
+                    }
                     return (
-                      <TableRow key={mt.id}>
+                      <TableRow
+                        key={mt.id}
+                        {...rowButtonProps(() => setDetailId(mt.id))}
+                        aria-haspopup="dialog"
+                        aria-label={`Meeting on ${formatDay(mt.start)} at ${clock(mt.start)}: details`}
+                      >
                         <TableCell className="pl-4 font-medium">{formatDay(mt.start)}</TableCell>
                         <TableCell className="text-muted-foreground tabular-nums">
                           {clock(mt.start)} – {clock(mt.end)}
                         </TableCell>
                         <TableCell className="pr-4">
-                          <MeetingStateBadge state={state} />
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <MeetingStateBadge state={state} />
+                            {mt.logged && <LoggedNote />}
+                          </span>
                         </TableCell>
                         {anyJoinable && (
                           <TableCell className="pr-4">
@@ -1781,6 +2124,7 @@ function StudentMeetingsSheet({
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   aria-label={`Join the Google Meet call on ${formatDay(mt.start)}`}
+                                  {...own}
                                 >
                                   Join Meet
                                 </a>
@@ -1795,9 +2139,13 @@ function StudentMeetingsSheet({
                                 size="icon-sm"
                                 variant="ghost"
                                 className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                aria-label={`Cancel the meeting on ${formatDay(mt.start)}`}
-                                title="Cancel meeting"
-                                onClick={() => setCanceling(mt)}
+                                aria-label={`${mt.logged ? "Remove" : "Cancel"} the meeting on ${formatDay(mt.start)}`}
+                                title={mt.logged ? "Remove logged meeting" : "Cancel meeting"}
+                                onKeyDown={own.onKeyDown}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setCanceling(mt)
+                                }}
                               >
                                 <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
                               </Button>
@@ -1817,6 +2165,7 @@ function StudentMeetingsSheet({
           studentName={student ? studentName(student) : "this student"}
           onClose={() => setCanceling(null)}
         />
+        <MeetingDetailsSheet meeting={detail} now={now} people={people} onClose={() => setDetailId(null)} />
       </SheetContent>
     </Sheet>
   )
@@ -1834,6 +2183,8 @@ function CancelMeetingDialog({
 }) {
   const queryClient = useQueryClient()
   const [working, setWorking] = useState(false)
+  /** Logged after the fact: taking it off tells no one. */
+  const logged = meeting?.logged === true
 
   async function confirm(e: React.MouseEvent) {
     e.preventDefault()
@@ -1849,7 +2200,7 @@ function CancelMeetingDialog({
       old?.ok ? { ...old, meetings: old.meetings.filter((m) => m.id !== meeting.id) } : old
     )
     void queryClient.invalidateQueries({ queryKey: ["thesis-meetings"] })
-    toast.success("Meeting canceled")
+    toast.success(logged ? "Logged meeting removed" : "Meeting canceled")
     onClose()
   }
 
@@ -1860,15 +2211,16 @@ function CancelMeetingDialog({
           <AlertDialogMedia className="bg-destructive/10 text-destructive">
             <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} />
           </AlertDialogMedia>
-          <AlertDialogTitle>Cancel this meeting?</AlertDialogTitle>
+          <AlertDialogTitle>{logged ? "Remove this logged meeting?" : "Cancel this meeting?"}</AlertDialogTitle>
           <AlertDialogDescription>
             {meeting ? (
               <>
                 <span className="text-foreground font-medium">
                   {formatDay(meeting.start)}, {clock(meeting.start)} – {clock(meeting.end)} with {name}.
                 </span>{" "}
-                It comes off the shared calendar and Google emails everyone invited that it’s canceled. This can’t be
-                undone.
+                {logged
+                  ? "It comes off the shared calendar and no longer counts as a meeting held. No one is emailed. This can’t be undone, but you can log it again."
+                  : "It comes off the shared calendar and Google emails everyone invited that it’s canceled. This can’t be undone."}
               </>
             ) : (
               ""
@@ -1883,7 +2235,7 @@ function CancelMeetingDialog({
             // "!" because the button's own navy background otherwise wins.
             className="bg-destructive! hover:bg-destructive/90! text-white!"
           >
-            {working ? "Canceling…" : "Cancel meeting"}
+            {working ? (logged ? "Removing…" : "Canceling…") : logged ? "Remove meeting" : "Cancel meeting"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -2016,8 +2368,9 @@ export function MeetingDetailsSheet({
                 {clock(m.start)} – {clock(m.end)} <span className="text-muted-foreground font-normal">Eastern</span>
               </dd>
               <dt className="text-muted-foreground">Status</dt>
-              <dd>
+              <dd className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <MeetingStateBadge state={state} />
+                {m.logged && <LoggedNote />}
               </dd>
               <dt className="text-muted-foreground">Video call</dt>
               <dd className="min-w-0">

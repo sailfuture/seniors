@@ -6,6 +6,9 @@ import type { ThesisMeeting } from "@/lib/thesis-meetings"
 /** Marks an event the app booked (`extendedProperties.private.seniorDashboard`). */
 export const APP_EVENT_TAG = "thesis-meeting"
 
+/** Marks a meeting logged after it happened (`extendedProperties.private.logged`). */
+export const LOGGED_TAG = "1"
+
 const RESPONSE: Record<string, string> = {
   accepted: "ACCEPTED",
   declined: "DECLINED",
@@ -29,6 +32,7 @@ export function toMeeting(e: CalendarEvent): ThesisMeeting {
     })),
     mentions: emailsIn(e.description),
     ...(e.meetUrl ? { meetUrl: e.meetUrl } : {}),
+    ...(e.tags.logged === LOGGED_TAG ? { logged: true } : {}),
   }
 }
 

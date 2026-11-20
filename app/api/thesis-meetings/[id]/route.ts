@@ -7,13 +7,15 @@ import {
   getThesisEvent,
   isThesisCalendarConfigured,
 } from "@/lib/google-calendar.server"
-import { advisorScope, lower } from "@/lib/thesis-meetings.server"
+import { LOGGED_TAG, advisorScope, lower } from "@/lib/thesis-meetings.server"
 
 /**
  * Cancels an upcoming thesis meeting: the event leaves the shared calendar
  * and Google emails the guests. Staff can cancel any upcoming meeting; an
  * advisor only one of their own (they booked it or are a guest) with a
- * student they advise. Meetings that already happened stay as the record.
+ * student they advise. Meetings that already happened stay as the record,
+ * except one that was logged in the app after the fact: that can be taken
+ * back off (a wrong date, the wrong student), and nobody is emailed.
  */
 export const dynamic = "force-dynamic"
 
@@ -37,7 +39,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   try {
     const event = await getThesisEvent(id)
     if (!event) return Response.json({ ok: true })
-    if (event.start <= Date.now()) return refuse("That meeting has already happened.", 409)
+    const logged = event.tags.logged === LOGGED_TAG
+    if (event.start <= Date.now() && !logged) return refuse("That meeting has already happened.", 409)
 
     if (!staff) {
       const [{ me, thesisStudentIds }, students] = await Promise.all([
@@ -54,7 +57,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       if (!mine || !withMyStudent) return refuse("You can only cancel your own meetings.", 403)
     }
 
-    await deleteThesisEvent(id)
+    await deleteThesisEvent(id, { notify: !logged })
     return Response.json({ ok: true })
   } catch (err) {
     console.error("[thesis-meetings] cancel failed:", err)

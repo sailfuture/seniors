@@ -3,7 +3,9 @@
  * Calendar. Supervisors and advisors book them here, in the app: an hour
  * inside a class session, saved straight to that calendar with the student,
  * their advisor and the thesis supervisor as guests, so Google sends the
- * invitations. Students never book.
+ * invitations. Students never book. A meeting that already happened can be
+ * logged the same way: it goes on the calendar as a record, and no one is
+ * emailed.
  *
  * Everything goes through `/api/thesis-meetings` (see
  * lib/google-calendar.server.ts for the Google side and its env vars). Until
@@ -60,6 +62,8 @@ export interface ThesisMeeting {
   /** The meeting's Google Meet link. Every meeting booked in the app has
    *  one; an event made by hand in Google Calendar may not. */
   meetUrl?: string
+  /** Logged in the app after it happened, rather than booked ahead. */
+  logged?: boolean
 }
 
 export interface CalendarSubscription {
@@ -100,8 +104,11 @@ export interface BookingRequest {
   studentId: string
   /** YYYY-MM-DD, a class day. */
   date: string
-  /** One of `bookingStartTimes()`. */
+  /** One of `bookingStartTimes()`; any time of day for a logged meeting. */
   startMinutes: number
+  /** A meeting that already happened: it is recorded on the calendar and
+   *  nobody is emailed. */
+  logged?: true
 }
 
 export type BookingResult =
@@ -109,8 +116,12 @@ export type BookingResult =
   | { ok: false; error: string }
 
 /** Books an hour with a student; Google emails the invitations, each with
-    the meeting's Google Meet link (`meeting.meetUrl`). */
+    the meeting's Google Meet link (`meeting.meetUrl`). With `logged`, it
+    records an hour that already happened instead, and emails no one. */
 export async function bookThesisMeeting(request: BookingRequest): Promise<BookingResult> {
+  const failed = request.logged
+    ? "The meeting couldn’t be added. Please try again."
+    : "The meeting couldn’t be booked. Please try again."
   try {
     const res = await fetch("/api/thesis-meetings", {
       method: "POST",
@@ -123,9 +134,9 @@ export async function bookThesisMeeting(request: BookingRequest): Promise<Bookin
       error?: string
     } | null
     if (res.ok && body?.meeting) return { ok: true, meeting: body.meeting, emailed: body.emailed === true }
-    return { ok: false, error: body?.error ?? "The meeting couldn’t be booked. Please try again." }
+    return { ok: false, error: body?.error ?? failed }
   } catch {
-    return { ok: false, error: "The meeting couldn’t be booked. Please try again." }
+    return { ok: false, error: failed }
   }
 }
 
