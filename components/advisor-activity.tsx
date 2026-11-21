@@ -632,6 +632,9 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
         meeting={openMeeting}
         now={now}
         people={people}
+        // This page is staff's, who may take any meeting off the calendar
+        // once the app can write to it.
+        canDelete={meetingsData?.canBook === true}
         onClose={() => setOpenMeetingId(null)}
       />
     </div>

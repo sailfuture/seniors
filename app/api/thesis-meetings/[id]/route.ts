@@ -10,12 +10,14 @@ import {
 import { LOGGED_TAG, advisorScope, lower } from "@/lib/thesis-meetings.server"
 
 /**
- * Cancels an upcoming thesis meeting: the event leaves the shared calendar
- * and Google emails the guests. Staff can cancel any upcoming meeting; an
- * advisor only one of their own (they booked it or are a guest) with a
- * student they advise. Meetings that already happened stay as the record,
- * except one that was logged in the app after the fact: that can be taken
- * back off (a wrong date, the wrong student), and nobody is emailed.
+ * Takes a thesis meeting off the shared calendar. One still to come is
+ * canceled, and Google emails the guests. One that has already started is
+ * deleted quietly (it never happened, or was booked by mistake): nobody is
+ * emailed about a meeting in the past, and only staff may do it, since those
+ * are the record of who met. One logged in the app after the fact can be
+ * taken back off by whoever could have logged it, also without email.
+ * An advisor acts only on a meeting of their own (they booked it or are a
+ * guest) with a student they advise.
  */
 export const dynamic = "force-dynamic"
 
@@ -40,7 +42,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const event = await getThesisEvent(id)
     if (!event) return Response.json({ ok: true })
     const logged = event.tags.logged === LOGGED_TAG
-    if (event.start <= Date.now() && !logged) return refuse("That meeting has already happened.", 409)
+    const started = event.start <= Date.now()
+    if (started && !logged && !staff) {
+      return refuse("That meeting has already happened. SailFuture staff can delete it.", 409)
+    }
 
     if (!staff) {
       const [{ me, thesisStudentIds }, students] = await Promise.all([
@@ -57,7 +62,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       if (!mine || !withMyStudent) return refuse("You can only cancel your own meetings.", 403)
     }
 
-    await deleteThesisEvent(id, { notify: !logged })
+    await deleteThesisEvent(id, { notify: !logged && !started })
     return Response.json({ ok: true })
   } catch (err) {
     console.error("[thesis-meetings] cancel failed:", err)

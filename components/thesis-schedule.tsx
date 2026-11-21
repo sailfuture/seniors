@@ -311,6 +311,8 @@ export function ThesisSchedule({
         loading={meetingsQuery.isPending}
         configured={configured}
         failed={Boolean(data && data.configured && !data.ok)}
+        viewerEmail={viewerEmail}
+        canCancel={canBook === true}
         onOpenStudent={setOpenStudentId}
       />
       {/* What's on today and next leads; the class calendar follows it. */}
@@ -1750,6 +1752,8 @@ function UpcomingCard({
   loading,
   configured,
   failed,
+  viewerEmail,
+  canCancel,
   onOpenStudent,
 }: {
   forAdvisor: boolean
@@ -1770,8 +1774,17 @@ function UpcomingCard({
   loading: boolean
   configured: boolean
   failed: boolean
+  /** The advisor looking, who cancels only meetings they are on; null for staff. */
+  viewerEmail: string | null
+  /** Whether the calendar can be written to at all. */
+  canCancel: boolean
   onOpenStudent: (studentId: string) => void
 }) {
+  // The meeting waiting on the "are you sure" dialog, and who it is with.
+  const [canceling, setCanceling] = useState<{ meeting: ThesisMeeting; withWhom: string } | null>(null)
+  const cancelable = (m: ThesisMeeting) => canCancel && canRemove(m, now, viewerEmail)
+  const anyCancelable = meetings.some(cancelable)
+
   return (
     <Card>
       <CardHeader className="border-b">
@@ -1781,7 +1794,8 @@ function UpcomingCard({
             <CardTitle>Today and upcoming meetings</CardTitle>
             <CardDescription>
               From the shared Senior Thesis Meetings calendar: today&rsquo;s meetings, then every later booking,
-              each with its Google Meet link. Select a meeting to see that student&rsquo;s meetings.
+              each with its Google Meet link. Select a meeting to see that student&rsquo;s meetings
+              {anyCancelable ? ", or use the trash can to take one off the calendar" : ""}.
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1820,7 +1834,12 @@ function UpcomingCard({
                 <TableHead>Time</TableHead>
                 <TableHead>Student</TableHead>
                 {!forAdvisor && <TableHead>Advisor</TableHead>}
-                <TableHead className="pr-6">Video call</TableHead>
+                <TableHead className={anyCancelable ? undefined : "pr-6"}>Video call</TableHead>
+                {anyCancelable && (
+                  <TableHead className="w-0 pr-6">
+                    <span className="sr-only">Cancel</span>
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1880,7 +1899,7 @@ function UpcomingCard({
                         {first?.advisors.length ? <AdvisorChips advisors={first.advisors} /> : "–"}
                       </TableCell>
                     )}
-                    <TableCell className="pr-6">
+                    <TableCell className={anyCancelable ? undefined : "pr-6"}>
                       {m.meetUrl && !over ? (
                         <Button asChild size="sm" variant={underWay ? "default" : "outline"} className="gap-1.5">
                           {/* The row opens the student's meetings; the link only joins the call. */}
@@ -1900,6 +1919,30 @@ function UpcomingCard({
                         <span className="text-muted-foreground">{over ? "–" : "No link yet"}</span>
                       )}
                     </TableCell>
+                    {anyCancelable && (
+                      <TableCell className="pr-6 text-right">
+                        {cancelable(m) && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            aria-label={`${removalVerb(m, now)} the meeting on ${formatDay(m.start)} at ${clock(m.start)}`}
+                            title={`${removalVerb(m, now)} meeting`}
+                            // The row opens the student's meetings; the button only cancels.
+                            onKeyDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setCanceling({
+                                meeting: m,
+                                withWhom: who.map((r) => studentName(r.student)).join(", "),
+                              })
+                            }}
+                          >
+                            <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 )
               })}
@@ -1907,6 +1950,12 @@ function UpcomingCard({
           </Table>
         )}
       </CardContent>
+      <CancelMeetingDialog
+        meeting={canceling?.meeting ?? null}
+        studentName={canceling?.withWhom ?? ""}
+        now={now}
+        onClose={() => setCanceling(null)}
+      />
     </Card>
   )
 }
@@ -1921,6 +1970,26 @@ const formatDay = (ms: number) =>
   })
 
 type MeetingState = "Held" | "Now" | "Upcoming" | "Canceled" | "Declined"
+
+/**
+ * Whether this viewer may take the meeting off the calendar, as the server
+ * also decides it. Staff (no `viewerEmail`) can take off any meeting. An
+ * advisor only one of their own, and only before it starts or when it was
+ * logged afterward: a meeting that happened is the record of who met.
+ */
+function canRemove(m: ThesisMeeting, now: number, viewerEmail: string | null): boolean {
+  if (m.canceled) return false
+  if (viewerEmail === null) return true
+  return (m.start > now || m.logged === true) && meetingIncludes(m, viewerEmail)
+}
+
+/**
+ * What taking a meeting off the calendar is called. One still to come is
+ * canceled, and Google tells the guests. One that has started is deleted and
+ * one logged afterward is removed, both without telling anyone.
+ */
+const removalVerb = (m: ThesisMeeting, now: number): "Cancel" | "Delete" | "Remove" =>
+  m.logged ? "Remove" : m.start > now ? "Cancel" : "Delete"
 
 function meetingState(m: ThesisMeeting, studentEmail: string, now: number): MeetingState {
   if (m.canceled) return "Canceled"
@@ -2014,13 +2083,8 @@ function StudentMeetingsSheet({
   // The meeting whose details are open over this sheet.
   const [detailId, setDetailId] = useState<string | null>(null)
   const detail = (row !== null && detailId !== null && list.find((m) => m.id === detailId)) || null
-  // A meeting still to come can be canceled; one that already happened stays
-  // as the record, unless it was logged here and can be taken back off.
-  const cancelable = (m: ThesisMeeting, state: MeetingState) =>
-    canCancel &&
-    (state === "Upcoming" || (m.logged === true && state !== "Canceled")) &&
-    (viewerEmail === null || meetingIncludes(m, viewerEmail))
-  const anyCancelable = list.some((m) => cancelable(m, meetingState(m, email, now)))
+  const cancelable = (m: ThesisMeeting) => canCancel && canRemove(m, now, viewerEmail)
+  const anyCancelable = list.some(cancelable)
   // A video link only matters for a meeting to come or under way.
   const joinable = (m: ThesisMeeting, state: MeetingState) => (stillOn(state) && m.meetUrl ? m.meetUrl : null)
   const anyJoinable = list.some((m) => joinable(m, meetingState(m, email, now)))
@@ -2134,13 +2198,13 @@ function StudentMeetingsSheet({
                         )}
                         {anyCancelable && (
                           <TableCell className="pr-4 text-right">
-                            {cancelable(mt, state) && (
+                            {cancelable(mt) && (
                               <Button
                                 size="icon-sm"
                                 variant="ghost"
                                 className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                aria-label={`${mt.logged ? "Remove" : "Cancel"} the meeting on ${formatDay(mt.start)}`}
-                                title={mt.logged ? "Remove logged meeting" : "Cancel meeting"}
+                                aria-label={`${removalVerb(mt, now)} the meeting on ${formatDay(mt.start)}`}
+                                title={`${removalVerb(mt, now)} meeting`}
                                 onKeyDown={own.onKeyDown}
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -2163,28 +2227,68 @@ function StudentMeetingsSheet({
         <CancelMeetingDialog
           meeting={canceling}
           studentName={student ? studentName(student) : "this student"}
+          now={now}
           onClose={() => setCanceling(null)}
         />
-        <MeetingDetailsSheet meeting={detail} now={now} people={people} onClose={() => setDetailId(null)} />
+        <MeetingDetailsSheet
+          meeting={detail}
+          now={now}
+          people={people}
+          canDelete={detail !== null && cancelable(detail)}
+          onClose={() => setDetailId(null)}
+        />
       </SheetContent>
     </Sheet>
   )
 }
 
-/** Confirms before a meeting leaves the calendar, since Google tells the guests. */
+/** How the warning reads for each way a meeting leaves the calendar. */
+const REMOVAL_COPY = {
+  Cancel: {
+    title: "Cancel this meeting?",
+    body: "It comes off the shared calendar and Google emails everyone invited that it’s canceled. This can’t be undone.",
+    action: "Cancel meeting",
+    working: "Canceling…",
+    done: "Meeting canceled",
+  },
+  Delete: {
+    title: "Delete this meeting?",
+    body: "It comes off the shared calendar and no longer counts as a meeting held. No one is emailed. This can’t be undone, but you can log it again as a past meeting.",
+    action: "Delete meeting",
+    working: "Deleting…",
+    done: "Meeting deleted",
+  },
+  Remove: {
+    title: "Remove this logged meeting?",
+    body: "It comes off the shared calendar and no longer counts as a meeting held. No one is emailed. This can’t be undone, but you can log it again.",
+    action: "Remove meeting",
+    working: "Removing…",
+    done: "Logged meeting removed",
+  },
+} as const
+
+/**
+ * Confirms before a meeting leaves the calendar: a cancellation Google tells
+ * the guests about, or the quiet deletion of one that already started.
+ */
 function CancelMeetingDialog({
   meeting,
   studentName: name,
+  now,
   onClose,
+  onDone,
 }: {
   meeting: ThesisMeeting | null
+  /** Who the meeting is with; empty when no student on it is known. */
   studentName: string
+  now: number
   onClose: () => void
+  /** Runs once the meeting is gone, after `onClose`. */
+  onDone?: () => void
 }) {
   const queryClient = useQueryClient()
   const [working, setWorking] = useState(false)
-  /** Logged after the fact: taking it off tells no one. */
-  const logged = meeting?.logged === true
+  const copy = REMOVAL_COPY[meeting ? removalVerb(meeting, now) : "Cancel"]
 
   async function confirm(e: React.MouseEvent) {
     e.preventDefault()
@@ -2200,8 +2304,9 @@ function CancelMeetingDialog({
       old?.ok ? { ...old, meetings: old.meetings.filter((m) => m.id !== meeting.id) } : old
     )
     void queryClient.invalidateQueries({ queryKey: ["thesis-meetings"] })
-    toast.success(logged ? "Logged meeting removed" : "Meeting canceled")
+    toast.success(copy.done)
     onClose()
+    onDone?.()
   }
 
   return (
@@ -2211,16 +2316,15 @@ function CancelMeetingDialog({
           <AlertDialogMedia className="bg-destructive/10 text-destructive">
             <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} />
           </AlertDialogMedia>
-          <AlertDialogTitle>{logged ? "Remove this logged meeting?" : "Cancel this meeting?"}</AlertDialogTitle>
+          <AlertDialogTitle>{copy.title}</AlertDialogTitle>
           <AlertDialogDescription>
             {meeting ? (
               <>
                 <span className="text-foreground font-medium">
-                  {formatDay(meeting.start)}, {clock(meeting.start)} – {clock(meeting.end)} with {name}.
+                  {formatDay(meeting.start)}, {clock(meeting.start)} – {clock(meeting.end)}
+                  {name ? ` with ${name}` : ""}.
                 </span>{" "}
-                {logged
-                  ? "It comes off the shared calendar and no longer counts as a meeting held. No one is emailed. This can’t be undone, but you can log it again."
-                  : "It comes off the shared calendar and Google emails everyone invited that it’s canceled. This can’t be undone."}
+                {copy.body}
               </>
             ) : (
               ""
@@ -2235,7 +2339,7 @@ function CancelMeetingDialog({
             // "!" because the button's own navy background otherwise wins.
             className="bg-destructive! hover:bg-destructive/90! text-white!"
           >
-            {working ? (logged ? "Removing…" : "Canceling…") : logged ? "Remove meeting" : "Cancel meeting"}
+            {working ? copy.working : copy.action}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -2278,13 +2382,15 @@ const fullDay = (ms: number) =>
   })
 
 /**
- * One thesis meeting, read only: when it is, whether it happened, its Google
- * Meet link, and who is on the invitation with how each of them answered.
+ * One thesis meeting: when it is, whether it happened, its Google Meet link,
+ * and who is on the invitation with how each of them answered. With
+ * `canDelete`, it can also be taken off the calendar from here.
  */
 export function MeetingDetailsSheet({
   meeting,
   now,
   people,
+  canDelete = false,
   onClose,
 }: {
   meeting: ThesisMeeting | null
@@ -2292,12 +2398,16 @@ export function MeetingDetailsSheet({
   /** Who the guests are, by lowercased email. Anyone else shows under the
       name Google has for them. */
   people: Map<string, MeetingPerson>
+  /** Whether the viewer may cancel or delete this meeting. */
+  canDelete?: boolean
   onClose: () => void
 }) {
   // Keeps the last meeting on screen while the sheet slides shut.
   const [shown, setShown] = useState(meeting)
   if (meeting && meeting !== shown) setShown(meeting)
   const m = meeting ?? shown
+  // Whether the "are you sure" dialog is up.
+  const [removing, setRemoving] = useState(false)
 
   const guests = (m?.attendees ?? []).map((a) => {
     const known = people.get(a.email)
@@ -2336,7 +2446,7 @@ export function MeetingDetailsSheet({
               </SheetDescription>
             </div>
           </div>
-          {(student?.studentId || (upcoming && m?.meetUrl)) && (
+          {(student?.studentId || (upcoming && m?.meetUrl) || (canDelete && m)) && (
             <div className="flex flex-wrap gap-2">
               {upcoming && m?.meetUrl && (
                 <Button asChild size="sm">
@@ -2355,9 +2465,27 @@ export function MeetingDetailsSheet({
                   </Button>
                 </>
               )}
+              {canDelete && m && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5"
+                  onClick={() => setRemoving(true)}
+                >
+                  <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
+                  {removalVerb(m, now)} meeting
+                </Button>
+              )}
             </div>
           )}
         </SheetHeader>
+        <CancelMeetingDialog
+          meeting={removing && meeting ? meeting : null}
+          studentName={student?.name ?? ""}
+          now={now}
+          onClose={() => setRemoving(false)}
+          onDone={onClose}
+        />
         {m && (
           <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
             <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-3 text-sm">
