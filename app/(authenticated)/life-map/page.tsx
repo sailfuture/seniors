@@ -22,6 +22,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet"
+import { StatusCount } from "@/components/status-count"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CheckmarkCircle02Icon,
@@ -730,12 +731,6 @@ function SectionTableRows({
                     <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{unreadGroupComments}</span>
                   </div>
                 )}
-                {!isGroupComplete && groupRevision > 0 && (
-                  <div className="relative inline-flex size-7 items-center justify-center rounded-lg border" title={`${groupRevision} need revision`}>
-                    <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5 text-red-500" />
-                    <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{groupRevision}</span>
-                  </div>
-                )}
                 <span className="text-muted-foreground text-xs">·</span>
                 <span className={`text-xs font-medium ${isGroupComplete ? "text-green-600" : locked ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
                   {isGroupComplete ? "Completed" : `${groupQs.length > 0 ? Math.round((groupCompleted / groupQs.length) * 100) : 0}%`}
@@ -751,19 +746,14 @@ function SectionTableRows({
                   <span className="text-muted-foreground/60 text-xs">
                     {formatWhen(lastCompletedTime)}
                   </span>
-                ) : (() => {
-                  const remaining = groupQs.length - groupCompleted
-                  return (
-                    <>
-                      <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-green-600" title={`${groupCompleted} completed`}>
-                        {groupCompleted}
-                      </div>
-                      <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-muted-foreground" title={`${remaining} remaining`}>
-                        {remaining}
-                      </div>
-                    </>
-                  )
-                })()}
+                ) : (
+                  <>
+                    <StatusCount kind="complete" count={groupCompleted} size="sm" />
+                    <StatusCount kind="ready" count={groupReady} size="sm" />
+                    <StatusCount kind="revision" count={groupRevision} size="sm" />
+                    <StatusCount kind="blank" count={groupBlank} size="sm" />
+                  </>
+                )}
               </div>
             </TableCell>
           </TableRow>

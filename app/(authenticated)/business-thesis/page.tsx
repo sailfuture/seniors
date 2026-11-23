@@ -22,6 +22,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet"
+import { StatusCount } from "@/components/status-count"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CheckmarkCircle02Icon,
@@ -748,12 +749,6 @@ function BtSectionTableRows({
                     <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">{unreadGroupComments}</span>
                   </div>
                 )}
-                {!isGroupComplete && groupRevision > 0 && (
-                  <div className="relative inline-flex size-7 items-center justify-center rounded-lg border" title={`${groupRevision} need revision`}>
-                    <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5 text-red-500" />
-                    <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{groupRevision}</span>
-                  </div>
-                )}
                 <span className="text-muted-foreground text-xs">·</span>
                 <span className={`text-xs font-medium ${isGroupComplete ? "text-green-600" : locked ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
                   {isGroupComplete ? "Completed" : `${groupQs.length > 0 ? Math.round((groupCompleted / groupQs.length) * 100) : 0}%`}
@@ -769,19 +764,14 @@ function BtSectionTableRows({
                   <span className="text-muted-foreground/60 text-xs">
                     {formatWhen(lastCompletedTime)}
                   </span>
-                ) : (() => {
-                  const remaining = groupQs.length - groupCompleted
-                  return (
-                    <>
-                      <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-green-600" title={`${groupCompleted} completed`}>
-                        {groupCompleted}
-                      </div>
-                      <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-muted-foreground" title={`${remaining} remaining`}>
-                        {remaining}
-                      </div>
-                    </>
-                  )
-                })()}
+                ) : (
+                  <>
+                    <StatusCount kind="complete" count={groupCompleted} size="sm" />
+                    <StatusCount kind="ready" count={groupReady} size="sm" />
+                    <StatusCount kind="revision" count={groupRevision} size="sm" />
+                    <StatusCount kind="blank" count={groupQs.length - groupCompleted - groupRevision - groupReady} size="sm" />
+                  </>
+                )}
               </div>
             </TableCell>
           </TableRow>
@@ -790,8 +780,11 @@ function BtSectionTableRows({
       {!collapsed && hasUngrouped && (() => {
         const ugCompleted = ungroupedQs.filter((q) => responseMap.get(q.id)?.isComplete).length
         const ugRevision = ungroupedQs.filter((q) => responseMap.get(q.id)?.revisionNeeded).length
+        const ugReady = ungroupedQs.filter((q) => {
+          const r = responseMap.get(q.id)
+          return r?.readyReview && !r?.isComplete && !r?.revisionNeeded
+        }).length
         const isUgComplete = ungroupedQs.length > 0 && ugCompleted === ungroupedQs.length
-        const remaining = ungroupedQs.length - ugCompleted
         return (
           <TableRow
             className={`${locked ? "cursor-not-allowed" : "cursor-pointer"} ${GROUP_ROW_LAST} ${groupRowBackground(locked)}`}
@@ -813,12 +806,6 @@ function BtSectionTableRows({
             <TableCell>
               <div className="flex items-center gap-2 pl-6">
                 <span className="text-sm font-semibold text-foreground">Ungrouped</span>
-                {!isUgComplete && ugRevision > 0 && (
-                  <div className="relative inline-flex size-7 items-center justify-center rounded-lg border" title={`${ugRevision} need revision`}>
-                    <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5 text-red-500" />
-                    <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{ugRevision}</span>
-                  </div>
-                )}
                 <span className="text-muted-foreground text-xs">·</span>
                 <span className={`text-xs font-medium ${isUgComplete ? "text-green-600" : "text-muted-foreground"}`}>
                   {isUgComplete ? "Completed" : `${ungroupedQs.length > 0 ? Math.round((ugCompleted / ungroupedQs.length) * 100) : 0}%`}
@@ -834,12 +821,10 @@ function BtSectionTableRows({
                   <span className="text-muted-foreground/60 text-xs">Done</span>
                 ) : (
                   <>
-                    <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-green-600" title={`${ugCompleted} completed`}>
-                      {ugCompleted}
-                    </div>
-                    <div className="inline-flex size-7 items-center justify-center rounded-md border text-sm font-semibold text-muted-foreground" title={`${remaining} remaining`}>
-                      {remaining}
-                    </div>
+                    <StatusCount kind="complete" count={ugCompleted} size="sm" />
+                    <StatusCount kind="ready" count={ugReady} size="sm" />
+                    <StatusCount kind="revision" count={ugRevision} size="sm" />
+                    <StatusCount kind="blank" count={ungroupedQs.length - ugCompleted - ugRevision - ugReady} size="sm" />
                   </>
                 )}
               </div>
