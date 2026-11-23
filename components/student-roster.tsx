@@ -239,7 +239,7 @@ export function StudentRoster({
 
   const fetchData = useCallback(async () => {
     try {
-      const [studentsRes, reviewsRes, templateRes, typesRes, lockMap, archivedRes] =
+      const [studentsRes, reviewsRes, templateRes, typesRes, lockMap, archivedRes, sectionsRes] =
         await Promise.all([
           cachedFetch(STUDENTS_ENDPOINT),
           fetch(statusEndpoint),
@@ -249,6 +249,9 @@ export function StudentRoster({
             ? fetchAllProjectLocks(lockStatusEndpoint)
             : Promise.resolve(new Map<string, ProjectLockStatus>()),
           cachedFetch(ARCHIVED_STUDENTS_ENDPOINT).catch(() => null),
+          apiConfig?.sectionsEndpoint
+            ? cachedFetch(apiConfig.sectionsEndpoint).catch(() => null)
+            : Promise.resolve(null),
         ])
       setLocks(lockMap)
 
@@ -302,6 +305,18 @@ export function StudentRoster({
         }
       }
 
+      // A locked section takes no review work, so its ready-for-review rows
+      // don't badge the roster either; the review queue skips them the same way.
+      const lockedSections = new Set<number>()
+      if (sectionsRes?.ok) {
+        const sections = await sectionsRes.json()
+        if (Array.isArray(sections)) {
+          for (const s of sections as { id: number; isLocked?: boolean }[]) {
+            if (s?.isLocked) lockedSections.add(Number(s.id))
+          }
+        }
+      }
+
       if (reviewsRes.ok) {
         const responses = await reviewsRes.json()
         if (Array.isArray(responses)) {
@@ -323,6 +338,8 @@ export function StudentRoster({
             }
             if (!r.readyReview || r.isComplete || r.revisionNeeded) continue
             if (!liveTemplateIds.has(Number(r[templateIdField]))) continue
+            const reviewSection = templateToSection.get(Number(r[templateIdField]))
+            if (reviewSection != null && lockedSections.has(reviewSection)) continue
             counts.set(sid, (counts.get(sid) ?? 0) + 1)
           }
           setReviewCounts(counts)
