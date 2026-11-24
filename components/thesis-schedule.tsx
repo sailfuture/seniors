@@ -164,60 +164,20 @@ export function ThesisSchedule({
   const [openStudentId, setOpenStudentId] = useState<string | null>(null)
   const [booking, setBooking] = useState<BookingRequest | null>(null)
   const [logging, setLogging] = useState<{ studentId?: string } | null>(null)
-  const calendarQuery = useSchoolCalendarData()
-  const meetingsQuery = useThesisMeetings()
-  const advisorsQuery = useAdvisors()
-  const assignmentsQuery = useAdvisorAssignments()
-  const studentsQuery = useStudents()
-  const [now] = useState(() => Date.now())
-  const [today] = useState(() => schoolNow().date)
-
-  const data = meetingsQuery.data
-  const meetings = useMemo(() => (data?.ok ? data.meetings : []), [data])
-  // Who school attendance has out, and when. Nothing is flagged until it
-  // loads, or when it can't be read.
-  const absences = useQuery({
-    queryKey: ["student-absences"],
-    queryFn: fetchStudentAbsences,
-    staleTime: 5 * 60_000,
-  }).data
-
-  const rows = useMemo<StudentRow[] | null>(() => {
-    const advisors = advisorsQuery.data
-    const assignments = assignmentsQuery.data
-    const students = studentsQuery.data
-    if (!advisors || !assignments || !students) return null
-    const active = new Map(
-      advisors
-        .filter((a) => a.isActive !== false && advisorAllowsProduct(a, "business-thesis"))
-        .map((a) => [Number(a.id), a])
-    )
-    const year = currentClassYear()
-    const advisedIds = forAdvisor
-      ? new Set(
-          assignments
-            .filter((a) => a.type === "business-thesis" && Number(a.advisors_id) === Number(advisorId))
-            .map((a) => String(a.students_id))
-        )
-      : null
-    return students
-      .filter((s) => (advisedIds ? advisedIds.has(String(s.id)) : classYearOf(s) === year))
-      .map((student) => {
-        const mine = assignments
-          .filter((a) => a.type === "business-thesis" && String(a.students_id) === String(student.id))
-          .map((a) => active.get(Number(a.advisors_id)))
-          .filter((a): a is Advisor => Boolean(a))
-        return {
-          student,
-          advisors: mine,
-          hasAdvisor: forAdvisor || mine.length > 0,
-          meetings: data?.ok
-            ? meetingsForStudent(meetings, student, mine.map((a) => a.email), now)
-            : null,
-        }
-      })
-      .sort((x, y) => attentionRank(x, now) - attentionRank(y, now) || studentName(x.student).localeCompare(studentName(y.student)))
-  }, [advisorsQuery.data, assignmentsQuery.data, studentsQuery.data, data, meetings, now, forAdvisor, advisorId])
+  const {
+    calendarQuery,
+    meetingsQuery,
+    advisorsQuery,
+    studentsQuery,
+    data,
+    meetings,
+    absences,
+    rows,
+    now,
+    today,
+    canBook,
+    bookableDays,
+  } = useMeetingPlanner(advisorId, booking?.date)
 
   const studentsByEmail = useMemo(
     () =>
@@ -253,31 +213,6 @@ export function ThesisSchedule({
   )
 
   const configured = data?.configured !== false
-  /** Null while the meetings are still loading. */
-  const canBook = data ? data.canBook === true : null
-
-  // Every class day left in the current term (or the coming weeks when the
-  // calendar can't say), including the ones that can't be booked: the day
-  // picker shows those too, with the reason. A day opened from a later term's
-  // schedule brings that term's days instead.
-  const askedDate = booking?.date
-  const bookableDays = useMemo(() => {
-    const cal = calendarQuery.data
-    let from = today
-    let through = addDays(today, BOOKING_WEEKS * 7 - 1)
-    if (cal) {
-      const year = defaultYear(yearsWithDays(cal), today)
-      const terms = (year ? termsOfYear(cal, year.id) : []).filter((t) => t.end >= today)
-      const term =
-        (askedDate ? terms.find((t) => t.start <= askedDate && askedDate <= t.end) : undefined) ??
-        defaultTerm(terms, today)
-      if (term) {
-        if (term.start > today) from = term.start
-        through = term.end
-      }
-    }
-    return meetingOutlook(cal?.days ?? [], { from, through }, undefined, cal?.events ?? []).sessions
-  }, [calendarQuery.data, today, askedDate])
 
   // An advisor cancels only meetings they are on; staff cancel any.
   const viewerEmail = forAdvisor
@@ -420,6 +355,147 @@ export function ThesisSchedule({
           )}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+/**
+ * What booking and logging need: the meetings, the students in scope with
+ * their advisors and meetings, who is out of school, and the class days on
+ * offer. With `advisorId` the students are that advisor's Business Thesis
+ * students; without it, the current senior class. `askedDate` brings the
+ * term that date falls in instead of the current one.
+ */
+function useMeetingPlanner(advisorId: string | number | null | undefined, askedDate: string | undefined) {
+  const scoped = advisorId != null
+  const calendarQuery = useSchoolCalendarData()
+  const meetingsQuery = useThesisMeetings()
+  const advisorsQuery = useAdvisors()
+  const assignmentsQuery = useAdvisorAssignments()
+  const studentsQuery = useStudents()
+  const [now] = useState(() => Date.now())
+  const [today] = useState(() => schoolNow().date)
+
+  const data = meetingsQuery.data
+  const meetings = useMemo(() => (data?.ok ? data.meetings : []), [data])
+  // Who school attendance has out, and when. Nothing is flagged until it
+  // loads, or when it can't be read.
+  const absences = useQuery({
+    queryKey: ["student-absences"],
+    queryFn: fetchStudentAbsences,
+    staleTime: 5 * 60_000,
+  }).data
+
+  const rows = useMemo<StudentRow[] | null>(() => {
+    const advisors = advisorsQuery.data
+    const assignments = assignmentsQuery.data
+    const students = studentsQuery.data
+    if (!advisors || !assignments || !students) return null
+    const active = new Map(
+      advisors
+        .filter((a) => a.isActive !== false && advisorAllowsProduct(a, "business-thesis"))
+        .map((a) => [Number(a.id), a])
+    )
+    const year = currentClassYear()
+    const advisedIds = scoped
+      ? new Set(
+          assignments
+            .filter((a) => a.type === "business-thesis" && Number(a.advisors_id) === Number(advisorId))
+            .map((a) => String(a.students_id))
+        )
+      : null
+    return students
+      .filter((s) => (advisedIds ? advisedIds.has(String(s.id)) : classYearOf(s) === year))
+      .map((student) => {
+        const mine = assignments
+          .filter((a) => a.type === "business-thesis" && String(a.students_id) === String(student.id))
+          .map((a) => active.get(Number(a.advisors_id)))
+          .filter((a): a is Advisor => Boolean(a))
+        return {
+          student,
+          advisors: mine,
+          hasAdvisor: scoped || mine.length > 0,
+          meetings: data?.ok
+            ? meetingsForStudent(meetings, student, mine.map((a) => a.email), now)
+            : null,
+        }
+      })
+      .sort((x, y) => attentionRank(x, now) - attentionRank(y, now) || studentName(x.student).localeCompare(studentName(y.student)))
+  }, [advisorsQuery.data, assignmentsQuery.data, studentsQuery.data, data, meetings, now, scoped, advisorId])
+
+  /** Null while the meetings are still loading. */
+  const canBook = data ? data.canBook === true : null
+
+  // Every class day left in the current term (or the coming weeks when the
+  // calendar can't say), including the ones that can't be booked: the day
+  // picker shows those too, with the reason. A day opened from a later term's
+  // schedule brings that term's days instead.
+  const bookableDays = useMemo(() => {
+    const cal = calendarQuery.data
+    let from = today
+    let through = addDays(today, BOOKING_WEEKS * 7 - 1)
+    if (cal) {
+      const year = defaultYear(yearsWithDays(cal), today)
+      const terms = (year ? termsOfYear(cal, year.id) : []).filter((t) => t.end >= today)
+      const term =
+        (askedDate ? terms.find((t) => t.start <= askedDate && askedDate <= t.end) : undefined) ??
+        defaultTerm(terms, today)
+      if (term) {
+        if (term.start > today) from = term.start
+        through = term.end
+      }
+    }
+    return meetingOutlook(cal?.days ?? [], { from, through }, undefined, cal?.events ?? []).sessions
+  }, [calendarQuery.data, today, askedDate])
+
+  return {
+    calendarQuery,
+    meetingsQuery,
+    advisorsQuery,
+    studentsQuery,
+    data,
+    meetings,
+    absences,
+    rows,
+    now,
+    today,
+    canBook,
+    bookableDays,
+  }
+}
+
+/**
+ * "Book a thesis meeting" and "Log a past meeting" for one advisor's
+ * students, with their dialogs, for staff pages outside the Schedule (the
+ * advisor activity page). The viewer is staff, not the advisor; the student
+ * pickers list only that advisor's Business Thesis students.
+ */
+export function AdvisorMeetingButtons({ advisorId }: { advisorId: string | number }) {
+  const [booking, setBooking] = useState<BookingRequest | null>(null)
+  const [logging, setLogging] = useState<{ studentId?: string } | null>(null)
+  const { data, meetings, absences, rows, canBook, bookableDays } = useMeetingPlanner(advisorId, booking?.date)
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {canBook === true && <LogButton size="sm" onLog={() => setLogging({})} />}
+      <BookButton size="sm" label="Book a meeting" onBook={canBook === null ? undefined : () => setBooking({})} />
+      <LogMeetingDialog
+        request={logging}
+        onClose={() => setLogging(null)}
+        forAdvisor={false}
+        rows={rows}
+        meetings={meetings}
+      />
+      <BookingDialog
+        request={booking}
+        onClose={() => setBooking(null)}
+        forAdvisor={false}
+        canBook={canBook === true}
+        missing={data?.missing ?? []}
+        rows={rows}
+        days={bookableDays}
+        meetings={meetings}
+        absences={absences}
+      />
     </div>
   )
 }
@@ -1052,9 +1128,11 @@ function BookingForm({
 }) {
   const queryClient = useQueryClient()
   const [now] = useState(() => Date.now())
-  // An advisor's own student is already chosen; staff pick from the class.
+  // An advisor's own student is already chosen, as is a list of one; staff
+  // pick from the class.
   const [studentId, setStudentId] = useState(
-    () => request.studentId ?? (forAdvisor && rows[0] ? String(rows[0].student.id) : "")
+    () =>
+      request.studentId ?? ((forAdvisor || rows.length === 1) && rows[0] ? String(rows[0].student.id) : "")
   )
   // The day asked for, unless it can't be booked; otherwise the next one that
   // can, skipping the days an already chosen student is out.

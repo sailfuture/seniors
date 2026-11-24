@@ -25,7 +25,7 @@ import { buildAdvisorActivity, type ActivityItem, type ActivityKind } from "@/li
 import { BUSINESSTHESIS_API_CONFIG } from "@/lib/form-api-config"
 import { cachedFetch } from "@/lib/cached-fetch"
 import type { Comment } from "@/lib/form-types"
-import { dateTime, relativeTime } from "@/lib/format-time"
+import { relativeTime } from "@/lib/format-time"
 import { useAdvisorAssignments, useAdvisors, useStudents } from "@/lib/queries"
 import type { ResponseEvent } from "@/lib/response-events"
 import { classYearOf, currentClassYear, studentName, type RosterStudent } from "@/lib/students"
@@ -33,11 +33,16 @@ import { formatMeetingTime, meetingIncludes } from "@/lib/thesis-meetings"
 import { cn } from "@/lib/utils"
 import { Kpi, useThesisProgress } from "@/components/supervisor-dashboard"
 import { StatusCount } from "@/components/status-count"
-import { MeetingDetailsSheet, useThesisMeetings, type MeetingPerson } from "@/components/thesis-schedule"
+import {
+  AdvisorMeetingButtons,
+  MeetingDetailsSheet,
+  useThesisMeetings,
+  type MeetingPerson,
+} from "@/components/thesis-schedule"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -357,18 +362,6 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
     })
   }, [advisor, students, recordsQuery.data, meetingsData, now])
 
-  const waiting = useMemo(() => {
-    if (!students || !progressQuery.data) return null
-    let pending = 0
-    let revisions = 0
-    for (const s of students) {
-      const p = progressQuery.data.byStudent.get(String(s.id))
-      pending += p?.pending ?? 0
-      revisions += p?.revisions ?? 0
-    }
-    return { pending, revisions }
-  }, [students, progressQuery.data])
-
   if (advisorsQuery.isPending) {
     return (
       <div className={PAGE}>
@@ -402,7 +395,6 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
     revision: activity?.items.filter((i) => i.kind === "revision").length ?? 0,
     meeting: activity?.items.filter((i) => i.kind === "meeting").length ?? 0,
   }
-  const next = activity?.meetingsUpcoming[0]
   const studentById = new Map((students ?? []).map((s) => [String(s.id), s]))
   const openMeeting =
     (openMeetingId !== null && meetingsData?.ok && meetingsData.meetings.find((m) => m.id === openMeetingId)) || null
@@ -438,11 +430,6 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
           icon={Comment01Icon}
           label="Comments written"
           value={activity?.comments}
-          note={
-            activity && activity.revisionNotes > 0
-              ? `${activity.revisionNotes} sent with a revision request`
-              : undefined
-          }
           loading={loading && !failed}
           failed={failed}
         />
@@ -451,11 +438,6 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
           label="Revisions requested"
           dot="bg-red-500"
           value={activity?.revisionsRequested}
-          note={
-            waiting
-              ? `${waiting.revisions} open and ${waiting.pending} ready for review now`
-              : undefined
-          }
           loading={loading && !failed}
           failed={failed}
         />
@@ -463,21 +445,12 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
           icon={Calendar03Icon}
           label="Meetings held"
           value={meetingsReadable ? activity?.meetingsHeld.length : "–"}
-          note={
-            !meetingsReadable
-              ? "The meetings calendar couldn’t be read"
-              : next
-                ? `Next: ${formatMeetingTime(next.start)}`
-                : "None booked"
-          }
-          warn={meetingsReadable && !next}
           loading={(loading && !failed) || meetingsQuery.isPending}
         />
         <Kpi
           icon={Clock01Icon}
           label="Last active"
           value={activity?.lastActiveAt ? relativeTime(activity.lastActiveAt, now) : "Not yet"}
-          note={activity?.lastActiveAt ? dateTime(activity.lastActiveAt) : "No comments, reviews or meetings"}
           loading={loading && !failed}
           failed={failed}
         />
@@ -580,6 +553,9 @@ export function AdvisorActivityDetail({ advisorId }: { advisorId: number }) {
         <CardHeader className="border-b">
           <CardTitle>Meetings</CardTitle>
           <CardDescription>Thesis meetings with this advisor on the invitation.</CardDescription>
+          <CardAction>
+            <AdvisorMeetingButtons advisorId={advisorId} />
+          </CardAction>
         </CardHeader>
         <CardContent>
           {meetingsQuery.isPending || !activity ? (
